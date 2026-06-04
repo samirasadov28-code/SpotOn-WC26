@@ -110,7 +110,7 @@ export default function HomePage() {
           </div>
 
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-xs font-semibold tracking-widest uppercase text-white/70 mb-6">
-            ⚽ FIFA World Cup 2026 · 48 Teams · 3 Countries
+            ⚽ FIFA World Cup 2026 · 48 Nations · 3 Host Countries
           </div>
 
           <h1 className="text-5xl sm:text-7xl font-black tracking-tight mb-4 leading-none">

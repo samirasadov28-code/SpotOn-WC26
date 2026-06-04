@@ -50,7 +50,7 @@ function calcStandings(groupMatches: MatchWithTeams[], groupTeams: Team[], preds
   return rows.sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.team.name.localeCompare(b.team.name))
 }
 
-export default function GroupPredictionsPage() {
+export default function GroupPredictionsPage({ onCountChange }: { onCountChange?: (n: number) => void }) {
   const [activeGroup, setActiveGroup] = useState('A')
   const [matches, setMatches] = useState<MatchWithTeams[]>([])
   const [teams, setTeams] = useState<Team[]>([])
@@ -91,6 +91,7 @@ export default function GroupPredictionsPage() {
       }
       setPreds(predMap)
       setSavedCount(count)
+      onCountChange?.(count)
       setLoading(false)
     }
     init()
@@ -109,7 +110,11 @@ export default function GroupPredictionsPage() {
       { onConflict: 'user_id,match_id' }
     )
     setSavingIds(s => { const n = new Set(s); n.delete(matchId); return n })
-    if (!error) setSavedCount(c => preds[matchId] ? c : c + 1)
+    if (!error) setSavedCount(c => {
+      const next = preds[matchId] ? c : c + 1
+      onCountChange?.(next)
+      return next
+    })
   }, [userId, isLocked, preds, supabase])
 
   const groupMatches = matches.filter(m => m.group_letter === activeGroup)
@@ -156,11 +161,8 @@ export default function GroupPredictionsPage() {
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-[#0B1F3A]">Group Predictions</h1>
-        <div className="text-sm text-gray-500">
-          <span className="font-bold text-[#0B1F3A]">{savedCount}</span> / 72 saved
-          {isLocked && <span className="ml-3 text-red-600 font-semibold">Predictions locked</span>}
-        </div>
+        <h1 className="text-2xl font-bold text-[#0B1F3A]">Group Stage Predictions</h1>
+        {isLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
       </div>
 
       {/* Group tabs */}
