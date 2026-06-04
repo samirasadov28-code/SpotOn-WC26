@@ -78,6 +78,37 @@ function calcStandings(groupMatches: MatchWithTeams[], groupTeams: Team[], preds
   return rows.sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.team.name.localeCompare(b.team.name))
 }
 
+function calcQualifiedGroups(allMatches: MatchWithTeams[], allTeams: Team[], preds: PredMap): Map<string, Team> {
+  const qualified = new Map<string, Team>()
+  const thirds: Array<{ group: string; team: Team; pts: number; gd: number; gf: number }> = []
+  const GROUPS_ALL = ['A','B','C','D','E','F','G','H','I','J','K','L']
+  for (const g of GROUPS_ALL) {
+    const gMatches = allMatches.filter(m => m.group_letter === g)
+    const gTeams = allTeams.filter(t => t.group_letter === g)
+    const s = calcStandings(gMatches, gTeams, preds)
+    if (s[0]) qualified.set('1' + g, s[0].team)
+    if (s[1]) qualified.set('2' + g, s[1].team)
+    if (s[2]) thirds.push({ group: g, team: s[2].team, pts: s[2].pts, gd: s[2].gd, gf: s[2].gf })
+  }
+  thirds
+    .sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+    .slice(0, 8)
+    .forEach((t, i) => qualified.set(`3rd${i + 1}`, t.team))
+  return qualified
+}
+
+function getR32OppPosKey(posKey: string): string | null {
+  const R32_OPP_KEYS: Record<string, string> = {
+    '1A': '3rd3', '1B': '3rd7', '1C': '2F', '1D': '3rd5',
+    '1E': '3rd1', '1F': '2C', '1G': '3rd6', '1H': '2J',
+    '1I': '3rd2', '1J': '2H', '1K': '3rd8', '1L': '3rd4',
+    '2A': '2B',   '2B': '2A',  '2C': '1F',  '2D': '2G',
+    '2E': '2I',   '2F': '1C',  '2G': '2D',  '2H': '1J',
+    '2I': '2E',   '2J': '1H',  '2K': '2L',  '2L': '2K',
+  }
+  return R32_OPP_KEYS[posKey] ?? null
+}
+
 export default function GroupPredictionsPage({ onCountChange }: { onCountChange?: (n: number) => void }) {
   const [activeGroup, setActiveGroup] = useState('A')
   const [matches, setMatches] = useState<MatchWithTeams[]>([])
@@ -177,6 +208,11 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   // Live standings for active group
   const standings = useMemo(() => calcStandings(groupMatches, groupTeams, preds), [groupMatches, groupTeams, preds])
 
+  const qualifiedTeams = useMemo(
+    () => calcQualifiedGroups(matches, teams, preds),
+    [matches, teams, preds]
+  )
+
   // Best 3rd places: take 3rd from every group, sort
   const best3rds = useMemo(() => {
     return GROUPS.map(g => {
@@ -212,7 +248,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   )
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className={`max-w-6xl mx-auto px-4 py-8 ${savedCount >= 72 ? 'pb-28' : ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-[#0B1F3A]">Group Stage Predictions</h1>
@@ -305,9 +341,24 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                       {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
                       <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-sm hover:underline flex-shrink-0">{s.team.name}</a>
                       {path ? (
-                        <div className="ml-auto text-right min-w-0">
-                          <div className="text-xs text-gray-500">R32: <span className="font-medium text-[#0B1F3A]">{path.r32OppShort}</span></div>
-                          <div className="text-xs text-gray-400">R16: {path.r16Desc}</div>
+                        <div className="ml-auto text-right min-w-0 max-w-[120px]">
+                          <div className="text-xs text-gray-500 truncate">
+                            R32: {(() => {
+                              const oppKey = getR32OppPosKey(posKey)
+                              const oppTeam = oppKey ? qualifiedTeams.get(oppKey) : null
+                              if (oppTeam) {
+                                const oppCode = (oppTeam as any).fifa_code
+                                return (
+                                  <span className="font-medium text-[#0B1F3A] inline-flex items-center gap-1">
+                                    {oppCode && <img src={flagUrl(oppCode, 40)} alt="" className="w-4 h-auto rounded-sm inline" />}
+                                    {oppTeam.name}
+                                  </span>
+                                )
+                              }
+                              return <span className="font-medium text-[#0B1F3A]">{path.r32OppShort}</span>
+                            })()}
+                          </div>
+                          <div className="text-xs text-gray-400 truncate">R16: {path.r16Desc}</div>
                         </div>
                       ) : (
                         <div className="ml-auto text-xs text-gray-400 italic">Top 8 3rd → qualifies</div>
@@ -399,8 +450,9 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       </div>
 
       {savedCount >= 72 && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pb-6 pt-3 bg-gradient-to-t from-white/95 to-transparent pointer-events-none">
-          <a href="/predictions?tab=knockout" className="pointer-events-auto bg-[#0B1F3A] text-white font-black px-8 py-4 rounded-2xl shadow-2xl hover:bg-[#162d52] transition-all hover:scale-105 flex items-center gap-3 text-base">
+        <div className="mt-8 flex justify-center">
+          <a href="/predictions?tab=knockout"
+            className="bg-[#0B1F3A] text-white font-black px-8 py-4 rounded-2xl shadow-xl hover:bg-[#162d52] transition-all hover:scale-105 flex items-center gap-3 text-base animate-pulse">
             🏆 Group Stage Complete — Predict the Playoff Bracket →
           </a>
         </div>

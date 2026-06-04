@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
@@ -167,7 +167,29 @@ interface MatchCardProps {
 }
 
 function MatchCard({ slot, label, homeTeam, awayTeam, pred, onChange, onBlur, hasError, isSaving, isSaved, isLocked, compact }: MatchCardProps) {
-  const drawError = pred.homeScore !== '' && pred.awayScore !== '' && pred.homeScore === pred.awayScore
+  const [localPred, setLocalPred] = useState(pred)
+  const isFocusedRef = useRef(false)
+
+  // Sync from parent only when not focused (e.g., initial load or external update)
+  useEffect(() => {
+    if (!isFocusedRef.current) {
+      setLocalPred(pred)
+    }
+  }, [pred.homeScore, pred.awayScore]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleChange = (side: 'homeScore' | 'awayScore', val: string) => {
+    setLocalPred(p => ({ ...p, [side]: val }))
+  }
+
+  const handleFocus = () => { isFocusedRef.current = true }
+
+  const handleBlur = () => {
+    isFocusedRef.current = false
+    onChange(localPred)
+    onBlur()
+  }
+
+  const drawError = localPred.homeScore !== '' && localPred.awayScore !== '' && localPred.homeScore === localPred.awayScore
   const partialError = hasError && !drawError
   const showError = drawError || partialError
   const disabled = isLocked || (!homeTeam && !awayTeam)
@@ -177,7 +199,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onChange, onBlur, ha
       <div className={`bg-white rounded-lg border-l-4 p-2 shadow-sm ${showError ? 'border-red-400' : 'border-gray-200'}`}>
         <div className="text-[10px] text-gray-400 mb-1 truncate">{label}</div>
         <div className="flex flex-col gap-1">
-          {[{ team: homeTeam, side: 'homeScore' as const }, { team: awayTeam, side: 'awayScore' as const }].map(({ team, side }) => (
+          {([['homeScore', homeTeam], ['awayScore', awayTeam]] as const).map(([side, team]) => (
             <div key={side} className="flex items-center gap-1.5">
               {team?.fifa_code
                 ? <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />
@@ -186,9 +208,10 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onChange, onBlur, ha
               <input
                 type="number" min={0} max={99} inputMode="numeric"
                 disabled={disabled || !team}
-                value={pred[side]}
-                onChange={e => onChange({ ...pred, [side]: e.target.value })}
-                onBlur={onBlur}
+                value={localPred[side]}
+                onChange={e => handleChange(side, e.target.value)}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
                 className={`w-9 text-center border rounded py-1 text-xs font-bold focus:ring-1 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-40 ${showError ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
               />
             </div>
@@ -203,39 +226,37 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onChange, onBlur, ha
     <div className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${showError ? 'border-red-400' : 'border-gray-200'}`}>
       <div className="text-xs text-gray-400 mb-2">{label}</div>
       <div className="flex items-center gap-2">
-        {/* Home */}
         <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5 overflow-hidden">
           <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{homeTeam?.name ?? 'TBD'}</span>
           {homeTeam?.fifa_code
             ? <img src={flagUrl(homeTeam.fifa_code, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0" />
             : <span className="w-6 h-4 bg-gray-100 rounded-sm flex-shrink-0" />}
         </div>
-        {/* Inputs */}
         <div className="flex items-center gap-1 flex-shrink-0">
           <input type="number" min={0} max={99} inputMode="numeric"
             disabled={disabled}
-            value={pred.homeScore}
-            onChange={e => onChange({ ...pred, homeScore: e.target.value })}
-            onBlur={onBlur}
+            value={localPred.homeScore}
+            onChange={e => handleChange('homeScore', e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-40 ${showError ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
           />
           <span className="text-gray-400 font-bold text-xs">–</span>
           <input type="number" min={0} max={99} inputMode="numeric"
             disabled={disabled}
-            value={pred.awayScore}
-            onChange={e => onChange({ ...pred, awayScore: e.target.value })}
-            onBlur={onBlur}
+            value={localPred.awayScore}
+            onChange={e => handleChange('awayScore', e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-40 ${showError ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
           />
         </div>
-        {/* Away */}
         <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
           {awayTeam?.fifa_code
             ? <img src={flagUrl(awayTeam.fifa_code, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0" />
             : <span className="w-6 h-4 bg-gray-100 rounded-sm flex-shrink-0" />}
           <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{awayTeam?.name ?? 'TBD'}</span>
         </div>
-        {/* Status */}
         <div className="w-4 flex-shrink-0 text-center">
           {isSaving ? <span className="text-xs text-yellow-500">…</span>
             : isSaved ? <span className="text-xs text-green-600">✓</span>
@@ -441,18 +462,37 @@ export default function KnockoutPredictionsPage() {
 
       {/* Winner modal */}
       {showWinner && predictedWinner && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowWinner(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full flex flex-col items-center gap-4 text-center" onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 120, lineHeight: 1 }}>🏆</div>
-            <h2 className="text-2xl font-black text-[#0B1F3A]">Your World Cup Winner</h2>
-            {predictedWinner.fifa_code && (
-              <img src={flagUrl(predictedWinner.fifa_code, 200)} alt="" className="w-32 h-auto rounded-lg shadow-md" />
-            )}
-            <p className="text-3xl font-black text-[#0B1F3A]">{predictedWinner.name}</p>
-            <p className="text-gray-500 text-sm">Congratulations on completing your bracket!</p>
-            <button onClick={() => setShowWinner(false)} className="mt-2 bg-[#0B1F3A] text-white font-bold px-6 py-2.5 rounded-xl hover:bg-[#162d52] transition-colors">
-              Close ✕
-            </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowWinner(false)}>
+          <div className="relative bg-white rounded-3xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Gold gradient header */}
+            <div className="bg-gradient-to-b from-yellow-400 to-amber-500 pt-10 pb-6 px-6 text-center relative overflow-hidden">
+              {/* Animated stars */}
+              {['top-2 left-4', 'top-3 right-6', 'top-8 left-12', 'top-1 right-16', 'top-6 left-2'].map((pos, i) => (
+                <span key={i} className={`absolute ${pos} text-white/60 text-lg animate-pulse`} style={{ animationDelay: `${i * 0.2}s` }}>✦</span>
+              ))}
+              {/* Bouncing trophy */}
+              <div className="text-7xl mb-3 animate-bounce">🏆</div>
+              <p className="text-[#0B1F3A] font-black text-sm uppercase tracking-widest">Your World Cup Winner</p>
+            </div>
+            {/* Team section */}
+            <div className="px-6 py-8 text-center">
+              {predictedWinner.fifa_code && (
+                <img
+                  src={flagUrl(predictedWinner.fifa_code, 160)}
+                  alt={predictedWinner.name}
+                  className="h-24 w-auto mx-auto rounded-xl shadow-lg mb-4 object-cover"
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              )}
+              <h2 className="text-3xl font-black text-[#0B1F3A] mb-1">{predictedWinner.name}</h2>
+              <p className="text-gray-500 text-sm">Congratulations on completing your bracket!</p>
+              <div className="flex gap-3 mt-6 justify-center">
+                <button onClick={() => setShowWinner(false)}
+                  className="bg-[#0B1F3A] text-white font-black px-8 py-3 rounded-2xl hover:bg-[#162d52] transition-colors">
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -527,18 +567,17 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
   // Right half: slots 9-16 → R16 21-24 → QF 27-28 → SF 30
   // Center: Final 32 + 3rd Place 31
 
-  // R32 ordered so each adjacent pair feeds into the same R16 match:
-  // (2,5)→17  (1,3)→18  (4,6)→19  (7,8)→20
-  const leftR32  = [2,5, 1,3, 4,6, 7,8]
-  const leftR16  = [17, 18, 19, 20]
-  const leftQF   = [25, 27]   // 25=W(17)vsW(18), 27=W(19)vsW(20)
-  const leftSF   = [29]       // 29=W(25)vsW(26)
+  // Left half → SF 29: R32 pairs (2,5)→R16-17, (1,3)→R16-18, (11,12)→R16-21, (9,10)→R16-22
+  const leftR32  = [2, 5, 1, 3, 11, 12, 9, 10]
+  const leftR16  = [17, 18, 21, 22]
+  const leftQF   = [25, 26]   // QF25=W(17)vsW(18), QF26=W(21)vsW(22) → both feed SF29
+  const leftSF   = [29]
 
-  // (11,12)→21  (9,10)→22  (14,16)→23  (13,15)→24
-  const rightR32 = [11,12, 9,10, 14,16, 13,15]
-  const rightR16 = [21, 22, 23, 24]
-  const rightQF  = [26, 28]   // 26=W(21)vsW(22), 28=W(23)vsW(24)
-  const rightSF  = [30]       // 30=W(27)vsW(28)
+  // Right half → SF 30: R32 pairs (4,6)→R16-19, (7,8)→R16-20, (14,16)→R16-23, (13,15)→R16-24
+  const rightR32 = [4, 6, 7, 8, 14, 16, 13, 15]
+  const rightR16 = [19, 20, 23, 24]
+  const rightQF  = [27, 28]   // QF27=W(19)vsW(20), QF28=W(23)vsW(24) → both feed SF30
+  const rightSF  = [30]
 
   const posLabel = (slot: number): string => {
     if (slot <= 16) {
