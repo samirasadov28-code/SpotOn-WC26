@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 import { formatDistanceToNow, isBefore } from 'date-fns'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
@@ -24,7 +23,6 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [displayName, setDisplayName] = useState<string | null>(null)
   const [timeToLock, setTimeToLock] = useState<string | null>(null)
-  const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
@@ -60,7 +58,7 @@ export default function Navbar() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
-    router.push('/')
+    window.location.href = '/'
   }
 
   return (
