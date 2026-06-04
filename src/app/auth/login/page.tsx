@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -11,6 +11,13 @@ export default function LoginPage() {
   const [step, setStep] = useState<'email' | 'otp'>('email')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const id = setTimeout(() => setResendCooldown(c => c - 1), 1000)
+    return () => clearTimeout(id)
+  }, [resendCooldown])
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,9 +32,15 @@ export default function LoginPage() {
 
     setLoading(false)
     if (err) {
-      setError(err.message)
+      if (err.message.toLowerCase().includes('rate limit') || err.status === 429) {
+        setError('Too many requests — please wait 60 seconds before trying again.')
+        setResendCooldown(60)
+      } else {
+        setError(err.message)
+      }
     } else {
       setStep('otp')
+      setResendCooldown(60)
     }
   }
 
@@ -125,13 +138,35 @@ export default function LoginPage() {
               {loading ? 'Verifying…' : 'Sign in'}
             </button>
 
-            <button
-              type="button"
-              onClick={() => { setStep('email'); setCode(''); setError(null) }}
-              className="text-sm text-gray-500 hover:text-gray-700 underline"
-            >
-              Use a different email
-            </button>
+            <div className="flex items-center justify-between text-sm">
+              <button
+                type="button"
+                onClick={() => { setStep('email'); setCode(''); setError(null); setResendCooldown(0) }}
+                className="text-gray-500 hover:text-gray-700 underline"
+              >
+                Use a different email
+              </button>
+              <button
+                type="button"
+                disabled={resendCooldown > 0 || loading}
+                onClick={async () => {
+                  setError(null)
+                  setLoading(true)
+                  const supabase = createClient()
+                  const { error: err } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
+                  setLoading(false)
+                  if (err) {
+                    setError(err.message.toLowerCase().includes('rate limit') ? 'Still rate limited — please wait.' : err.message)
+                    setResendCooldown(60)
+                  } else {
+                    setResendCooldown(60)
+                  }
+                }}
+                className="text-[#0B1F3A] hover:underline disabled:text-gray-400 disabled:no-underline"
+              >
+                {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+              </button>
+            </div>
           </form>
         )}
       </div>
