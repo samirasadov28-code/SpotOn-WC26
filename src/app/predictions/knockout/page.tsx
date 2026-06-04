@@ -527,15 +527,18 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
   // Right half: slots 9-16 → R16 21-24 → QF 27-28 → SF 30
   // Center: Final 32 + 3rd Place 31
 
-  const leftR32  = [1,2,3,4,5,6,7,8]
-  const leftR16  = [17,18,19,20]
-  const leftQF   = [25,26]
-  const leftSF   = [29]
+  // R32 ordered so each adjacent pair feeds into the same R16 match:
+  // (2,5)→17  (1,3)→18  (4,6)→19  (7,8)→20
+  const leftR32  = [2,5, 1,3, 4,6, 7,8]
+  const leftR16  = [17, 18, 19, 20]
+  const leftQF   = [25, 27]   // 25=W(17)vsW(18), 27=W(19)vsW(20)
+  const leftSF   = [29]       // 29=W(25)vsW(26)
 
-  const rightR32 = [9,10,11,12,13,14,15,16]
-  const rightR16 = [21,22,23,24]
-  const rightQF  = [27,28]
-  const rightSF  = [30]
+  // (11,12)→21  (9,10)→22  (14,16)→23  (13,15)→24
+  const rightR32 = [11,12, 9,10, 14,16, 13,15]
+  const rightR16 = [21, 22, 23, 24]
+  const rightQF  = [26, 28]   // 26=W(21)vsW(22), 28=W(23)vsW(24)
+  const rightSF  = [30]       // 30=W(27)vsW(28)
 
   const posLabel = (slot: number): string => {
     if (slot <= 16) {

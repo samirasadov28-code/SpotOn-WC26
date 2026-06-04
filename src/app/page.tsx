@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ASADOV_STACK } from '@/lib/asadov-stack'
 import { STATIC_TEAMS, GROUPS_ORDER } from '@/lib/teams-data'
 
@@ -32,7 +32,7 @@ const KEY_DATES = [
 const HOW_IT_WORKS = [
   { emoji: '🎯', title: 'Predict', desc: 'Enter exact scores for all 72 group matches. Your predictions automatically build your knockout bracket.' },
   { emoji: '⚡', title: 'Compete', desc: 'Earn points for exact scores, goal differences, outcomes, and bracket advancement — live as results come in.' },
-  { emoji: '🏆', title: 'Win', desc: 'Climb the live leaderboard and claim the prize from Samir as the tournament unfolds.' },
+  { emoji: '🏆', title: 'Win', desc: 'Climb the live leaderboard and claim the prize as the tournament unfolds. Prizes to be announced.' },
 ]
 
 // Group data derived from static teams
@@ -44,6 +44,11 @@ const GROUPS = GROUPS_ORDER.map(letter => ({
 export default function HomePage() {
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [updating, setUpdating] = useState(false)
+  const [fbName, setFbName] = useState('')
+  const [fbEmail, setFbEmail] = useState('')
+  const [fbMsg, setFbMsg] = useState('')
+  const [fbStatus, setFbStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const fbFormRef = useRef<HTMLFormElement>(null)
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -53,6 +58,22 @@ export default function HomePage() {
       })
     }
   }, [])
+
+  async function submitFeedback(e: React.FormEvent) {
+    e.preventDefault()
+    if (!fbMsg.trim()) return
+    setFbStatus('sending')
+    try {
+      const subject = encodeURIComponent(`SpotOn WC26 Feedback${fbName ? ` from ${fbName}` : ''}`)
+      const body = encodeURIComponent(`Name: ${fbName || 'Anonymous'}\nEmail: ${fbEmail || 'Not provided'}\n\n${fbMsg}`)
+      const mailto = `mailto:FinModeloop@gmail.com?subject=${subject}&body=${body}`
+      window.open(mailto, '_blank')
+      setFbStatus('sent')
+      setFbName(''); setFbEmail(''); setFbMsg('')
+    } catch {
+      setFbStatus('error')
+    }
+  }
 
   async function forceUpdate() {
     setUpdating(true)
@@ -160,10 +181,10 @@ export default function HomePage() {
           <span className="text-4xl">🏆</span>
           <div>
             <p className="text-[#0B1F3A] font-black text-xl sm:text-2xl leading-tight">
-              Special Prize — From Samir Himself
+              Prizes to Be Announced
             </p>
             <p className="text-[#0B1F3A]/70 text-sm font-medium mt-0.5">
-              Win the league, claim a handpicked reward from Samir. Details revealed at kickoff.
+              Exciting prizes are coming — details will be revealed before kickoff. Stay tuned!
             </p>
           </div>
           <span className="text-4xl">🎁</span>
@@ -346,6 +367,51 @@ export default function HomePage() {
           >
             Join with Email — It&apos;s Free
           </Link>
+        </div>
+      </section>
+
+      {/* ── FEEDBACK ── */}
+      <section className="py-16 px-4 bg-gray-50 border-t border-gray-200">
+        <div className="max-w-lg mx-auto">
+          <div className="text-center mb-8">
+            <div className="text-4xl mb-3">💬</div>
+            <h2 className="text-2xl font-black text-[#0B1F3A]">Send Us Feedback</h2>
+            <p className="text-gray-500 text-sm mt-2">Questions, suggestions, or bug reports — we'd love to hear from you.</p>
+          </div>
+          <form ref={fbFormRef} onSubmit={submitFeedback} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Name <span className="text-gray-300">(optional)</span></label>
+                <input value={fbName} onChange={e => setFbName(e.target.value)} placeholder="Your name"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Email <span className="text-gray-300">(optional)</span></label>
+                <input type="email" value={fbEmail} onChange={e => setFbEmail(e.target.value)} placeholder="your@email.com"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Message <span className="text-red-400">*</span></label>
+              <textarea value={fbMsg} onChange={e => setFbMsg(e.target.value)} required rows={4} placeholder="Tell us what you think…"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] resize-none" />
+            </div>
+            {fbStatus === 'sent' && (
+              <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 text-center font-medium">
+                ✓ Your email client has opened — just hit send!
+              </div>
+            )}
+            {fbStatus === 'error' && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600 text-center">
+                Something went wrong. Email us directly at <a href="mailto:FinModeloop@gmail.com" className="font-bold underline">FinModeloop@gmail.com</a>
+              </div>
+            )}
+            <button type="submit" disabled={fbStatus === 'sending' || !fbMsg.trim()}
+              className="bg-[#0B1F3A] hover:bg-[#162d52] disabled:opacity-50 text-white font-black py-3 px-8 rounded-2xl transition-colors text-sm">
+              {fbStatus === 'sending' ? 'Opening email…' : '✉ Send Feedback'}
+            </button>
+            <p className="text-xs text-gray-400 text-center">Clicking send will open your email client with the message pre-filled.</p>
+          </form>
         </div>
       </section>
 
