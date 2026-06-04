@@ -122,8 +122,11 @@ export default function ChatPage() {
   }
 
   const handleDelete = async (msgId: string) => {
-    await supabase.from('chat_messages').update({ deleted_at: new Date().toISOString() }).eq('id', msgId)
-    if (leagueId) loadMessages(leagueId)
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', msgId)
+    if (!error && leagueId) await loadMessages(leagueId)
   }
 
   if (loading) {
