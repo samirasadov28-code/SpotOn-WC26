@@ -355,9 +355,19 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
   )
 
   const prevWinnerRef = React.useRef<Team | null>(null)
+  const winnerShownRef = React.useRef(false)
   useEffect(() => {
+    // Only auto-show once ever — when the final slot is first completed this session
+    // Use localStorage to avoid showing again on every page load
     if (predictedWinner !== null && prevWinnerRef.current === null) {
-      setShowWinner(true)
+      const key = `winner-shown-${predictedWinner.id}`
+      if (!localStorage.getItem(key)) {
+        localStorage.setItem(key, '1')
+        if (!winnerShownRef.current) {
+          winnerShownRef.current = true
+          setShowWinner(true)
+        }
+      }
     }
     prevWinnerRef.current = predictedWinner
   }, [predictedWinner])
