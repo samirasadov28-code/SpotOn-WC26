@@ -30,17 +30,21 @@ export default function LoginPage() {
       }
       // If session is returned immediately, email confirmation is off — go straight in
       if (data.session) {
-        window.location.href = '/'
+        await supabase.from('users').upsert({ id: data.session.user.id, email }, { onConflict: 'id', ignoreDuplicates: true })
+        window.location.href = '/predictions/groups'
         return
       }
       // Otherwise try signing in anyway (works when "Confirm email" is disabled in Supabase)
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
+      const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
       setLoading(false)
       if (signInErr) {
         setSuccess('Account created! Check your email to confirm it, then sign in.')
         setMode('signin')
       } else {
-        window.location.href = '/'
+        if (signInData.session) {
+          await supabase.from('users').upsert({ id: signInData.session.user.id, email }, { onConflict: 'id', ignoreDuplicates: true })
+        }
+        window.location.href = '/predictions/groups'
       }
     } else {
       const { error: err } = await supabase.auth.signInWithPassword({ email, password })
@@ -55,7 +59,7 @@ export default function LoginPage() {
           setError(err.message)
         }
       } else {
-        window.location.href = '/'
+        window.location.href = '/predictions/groups'
       }
     }
   }
