@@ -59,6 +59,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [savedCount, setSavedCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
+  const [errorIds, setErrorIds] = useState<Set<string>>(new Set())
   const [dbError, setDbError] = useState<string | null>(null)
   const isLocked = new Date() >= LOCK_AT
 
@@ -100,8 +101,18 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const handleBlur = useCallback(async (matchId: string) => {
     if (!userId || isLocked) return
     const pred = preds[matchId]
-    if (!pred || pred.home === '' || pred.away === '') return
-    const homeScore = parseInt(pred.home), awayScore = parseInt(pred.away)
+    if (!pred) return
+    const { home, away } = pred
+
+    // Flag error if only one score is filled
+    if ((home === '') !== (away === '')) {
+      setErrorIds(s => new Set([...s, matchId]))
+      return
+    }
+    setErrorIds(s => { const n = new Set(s); n.delete(matchId); return n })
+    if (home === '' || away === '') return
+
+    const homeScore = parseInt(home), awayScore = parseInt(away)
     if (isNaN(homeScore) || isNaN(awayScore) || homeScore < 0 || awayScore < 0) return
 
     setSavingIds(s => new Set([...s, matchId]))
@@ -187,6 +198,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
           {groupMatches.map(match => {
             const pred = preds[match.id] ?? { home: '', away: '' }
             const saving = savingIds.has(match.id)
+            const hasError = errorIds.has(match.id)
             const kickoff = match.kickoff_at
               ? new Date(match.kickoff_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short' })
               : ''
@@ -194,7 +206,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
             const awayCode = (match.away_team as any)?.fifa_code
 
             return (
-              <div key={match.id} className="bg-white rounded-xl shadow-sm p-4">
+              <div key={match.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${hasError ? 'border-red-400' : 'border-transparent'}`}>
                 <div className="text-xs text-gray-400 mb-2">{kickoff}{match.venue ? ` · ${match.venue}` : ''}</div>
                 <div className="flex items-center gap-2">
                   {/* Home */}
@@ -205,14 +217,14 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   {/* Inputs */}
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.home}
-                      onChange={e => setPreds(p => ({ ...p, [match.id]: { ...pred, home: e.target.value } }))}
+                      onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, home: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
                       onBlur={() => handleBlur(match.id)}
-                      className="w-11 text-center border border-gray-300 rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50" />
+                      className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.home === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                     <span className="text-gray-400 font-bold text-xs">–</span>
                     <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.away}
-                      onChange={e => setPreds(p => ({ ...p, [match.id]: { ...pred, away: e.target.value } }))}
+                      onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, away: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
                       onBlur={() => handleBlur(match.id)}
-                      className="w-11 text-center border border-gray-300 rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50" />
+                      className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.away === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                   </div>
                   {/* Away */}
                   <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
@@ -222,10 +234,12 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   {/* Save indicator */}
                   <div className="w-4 text-center flex-shrink-0">
                     {saving ? <span className="text-xs text-yellow-500">…</span>
+                      : hasError ? <span className="text-xs text-red-500">!</span>
                       : preds[match.id]?.home !== undefined ? <span className="text-xs text-green-600">✓</span>
                       : null}
                   </div>
                 </div>
+                {hasError && <p className="text-red-500 text-xs mt-1.5 text-center">Enter both scores</p>}
               </div>
             )
           })}
