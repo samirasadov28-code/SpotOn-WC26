@@ -321,8 +321,12 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                 <div className="flex items-center gap-2">
                   {/* Home */}
                   <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5 overflow-hidden">
-                    <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{match.home_team?.name ?? '?'}</span>
-                    {homeCode && <img src={flagUrl(homeCode, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0" />}
+                    {homeCode ? (
+                      <a href={`/teams/${homeCode}`} className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate hover:underline">{match.home_team?.name ?? '?'}</a>
+                    ) : (
+                      <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{match.home_team?.name ?? '?'}</span>
+                    )}
+                    {homeCode && <a href={`/teams/${homeCode}`}><img src={flagUrl(homeCode, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0 hover:opacity-80" /></a>}
                   </div>
                   {/* Inputs */}
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -350,8 +354,12 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   </div>
                   {/* Away */}
                   <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
-                    {awayCode && <img src={flagUrl(awayCode, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0" />}
-                    <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{match.away_team?.name ?? '?'}</span>
+                    {awayCode && <a href={`/teams/${awayCode}`}><img src={flagUrl(awayCode, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0 hover:opacity-80" /></a>}
+                    {awayCode ? (
+                      <a href={`/teams/${awayCode}`} className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate hover:underline">{match.away_team?.name ?? '?'}</a>
+                    ) : (
+                      <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{match.away_team?.name ?? '?'}</span>
+                    )}
                   </div>
                   {/* Save indicator */}
                   <div className="w-4 text-center flex-shrink-0">
@@ -383,18 +391,18 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                     const rank3rd = best3rds.findIndex(r => r?.team.id === s.team.id)
                     const qualifies = rank3rd >= 0 && rank3rd < 8
                     const r3rdRankLabel = rank3rd >= 0 ? `#${rank3rd + 1} of 12 thirds` : ''
-                    // 3rd place slots are ranked 3rd1–3rd8; find which R32 slot this team occupies
                     const slotKey = rank3rd >= 0 && rank3rd < 8 ? `3rd${rank3rd + 1}` : null
-                    // R32 opponent of this 3rd place slot
+                    // R32 opponent
                     const oppPosKey = slotKey ? R32_OPP_KEYS[slotKey] : null
                     const r32Opp = oppPosKey ? qualifiedTeams.get(oppPosKey) : null
-                    // R16 partner R32 slot
+                    const r32OppCode = r32Opp ? (r32Opp as any).fifa_code : null
+                    // R16: find partner R32 slot, resolve both teams
                     const myR32Slot = slotKey ? POS_TO_R32_SLOT[slotKey] : null
-                    const partnerR32Slot = myR32Slot ? R16_PARTNER[myR32Slot] : null
-                    // Two teams that could be in R16
-                    const r16PosA = partnerR32Slot ? Object.entries(POS_TO_R32_SLOT).filter(([, v]) => v === partnerR32Slot).map(([k]) => k) : []
-                    const r16TeamA = r16PosA.map(k => qualifiedTeams.get(k)).find(Boolean) ?? null
-                    const r16TeamALabel = r16TeamA ? r16TeamA.name : r16PosA.join('/')
+                    const r16PartnerSlot = myR32Slot ? R16_PARTNER[myR32Slot] : null
+                    const r16PosList = r16PartnerSlot
+                      ? Object.entries(POS_TO_R32_SLOT).filter(([, v]) => v === r16PartnerSlot).map(([k]) => k)
+                      : []
+                    const r16Teams = r16PosList.map(k => qualifiedTeams.get(k)).filter(Boolean) as Team[]
 
                     return (
                       <div key={s.team.id} className="px-4 py-3">
@@ -408,18 +416,32 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                         </div>
                         {qualifies && (
                           <div className="ml-7 space-y-1">
-                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                            <div className="text-xs text-gray-500 flex items-center gap-1.5">
                               <span className="text-gray-400 w-7">R32:</span>
-                              {r32Opp ? (
-                                <>
-                                  {(r32Opp as any).fifa_code && <img src={flagUrl((r32Opp as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
-                                  <span className="font-medium text-[#0B1F3A]">{r32Opp.name}</span>
-                                </>
-                              ) : <span className="text-gray-400">{oppPosKey ?? '?'}</span>}
+                              {r32OppCode && <img src={flagUrl(r32OppCode, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                              <span className="font-medium text-[#0B1F3A]">{r32Opp ? r32Opp.name : (oppPosKey ?? '?')}</span>
                             </div>
-                            <div className="text-xs text-gray-400 flex items-center gap-1">
+                            <div className="text-xs text-gray-400 flex items-center gap-1.5 flex-wrap">
                               <span className="w-7">R16:</span>
-                              <span>vs winner of {r16TeamALabel || partnerR32Slot ? `slot ${partnerR32Slot}` : '?'}</span>
+                              {r16Teams.length >= 2 ? (
+                                <>
+                                  <span>vs winner of</span>
+                                  {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                                  <span className="font-medium text-gray-600">{r16Teams[0].name}</span>
+                                  <span>or</span>
+                                  {(r16Teams[1] as any).fifa_code && <img src={flagUrl((r16Teams[1] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                                  <span className="font-medium text-gray-600">{r16Teams[1].name}</span>
+                                </>
+                              ) : r16Teams.length === 1 ? (
+                                <>
+                                  <span>vs winner of</span>
+                                  {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                                  <span className="font-medium text-gray-600">{r16Teams[0].name}</span>
+                                  <span className="text-gray-300">or TBD</span>
+                                </>
+                              ) : (
+                                <span>{r16PosList.join(' / ') || '?'}</span>
+                              )}
                             </div>
                           </div>
                         )}
