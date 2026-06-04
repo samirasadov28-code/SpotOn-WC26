@@ -1,7 +1,8 @@
 'use client'
 
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Suspense, useState } from 'react'
+import { Suspense, useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import GroupPredictionsPage from './groups/page'
 import KnockoutPredictionsPage from './knockout/page'
 
@@ -13,13 +14,41 @@ const GROUP_TOTAL = 72
 function PredictionsInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const tab: Tab = (searchParams.get('tab') as Tab) ?? 'groups'
-  const [groupsSaved, setGroupsSaved] = useState(0)
   const isLocked = new Date() >= LOCK_AT
 
-  const setTab = (t: Tab) => router.replace(`/predictions?tab=${t}`)
+  // Start on bracket if ?tab=bracket, otherwise determine after loading saved count
+  const explicitTab = searchParams.get('tab') as Tab | null
+  const [tab, setTabState] = useState<Tab>(explicitTab ?? 'groups')
+  const [groupsSaved, setGroupsSaved] = useState(0)
+  const [initialised, setInitialised] = useState(!!explicitTab)
+
+  // On first load (no explicit tab param): check how many group predictions are saved
+  useEffect(() => {
+    if (explicitTab) return
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { setInitialised(true); return }
+      supabase
+        .from('predictions_group')
+        .select('match_id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .then(({ count }) => {
+          const saved = count ?? 0
+          setGroupsSaved(saved)
+          if (saved >= GROUP_TOTAL) setTabState('bracket')
+          setInitialised(true)
+        })
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setTab = (t: Tab) => {
+    setTabState(t)
+    router.replace(`/predictions?tab=${t}`)
+  }
 
   const groupsDone = groupsSaved >= GROUP_TOTAL
+
+  if (!initialised) return null
 
   return (
     <div>
