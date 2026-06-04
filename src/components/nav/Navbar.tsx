@@ -20,6 +20,7 @@ const NAV_LINKS = [
   { href: '/stadiums', label: 'Stadiums' },
   { href: '/rules', label: 'Rules' },
   { href: '/chat', label: 'Chat' },
+  { href: '/stats', label: 'My Stats' },
 ]
 
 const BOTTOM_TABS = [
