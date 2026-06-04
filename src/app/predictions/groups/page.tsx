@@ -59,6 +59,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [savedCount, setSavedCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [errorIds, setErrorIds] = useState<Set<string>>(new Set())
   const [dbError, setDbError] = useState<string | null>(null)
   const isLocked = new Date() >= LOCK_AT
@@ -83,14 +84,17 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       setTeams(teamRes.data ?? [])
 
       const predMap: PredMap = {}
+      const ids = new Set<string>()
       let count = 0
       for (const p of predRes.data ?? []) {
         if (p.pred_home_score !== null && p.pred_away_score !== null) {
           predMap[p.match_id] = { home: String(p.pred_home_score), away: String(p.pred_away_score) }
+          ids.add(p.match_id)
           count++
         }
       }
       setPreds(predMap)
+      setSavedIds(ids)
       setSavedCount(count)
       onCountChange?.(count)
       setLoading(false)
@@ -104,29 +108,40 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
     if (!pred) return
     const { home, away } = pred
 
-    // Flag error if only one score is filled
+    // Both cleared → delete prediction from DB
+    if (home === '' && away === '') {
+      setErrorIds(s => { const n = new Set(s); n.delete(matchId); return n })
+      const hadPred = savedIds.has(matchId)
+      if (hadPred) {
+        await supabase.from('predictions_group').delete().eq('user_id', userId).eq('match_id', matchId)
+        setSavedIds(s => { const n = new Set(s); n.delete(matchId); return n })
+        setSavedCount(c => { const next = c - 1; onCountChange?.(next); return next })
+      }
+      return
+    }
+
+    // Only one filled → flag error
     if ((home === '') !== (away === '')) {
       setErrorIds(s => new Set([...s, matchId]))
       return
     }
     setErrorIds(s => { const n = new Set(s); n.delete(matchId); return n })
-    if (home === '' || away === '') return
 
     const homeScore = parseInt(home), awayScore = parseInt(away)
     if (isNaN(homeScore) || isNaN(awayScore) || homeScore < 0 || awayScore < 0) return
 
     setSavingIds(s => new Set([...s, matchId]))
+    const isNew = !savedIds.has(matchId)
     const { error } = await supabase.from('predictions_group').upsert(
       { user_id: userId, match_id: matchId, pred_home_score: homeScore, pred_away_score: awayScore, updated_at: new Date().toISOString() },
       { onConflict: 'user_id,match_id' }
     )
     setSavingIds(s => { const n = new Set(s); n.delete(matchId); return n })
-    if (!error) setSavedCount(c => {
-      const next = preds[matchId] ? c : c + 1
-      onCountChange?.(next)
-      return next
-    })
-  }, [userId, isLocked, preds, supabase])
+    if (!error && isNew) {
+      setSavedIds(s => new Set([...s, matchId]))
+      setSavedCount(c => { const next = c + 1; onCountChange?.(next); return next })
+    }
+  }, [userId, isLocked, preds, savedIds, supabase])
 
   const groupMatches = matches.filter(m => m.group_letter === activeGroup)
   const groupTeams = teams.filter(t => t.group_letter === activeGroup)
@@ -179,7 +194,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       {/* Group tabs */}
       <div className="flex flex-wrap gap-1 mb-6">
         {GROUPS.map(g => {
-          const gCount = matches.filter(m => m.group_letter === g && preds[m.id]?.home !== undefined).length
+          const gCount = matches.filter(m => m.group_letter === g && savedIds.has(m.id) && preds[m.id]?.home !== '' && preds[m.id]?.away !== '').length
           return (
             <button key={g} onClick={() => setActiveGroup(g)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors relative ${activeGroup === g ? 'bg-[#0B1F3A] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
@@ -235,7 +250,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   <div className="w-4 text-center flex-shrink-0">
                     {saving ? <span className="text-xs text-yellow-500">…</span>
                       : hasError ? <span className="text-xs text-red-500">!</span>
-                      : preds[match.id]?.home !== undefined ? <span className="text-xs text-green-600">✓</span>
+                      : savedIds.has(match.id) && pred.home !== '' && pred.away !== '' ? <span className="text-xs text-green-600">✓</span>
                       : null}
                   </div>
                 </div>
