@@ -12,8 +12,8 @@ interface MatchRow {
   kickoff_at: string | null
   home_team_id: string
   away_team_id: string
-  home_score: number | null
-  away_score: number | null
+  actual_home_score: number | null
+  actual_away_score: number | null
   home_team: TeamRow | null
   away_team: TeamRow | null
 }
@@ -56,8 +56,8 @@ export default function SimulatePage() {
       // Pre-fill hypo with actual results where known
       const init: Record<string, { h: string; a: string }> = {}
       for (const m of ms) {
-        if (m.home_score !== null && m.away_score !== null) {
-          init[m.id] = { h: String(m.home_score), a: String(m.away_score) }
+        if (m.actual_home_score !== null && m.actual_away_score !== null) {
+          init[m.id] = { h: String(m.actual_home_score), a: String(m.actual_away_score) }
         }
       }
       setHypo(init)
@@ -162,7 +162,7 @@ export default function SimulatePage() {
           <div className="flex flex-col gap-2">
             {groupMatches.map(m => {
               const score = hypo[m.id] ?? { h: '', a: '' }
-              const isActual = m.home_score !== null
+              const isActual = m.actual_home_score !== null
               const kickoff = m.kickoff_at
                 ? new Date(m.kickoff_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
                 : ''
@@ -238,8 +238,8 @@ export default function SimulatePage() {
             onClick={() => {
               const reset: Record<string, { h: string; a: string }> = {}
               for (const m of matches) {
-                if (m.home_score !== null && m.away_score !== null) {
-                  reset[m.id] = { h: String(m.home_score), a: String(m.away_score) }
+                if (m.actual_home_score !== null && m.actual_away_score !== null) {
+                  reset[m.id] = { h: String(m.actual_home_score), a: String(m.actual_away_score) }
                 }
               }
               setHypo(reset)
