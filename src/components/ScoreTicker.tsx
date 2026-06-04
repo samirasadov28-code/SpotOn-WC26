@@ -24,17 +24,46 @@ export default function ScoreTicker() {
 
   async function fetchMatches() {
     const supabase = createClient()
-    const tomorrow = new Date()
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    tomorrow.setHours(0, 0, 0, 0)
-    const dayAfter = new Date(tomorrow)
-    dayAfter.setDate(dayAfter.getDate() + 1)
+
+    // First try: today's matches with scores (live/recent results)
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const todayEnd = new Date()
+    todayEnd.setHours(23, 59, 59, 999)
+
+    const { data: todayData } = await supabase
+      .from('matches')
+      .select('*, home_team:teams!matches_home_team_id_fkey(name,flag_emoji), away_team:teams!matches_away_team_id_fkey(name,flag_emoji)')
+      .gte('kickoff_at', todayStart.toISOString())
+      .lte('kickoff_at', todayEnd.toISOString())
+      .order('kickoff_at')
+
+    if (todayData && todayData.length > 0) {
+      setMatches(todayData as unknown as TickerMatch[])
+      setLoading(false)
+      return
+    }
+
+    // Fallback: next upcoming match day
+    const { data: nextData } = await supabase
+      .from('matches')
+      .select('kickoff_at')
+      .gt('kickoff_at', new Date().toISOString())
+      .order('kickoff_at')
+      .limit(1)
+
+    if (!nextData || nextData.length === 0) { setLoading(false); return }
+
+    const nextDay = new Date(nextData[0].kickoff_at)
+    nextDay.setHours(0, 0, 0, 0)
+    const nextDayEnd = new Date(nextDay)
+    nextDayEnd.setHours(23, 59, 59, 999)
 
     const { data } = await supabase
       .from('matches')
       .select('*, home_team:teams!matches_home_team_id_fkey(name,flag_emoji), away_team:teams!matches_away_team_id_fkey(name,flag_emoji)')
-      .gte('kickoff_at', tomorrow.toISOString())
-      .lt('kickoff_at', dayAfter.toISOString())
+      .gte('kickoff_at', nextDay.toISOString())
+      .lte('kickoff_at', nextDayEnd.toISOString())
       .order('kickoff_at')
 
     if (data) setMatches(data as unknown as TickerMatch[])
@@ -56,13 +85,6 @@ export default function ScoreTicker() {
   }, [])
 
   if (loading) return null
-
-  const scored = matches.filter(
-    m => m.actual_home_score !== null && m.actual_away_score !== null
-  )
-  const upcoming = matches.filter(
-    m => m.actual_home_score === null && m.kickoff_at && new Date(m.kickoff_at) > new Date()
-  )
 
   const items: string[] = matches.map(m => {
     const hFlag = m.home_team?.flag_emoji ?? ''
