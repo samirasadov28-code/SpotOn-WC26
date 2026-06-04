@@ -216,7 +216,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
                 onChange={e => handleChange(side, e.target.value)}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
-                className={`w-9 text-center border rounded py-1 text-xs font-bold focus:ring-1 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-40 ${showError ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
+                className={`w-9 text-center border rounded py-1 text-xs font-bold focus:ring-1 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${showError ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
               />
             </div>
           ))}
@@ -243,7 +243,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
             onChange={e => handleChange('homeScore', e.target.value)}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-40 ${showError ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
+            className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${showError ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
           />
           <span className="text-gray-400 font-bold text-xs">–</span>
           <input type="number" min={0} max={99} inputMode="numeric"
@@ -252,7 +252,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
             onChange={e => handleChange('awayScore', e.target.value)}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-40 ${showError ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
+            className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${showError ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
           />
         </div>
         <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
@@ -449,6 +449,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
+      {isLocked && <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-red-700 font-semibold text-center">🔒 Predictions are locked. The tournament has started!</div>}
       {/* Header */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
