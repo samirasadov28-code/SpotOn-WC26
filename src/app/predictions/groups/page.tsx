@@ -14,7 +14,7 @@ function isMatchLocked(kickoffAt: string | null | undefined): boolean {
 }
 const GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
 
-// R32 opponent position key per qualifier position
+// R32 opponent position key per qualifier position (bidirectional)
 const R32_OPP_KEYS: Record<string, string> = {
   '1A': '3rd3', '1B': '3rd7', '1C': '2F',  '1D': '3rd5',
   '1E': '3rd1', '1F': '2C',  '1G': '3rd6', '1H': '2J',
@@ -22,9 +22,12 @@ const R32_OPP_KEYS: Record<string, string> = {
   '2A': '2B',   '2B': '2A',  '2C': '1F',  '2D': '2G',
   '2E': '2I',   '2F': '1C',  '2G': '2D',  '2H': '1J',
   '2I': '2E',   '2J': '1H',  '2K': '2L',  '2L': '2K',
+  // Reverse: 3rdX → their group-winner opponent
+  '3rd1': '1E', '3rd2': '1I', '3rd3': '1A', '3rd4': '1L',
+  '3rd5': '1D', '3rd6': '1G', '3rd7': '1B', '3rd8': '1K',
 }
 
-// R32 fallback label when opponent not yet determinable (for 3rd-place slots)
+// Fallback label for 1st-place teams whose 3rd-place opponent rank is uncertain
 const R32_OPP_LABEL: Record<string, string> = {
   '1A': '3rd C/E/F/H/I', '1B': '3rd E/F/G/I/J', '1D': '3rd B/E/F/I/J',
   '1E': '3rd A/B/C/D/F', '1G': '3rd A/E/H/I/J', '1I': '3rd C/D/F/G/H',
