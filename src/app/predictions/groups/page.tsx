@@ -14,32 +14,42 @@ function isMatchLocked(kickoffAt: string | null | undefined): boolean {
 }
 const GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
 
-// Official R32 path per group position
-const BRACKET_PATHS: Record<string, { r32Opp: string; r32OppShort: string; r16Desc: string }> = {
-  '1A': { r32Opp: 'Best 3rd (C/E/F/H/I)', r32OppShort: '3rd C/E/F/H/I', r16Desc: 'W(1L vs 3rd E/H/I/J/K)' },
-  '1B': { r32Opp: 'Best 3rd (E/F/G/I/J)', r32OppShort: '3rd E/F/G/I/J', r16Desc: 'W(1K vs 3rd D/E/I/J/L)' },
-  '1C': { r32Opp: 'Runner-up Grp F',      r32OppShort: '2nd F',           r16Desc: 'W(2E vs 2I)' },
-  '1D': { r32Opp: 'Best 3rd (B/E/F/I/J)', r32OppShort: '3rd B/E/F/I/J', r16Desc: 'W(1G vs 3rd A/E/H/I/J)' },
-  '1E': { r32Opp: 'Best 3rd (A/B/C/D/F)', r32OppShort: '3rd A/B/C/D/F', r16Desc: 'W(1I vs 3rd C/D/F/G/H)' },
-  '1F': { r32Opp: 'Runner-up Grp C',      r32OppShort: '2nd C',           r16Desc: 'W(2A vs 2B)' },
-  '1G': { r32Opp: 'Best 3rd (A/E/H/I/J)', r32OppShort: '3rd A/E/H/I/J', r16Desc: 'W(1D vs 3rd B/E/F/I/J)' },
-  '1H': { r32Opp: 'Runner-up Grp J',      r32OppShort: '2nd J',           r16Desc: 'W(2K vs 2L)' },
-  '1I': { r32Opp: 'Best 3rd (C/D/F/G/H)', r32OppShort: '3rd C/D/F/G/H', r16Desc: 'W(1E vs 3rd A/B/C/D/F)' },
-  '1J': { r32Opp: 'Runner-up Grp H',      r32OppShort: '2nd H',           r16Desc: 'W(2D vs 2G)' },
-  '1K': { r32Opp: 'Best 3rd (D/E/I/J/L)', r32OppShort: '3rd D/E/I/J/L', r16Desc: 'W(1B vs 3rd E/F/G/I/J)' },
-  '1L': { r32Opp: 'Best 3rd (E/H/I/J/K)', r32OppShort: '3rd E/H/I/J/K', r16Desc: 'W(1A vs 3rd C/E/F/H/I)' },
-  '2A': { r32Opp: 'Runner-up Grp B',      r32OppShort: '2nd B',           r16Desc: 'W(1F vs 2nd C)' },
-  '2B': { r32Opp: 'Runner-up Grp A',      r32OppShort: '2nd A',           r16Desc: 'W(1F vs 2nd C)' },
-  '2C': { r32Opp: 'Winner Grp F',         r32OppShort: '1st F',           r16Desc: 'W(2A vs 2B)' },
-  '2D': { r32Opp: 'Runner-up Grp G',      r32OppShort: '2nd G',           r16Desc: 'W(1J vs 2nd H)' },
-  '2E': { r32Opp: 'Runner-up Grp I',      r32OppShort: '2nd I',           r16Desc: 'W(1C vs 2nd F)' },
-  '2F': { r32Opp: 'Winner Grp C',         r32OppShort: '1st C',           r16Desc: 'W(2E vs 2I)' },
-  '2G': { r32Opp: 'Runner-up Grp D',      r32OppShort: '2nd D',           r16Desc: 'W(1J vs 2nd H)' },
-  '2H': { r32Opp: 'Winner Grp J',         r32OppShort: '1st J',           r16Desc: 'W(2D vs 2G)' },
-  '2I': { r32Opp: 'Runner-up Grp E',      r32OppShort: '2nd E',           r16Desc: 'W(1C vs 2nd F)' },
-  '2J': { r32Opp: 'Winner Grp H',         r32OppShort: '1st H',           r16Desc: 'W(2K vs 2L)' },
-  '2K': { r32Opp: 'Runner-up Grp L',      r32OppShort: '2nd L',           r16Desc: 'W(1H vs 2nd J)' },
-  '2L': { r32Opp: 'Runner-up Grp K',      r32OppShort: '2nd K',           r16Desc: 'W(1H vs 2nd J)' },
+// R32 opponent position key per qualifier position
+const R32_OPP_KEYS: Record<string, string> = {
+  '1A': '3rd3', '1B': '3rd7', '1C': '2F',  '1D': '3rd5',
+  '1E': '3rd1', '1F': '2C',  '1G': '3rd6', '1H': '2J',
+  '1I': '3rd2', '1J': '2H',  '1K': '3rd8', '1L': '3rd4',
+  '2A': '2B',   '2B': '2A',  '2C': '1F',  '2D': '2G',
+  '2E': '2I',   '2F': '1C',  '2G': '2D',  '2H': '1J',
+  '2I': '2E',   '2J': '1H',  '2K': '2L',  '2L': '2K',
+}
+
+// R32 fallback label when opponent not yet determinable (for 3rd-place slots)
+const R32_OPP_LABEL: Record<string, string> = {
+  '1A': '3rd C/E/F/H/I', '1B': '3rd E/F/G/I/J', '1D': '3rd B/E/F/I/J',
+  '1E': '3rd A/B/C/D/F', '1G': '3rd A/E/H/I/J', '1I': '3rd C/D/F/G/H',
+  '1K': '3rd D/E/I/J/L', '1L': '3rd E/H/I/J/K',
+}
+
+// R16: the two R32 slots whose winners will meet in this R16 match
+// keyed by R32 slot → the other R32 slot in the same R16 match
+const R16_PARTNER: Record<number, number> = {
+  1: 3, 3: 1,    // R16 slot 18: W1 vs W3
+  2: 5, 5: 2,    // R16 slot 17: W2 vs W5
+  4: 6, 6: 4,    // R16 slot 19: W4 vs W6
+  7: 8, 8: 7,    // R16 slot 20: W7 vs W8
+  9: 10, 10: 9,  // R16 slot 22: W9 vs W10
+  11: 12, 12: 11,// R16 slot 21: W11 vs W12
+  13: 15, 15: 13,// R16 slot 24: W13 vs W15
+  14: 16, 16: 14,// R16 slot 23: W14 vs W16
+}
+
+// R32 slot each position occupies
+const POS_TO_R32_SLOT: Record<string, number> = {
+  '2A': 1, '2B': 1, '1E': 2, '3rd1': 2, '1F': 3, '2C': 3, '1C': 4, '2F': 4,
+  '1I': 5, '3rd2': 5, '2E': 6, '2I': 6, '1A': 7, '3rd3': 7, '1L': 8, '3rd4': 8,
+  '1D': 9, '3rd5': 9, '1G': 10, '3rd6': 10, '2K': 11, '2L': 11, '1H': 12, '2J': 12,
+  '1B': 13, '3rd7': 13, '1J': 14, '2H': 14, '1K': 15, '3rd8': 15, '2D': 16, '2G': 16,
 }
 
 interface MatchWithTeams extends Match {
@@ -104,14 +114,6 @@ function calcQualifiedGroups(allMatches: MatchWithTeams[], allTeams: Team[], pre
 }
 
 function getR32OppPosKey(posKey: string): string | null {
-  const R32_OPP_KEYS: Record<string, string> = {
-    '1A': '3rd3', '1B': '3rd7', '1C': '2F', '1D': '3rd5',
-    '1E': '3rd1', '1F': '2C', '1G': '3rd6', '1H': '2J',
-    '1I': '3rd2', '1J': '2H', '1K': '3rd8', '1L': '3rd4',
-    '2A': '2B',   '2B': '2A',  '2C': '1F',  '2D': '2G',
-    '2E': '2I',   '2F': '1C',  '2G': '2D',  '2H': '1J',
-    '2I': '2E',   '2J': '1H',  '2K': '2L',  '2L': '2K',
-  }
   return R32_OPP_KEYS[posKey] ?? null
 }
 
@@ -370,37 +372,109 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
               </div>
               <div className="divide-y divide-gray-50">
                 {standings.slice(0, 3).map((s, i) => {
-                  const posKey = `${i + 1}${activeGroup}` // '1A', '2A', '3A'
-                  const path = i < 2 ? BRACKET_PATHS[posKey] : null
+                  const posKey = i < 2 ? `${i + 1}${activeGroup}` : null
                   const teamCode = (s.team as any).fifa_code
-                  return (
-                    <div key={s.team.id} className="flex items-center gap-3 px-4 py-3">
-                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${i === 0 ? 'bg-yellow-400 text-[#0B1F3A]' : i === 1 ? 'bg-gray-300 text-[#0B1F3A]' : 'bg-amber-100 text-amber-700'}`}>{i + 1}</span>
-                      {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
-                      <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-sm hover:underline flex-shrink-0">{s.team.name}</a>
-                      {path ? (
-                        <div className="ml-auto text-right min-w-0 max-w-[120px]">
-                          <div className="text-xs text-gray-500 truncate">
-                            R32: {(() => {
-                              const oppKey = getR32OppPosKey(posKey)
-                              const oppTeam = oppKey ? qualifiedTeams.get(oppKey) : null
-                              if (oppTeam) {
-                                const oppCode = (oppTeam as any).fifa_code
-                                return (
-                                  <span className="font-medium text-[#0B1F3A] inline-flex items-center gap-1">
-                                    {oppCode && <img src={flagUrl(oppCode, 40)} alt="" className="w-4 h-auto rounded-sm inline" />}
-                                    {oppTeam.name}
-                                  </span>
-                                )
-                              }
-                              return <span className="font-medium text-[#0B1F3A]">{path.r32OppShort}</span>
-                            })()}
-                          </div>
-                          <div className="text-xs text-gray-400 truncate">R16: {path.r16Desc}</div>
+
+                  // --- 3rd place row ---
+                  if (i === 2) {
+                    const rank3rd = best3rds.findIndex(r => r?.team.id === s.team.id)
+                    const qualifies = rank3rd >= 0 && rank3rd < 8
+                    const r3rdRankLabel = rank3rd >= 0 ? `#${rank3rd + 1} of 12 thirds` : ''
+                    // 3rd place slots are ranked 3rd1–3rd8; find which R32 slot this team occupies
+                    const slotKey = rank3rd >= 0 && rank3rd < 8 ? `3rd${rank3rd + 1}` : null
+                    // R32 opponent of this 3rd place slot
+                    const oppPosKey = slotKey ? R32_OPP_KEYS[slotKey] : null
+                    const r32Opp = oppPosKey ? qualifiedTeams.get(oppPosKey) : null
+                    // R16 partner R32 slot
+                    const myR32Slot = slotKey ? POS_TO_R32_SLOT[slotKey] : null
+                    const partnerR32Slot = myR32Slot ? R16_PARTNER[myR32Slot] : null
+                    // Two teams that could be in R16
+                    const r16PosA = partnerR32Slot ? Object.entries(POS_TO_R32_SLOT).filter(([, v]) => v === partnerR32Slot).map(([k]) => k) : []
+                    const r16TeamA = r16PosA.map(k => qualifiedTeams.get(k)).find(Boolean) ?? null
+                    const r16TeamALabel = r16TeamA ? r16TeamA.name : r16PosA.join('/')
+
+                    return (
+                      <div key={s.team.id} className="px-4 py-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-black flex-shrink-0">3</span>
+                          {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
+                          <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-sm hover:underline">{s.team.name}</a>
+                          <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${qualifies ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
+                            {qualifies ? `Qualifies (${r3rdRankLabel})` : `Out (${r3rdRankLabel})`}
+                          </span>
                         </div>
-                      ) : (
-                        <div className="ml-auto text-xs text-gray-400 italic">Top 8 3rd → qualifies</div>
-                      )}
+                        {qualifies && (
+                          <div className="ml-7 space-y-1">
+                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                              <span className="text-gray-400 w-7">R32:</span>
+                              {r32Opp ? (
+                                <>
+                                  {(r32Opp as any).fifa_code && <img src={flagUrl((r32Opp as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                                  <span className="font-medium text-[#0B1F3A]">{r32Opp.name}</span>
+                                </>
+                              ) : <span className="text-gray-400">{oppPosKey ?? '?'}</span>}
+                            </div>
+                            <div className="text-xs text-gray-400 flex items-center gap-1">
+                              <span className="w-7">R16:</span>
+                              <span>vs winner of {r16TeamALabel || partnerR32Slot ? `slot ${partnerR32Slot}` : '?'}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+
+                  // --- 1st / 2nd place rows ---
+                  const oppKey = posKey ? getR32OppPosKey(posKey) : null
+                  const r32Opp = oppKey ? qualifiedTeams.get(oppKey) : null
+                  const r32OppLabel = r32Opp ? r32Opp.name : (posKey ? (R32_OPP_LABEL[posKey] ?? oppKey ?? '?') : '?')
+                  const r32OppCode = r32Opp ? (r32Opp as any).fifa_code : null
+
+                  // R16: find our R32 slot, then find partner slot, then resolve both teams in partner
+                  const mySlot = posKey ? POS_TO_R32_SLOT[posKey] : null
+                  const r16PartnerSlot = mySlot ? R16_PARTNER[mySlot] : null
+                  const r16PosList = r16PartnerSlot
+                    ? Object.entries(POS_TO_R32_SLOT).filter(([, v]) => v === r16PartnerSlot).map(([k]) => k)
+                    : []
+                  // Try to resolve both sides of the partner R32 match to actual teams
+                  const r16Teams = r16PosList.map(k => qualifiedTeams.get(k)).filter(Boolean) as Team[]
+
+                  return (
+                    <div key={s.team.id} className="px-4 py-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${i === 0 ? 'bg-yellow-400 text-[#0B1F3A]' : 'bg-gray-300 text-[#0B1F3A]'}`}>{i + 1}</span>
+                        {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
+                        <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-sm hover:underline">{s.team.name}</a>
+                      </div>
+                      <div className="ml-7 space-y-1">
+                        <div className="text-xs text-gray-500 flex items-center gap-1.5">
+                          <span className="text-gray-400 w-7">R32:</span>
+                          {r32OppCode && <img src={flagUrl(r32OppCode, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                          <span className="font-medium text-[#0B1F3A]">{r32OppLabel}</span>
+                        </div>
+                        <div className="text-xs text-gray-400 flex items-center gap-1.5 flex-wrap">
+                          <span className="w-7">R16:</span>
+                          {r16Teams.length >= 2 ? (
+                            <>
+                              <span>vs winner of</span>
+                              {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                              <span className="font-medium text-gray-600">{r16Teams[0].name}</span>
+                              <span>or</span>
+                              {(r16Teams[1] as any).fifa_code && <img src={flagUrl((r16Teams[1] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                              <span className="font-medium text-gray-600">{r16Teams[1].name}</span>
+                            </>
+                          ) : r16Teams.length === 1 ? (
+                            <>
+                              <span>vs winner of</span>
+                              {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                              <span className="font-medium text-gray-600">{r16Teams[0].name}</span>
+                              <span className="text-gray-300">or TBD</span>
+                            </>
+                          ) : (
+                            <span>{r16PosList.join(' / ') || '?'}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )
                 })}
