@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
@@ -131,11 +131,21 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
 
   const supabase = createClient()
 
+  // Refs mirror state so handleBlur always reads current values (avoids stale closure)
+  const predsRef = useRef<PredMap>({})
+  const savedIdsRef = useRef<Set<string>>(new Set())
+  const userIdRef = useRef<string | null>(null)
+
+  useEffect(() => { predsRef.current = preds }, [preds])
+  useEffect(() => { savedIdsRef.current = savedIds }, [savedIds])
+  useEffect(() => { userIdRef.current = userId }, [userId])
+
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
       setUserId(user.id)
+      userIdRef.current = user.id
 
       const [matchRes, teamRes, predRes] = await Promise.all([
         supabase.from('matches').select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*)').eq('stage', 'group').order('kickoff_at'),
@@ -159,7 +169,9 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
         }
       }
       setPreds(predMap)
+      predsRef.current = predMap
       setSavedIds(ids)
+      savedIdsRef.current = ids
       setSavedCount(count)
       onCountChange?.(count)
       setLoading(false)
@@ -168,18 +180,21 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleBlur = useCallback(async (matchId: string) => {
+    const uid = userIdRef.current
     const match = matches.find(m => m.id === matchId)
-    if (!userId || isGloballyLocked || isMatchLocked(match?.kickoff_at)) return
-    const pred = preds[matchId]
+    if (!uid || isGloballyLocked || isMatchLocked(match?.kickoff_at)) return
+
+    // Read from ref — always has current value regardless of render cycle
+    const pred = predsRef.current[matchId]
     if (!pred) return
     const { home, away } = pred
 
     // Both cleared → delete prediction from DB
     if (home === '' && away === '') {
       setErrorIds(s => { const n = new Set(s); n.delete(matchId); return n })
-      const hadPred = savedIds.has(matchId)
+      const hadPred = savedIdsRef.current.has(matchId)
       if (hadPred) {
-        await supabase.from('predictions_group').delete().eq('user_id', userId).eq('match_id', matchId)
+        await supabase.from('predictions_group').delete().eq('user_id', uid).eq('match_id', matchId)
         setSavedIds(s => { const n = new Set(s); n.delete(matchId); return n })
         setSavedCount(c => { const next = c - 1; onCountChange?.(next); return next })
       }
@@ -196,10 +211,10 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
     const homeScore = parseInt(home), awayScore = parseInt(away)
     if (isNaN(homeScore) || isNaN(awayScore) || homeScore < 0 || awayScore < 0) return
 
+    const isNew = !savedIdsRef.current.has(matchId)
     setSavingIds(s => new Set([...s, matchId]))
-    const isNew = !savedIds.has(matchId)
     const { error } = await supabase.from('predictions_group').upsert(
-      { user_id: userId, match_id: matchId, pred_home_score: homeScore, pred_away_score: awayScore, updated_at: new Date().toISOString() },
+      { user_id: uid, match_id: matchId, pred_home_score: homeScore, pred_away_score: awayScore, updated_at: new Date().toISOString() },
       { onConflict: 'user_id,match_id' }
     )
     setSavingIds(s => { const n = new Set(s); n.delete(matchId); return n })
@@ -207,7 +222,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       setSavedIds(s => new Set([...s, matchId]))
       setSavedCount(c => { const next = c + 1; onCountChange?.(next); return next })
     }
-  }, [userId, isGloballyLocked, matches, preds, savedIds, supabase])
+  }, [isGloballyLocked, matches, supabase, onCountChange])
 
   const groupMatches = matches.filter(m => m.group_letter === activeGroup)
   const groupTeams = teams.filter(t => t.group_letter === activeGroup)
@@ -307,12 +322,24 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   {/* Inputs */}
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <input type="number" min={0} max={99} inputMode="numeric" disabled={matchLocked} value={pred.home}
-                      onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, home: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
+                      onChange={e => {
+                        const val = e.target.value
+                        const updated = { ...predsRef.current[match.id] ?? { home: '', away: '' }, home: val }
+                        predsRef.current = { ...predsRef.current, [match.id]: updated }
+                        setPreds(p => ({ ...p, [match.id]: updated }))
+                        setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n })
+                      }}
                       onBlur={() => handleBlur(match.id)}
                       className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.home === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                     <span className="text-gray-400 font-bold text-xs">–</span>
                     <input type="number" min={0} max={99} inputMode="numeric" disabled={matchLocked} value={pred.away}
-                      onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, away: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
+                      onChange={e => {
+                        const val = e.target.value
+                        const updated = { ...predsRef.current[match.id] ?? { home: '', away: '' }, away: val }
+                        predsRef.current = { ...predsRef.current, [match.id]: updated }
+                        setPreds(p => ({ ...p, [match.id]: updated }))
+                        setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n })
+                      }}
                       onBlur={() => handleBlur(match.id)}
                       className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.away === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                   </div>
