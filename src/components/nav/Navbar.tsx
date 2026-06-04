@@ -10,31 +10,23 @@ import { formatDistanceToNow, isBefore } from 'date-fns'
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 
 const NAV_LINKS = [
-  { href: '/today', label: 'Today' },
   { href: '/predictions', label: 'Predictions' },
   { href: '/results', label: 'Results' },
-  { href: '/simulate', label: 'Simulate' },
   { href: '/leaderboard', label: 'Leaderboard' },
-  { href: '/league', label: 'Leagues' },
   { href: '/teams', label: 'Teams' },
-  { href: '/stadiums', label: 'Stadiums' },
-  { href: '/rules', label: 'Rules' },
   { href: '/chat', label: 'Chat' },
-  { href: '/stats', label: 'My Stats' },
+  { href: '/rules', label: 'Rules' },
 ]
 
 const BOTTOM_TABS = [
   { href: '/predictions', label: 'Predictions', icon: '🎯' },
   { href: '/results', label: 'Results', icon: '📊' },
   { href: '/leaderboard', label: 'Leaderboard', icon: '🏆' },
+  { href: '/teams', label: 'Teams', icon: '👥' },
   { href: '/chat', label: 'Chat', icon: '💬' },
 ]
 
 const MORE_LINKS = [
-  { href: '/simulate', label: 'Simulate' },
-  { href: '/league', label: 'Leagues' },
-  { href: '/teams', label: 'Teams' },
-  { href: '/stadiums', label: 'Stadiums' },
   { href: '/rules', label: 'Rules' },
 ]
 

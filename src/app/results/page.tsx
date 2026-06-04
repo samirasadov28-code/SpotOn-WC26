@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
+import SimulatePage from '../simulate/page'
 import type { Team } from '@/lib/supabase/types'
 
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
@@ -29,7 +30,7 @@ interface MatchRow {
   away_team: Team | null
 }
 
-type PageTab = 'results' | 'standings' | 'bracket'
+type PageTab = 'results' | 'standings' | 'bracket' | 'simulate'
 
 interface TeamStat {
   team: Team
@@ -128,12 +129,12 @@ export default function ResultsPage() {
 
       {/* Page tabs */}
       <div className="flex gap-4 border-b border-gray-200 mb-6">
-        {(['results', 'standings', 'bracket'] as PageTab[]).map(t => (
+        {(['results', 'standings', 'bracket', 'simulate'] as PageTab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`pb-3 text-sm font-semibold border-b-2 transition-colors capitalize ${
               tab === t ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            {t === 'results' ? 'Match Results' : t === 'standings' ? 'Group Standings' : 'Bracket'}
+            {t === 'results' ? 'Match Results' : t === 'standings' ? 'Group Standings' : t === 'bracket' ? 'Bracket' : 'Simulate'}
           </button>
         ))}
       </div>
@@ -172,6 +173,10 @@ export default function ResultsPage() {
 
       {tab === 'bracket' && (
         <BracketTab matches={matches} />
+      )}
+
+      {tab === 'simulate' && (
+        <SimulatePage />
       )}
     </div>
   )
