@@ -23,6 +23,7 @@ export default function GroupPredictionsPage() {
   const [savedCount, setSavedCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
+  const [dbError, setDbError] = useState<string | null>(null)
   const isLocked = new Date() >= LOCK_AT
 
   const supabase = createClient()
@@ -38,6 +39,9 @@ export default function GroupPredictionsPage() {
         supabase.from('teams').select('*'),
         supabase.from('predictions_group').select('*').eq('user_id', user.id),
       ])
+
+      if (matchRes.error) { console.error('matches error:', matchRes.error); setDbError(matchRes.error.message) }
+      if (teamRes.error) console.error('teams error:', teamRes.error)
 
       const teamMap = new Map<string, Team>((teamRes.data ?? []).map((t) => [t.id, t]))
       const enriched: MatchWithTeams[] = (matchRes.data ?? []).map((m) => ({
@@ -132,8 +136,12 @@ export default function GroupPredictionsPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-center px-4">
         <div className="text-4xl">🏗️</div>
-        <h2 className="text-xl font-bold text-[#0B1F3A]">Database not set up yet</h2>
-        <p className="text-gray-500 max-w-sm text-sm">The match schedule hasn&apos;t been loaded into Supabase yet. Run the migrations in <code className="bg-gray-100 px-1 rounded">supabase/migrations/</code> to get started.</p>
+        <h2 className="text-xl font-bold text-[#0B1F3A]">No matches found</h2>
+        {dbError ? (
+          <p className="text-red-500 max-w-sm text-sm font-mono bg-red-50 px-3 py-2 rounded">{dbError}</p>
+        ) : (
+          <p className="text-gray-500 max-w-sm text-sm">The match schedule hasn&apos;t been loaded into Supabase yet. Run the migrations in <code className="bg-gray-100 px-1 rounded">supabase/migrations/</code> to get started.</p>
+        )}
       </div>
     )
   }

@@ -178,7 +178,15 @@ do $$ begin
   drop policy if exists "lm_own" on league_members;
   drop policy if exists "matches_read" on matches;
   drop policy if exists "teams_read" on teams;
+  drop policy if exists "matches_public_read" on matches;
+  drop policy if exists "teams_public_read" on teams;
 end $$;
+
+-- matches and teams: publicly readable (no auth required)
+alter table matches enable row level security;
+alter table teams enable row level security;
+create policy "matches_public_read" on matches for select using (true);
+create policy "teams_public_read" on teams for select using (true);
 
 create policy "users_own" on users for all using (auth.uid() = id);
 create policy "pg_own_write" on predictions_group for all using (auth.uid() = user_id);
