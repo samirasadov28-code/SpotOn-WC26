@@ -4,9 +4,14 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
-import { GROUP_STADIUMS } from '@/lib/schedule-data'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
+const TWO_HOURS_MS = 2 * 60 * 60 * 1000
+
+function isMatchLocked(kickoffAt: string | null | undefined): boolean {
+  if (!kickoffAt) return false
+  return Date.now() >= new Date(kickoffAt).getTime() - TWO_HOURS_MS
+}
 const GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
 
 // Official R32 path per group position
@@ -106,41 +111,8 @@ function getR32OppPosKey(posKey: string): string | null {
     '2A': '2B',   '2B': '2A',  '2C': '1F',  '2D': '2G',
     '2E': '2I',   '2F': '1C',  '2G': '2D',  '2H': '1J',
     '2I': '2E',   '2J': '1H',  '2K': '2L',  '2L': '2K',
-    // 3rd-place slots face 1st-place teams
-    '3rd1': '1E', '3rd2': '1I', '3rd3': '1A', '3rd4': '1L',
-    '3rd5': '1D', '3rd6': '1G', '3rd7': '1B', '3rd8': '1K',
   }
   return R32_OPP_KEYS[posKey] ?? null
-}
-
-// R32 slot → [homePosKey, awayPosKey]
-const R32_SLOT_DEFS: Record<number, [string, string]> = {
-  1: ['2A','2B'],  2: ['1E','3rd1'], 3: ['1F','2C'],   4: ['1C','2F'],
-  5: ['1I','3rd2'],6: ['2E','2I'],   7: ['1A','3rd3'],  8: ['1L','3rd4'],
-  9: ['1D','3rd5'],10:['1G','3rd6'], 11:['2K','2L'],   12:['1H','2J'],
-  13:['1B','3rd7'],14:['1J','2H'],  15:['1K','3rd8'],  16:['2D','2G'],
-}
-
-// R16 slot → [r32SlotA, r32SlotB]
-const R16_SLOT_DEFS: Record<number, [number, number]> = {
-  17:[2,5], 18:[1,3], 19:[4,6], 20:[7,8],
-  21:[11,12], 22:[9,10], 23:[14,16], 24:[13,15],
-}
-
-// For a given posKey, return R16 info: the two pos-keys from the OTHER R32 match in their R16
-function getR16OtherKeys(posKey: string): [string, string] | null {
-  // Find the R32 slot this posKey is in
-  let myR32Slot: number | null = null
-  for (const [slot, [h, a]] of Object.entries(R32_SLOT_DEFS)) {
-    if (h === posKey || a === posKey) { myR32Slot = parseInt(slot); break }
-  }
-  if (!myR32Slot) return null
-  // Find the R16 slot and the other R32 slot
-  for (const [, [slotA, slotB]] of Object.entries(R16_SLOT_DEFS)) {
-    if (slotA === myR32Slot) return R32_SLOT_DEFS[slotB] ?? null
-    if (slotB === myR32Slot) return R32_SLOT_DEFS[slotA] ?? null
-  }
-  return null
 }
 
 export default function GroupPredictionsPage({ onCountChange }: { onCountChange?: (n: number) => void }) {
@@ -155,17 +127,25 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [errorIds, setErrorIds] = useState<Set<string>>(new Set())
   const [dbError, setDbError] = useState<string | null>(null)
-  const isLocked = new Date() >= LOCK_AT
-  // Track which match card is focused (to avoid validating when tabbing between the two score inputs)
-  const focusedMatchRef = useRef<string | null>(null)
+  const isGloballyLocked = new Date() >= LOCK_AT
 
   const supabase = createClient()
+
+  // Refs mirror state so handleBlur always reads current values (avoids stale closure)
+  const predsRef = useRef<PredMap>({})
+  const savedIdsRef = useRef<Set<string>>(new Set())
+  const userIdRef = useRef<string | null>(null)
+
+  useEffect(() => { predsRef.current = preds }, [preds])
+  useEffect(() => { savedIdsRef.current = savedIds }, [savedIds])
+  useEffect(() => { userIdRef.current = userId }, [userId])
 
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
       setUserId(user.id)
+      userIdRef.current = user.id
 
       const [matchRes, teamRes, predRes] = await Promise.all([
         supabase.from('matches').select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*)').eq('stage', 'group').order('kickoff_at'),
@@ -189,7 +169,9 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
         }
       }
       setPreds(predMap)
+      predsRef.current = predMap
       setSavedIds(ids)
+      savedIdsRef.current = ids
       setSavedCount(count)
       onCountChange?.(count)
       setLoading(false)
@@ -197,26 +179,22 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
     init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleFocus = useCallback((matchId: string) => {
-    focusedMatchRef.current = matchId
-  }, [])
-
   const handleBlur = useCallback(async (matchId: string) => {
-    focusedMatchRef.current = null
-    // Delay so the sibling input's onFocus fires first (tabbing between the two score inputs)
-    await new Promise(r => setTimeout(r, 0))
-    if (focusedMatchRef.current === matchId) return  // focus moved to the other input in the same card
-    if (!userId || isLocked) return
-    const pred = preds[matchId]
+    const uid = userIdRef.current
+    const match = matches.find(m => m.id === matchId)
+    if (!uid || isGloballyLocked || isMatchLocked(match?.kickoff_at)) return
+
+    // Read from ref — always has current value regardless of render cycle
+    const pred = predsRef.current[matchId]
     if (!pred) return
     const { home, away } = pred
 
     // Both cleared → delete prediction from DB
     if (home === '' && away === '') {
       setErrorIds(s => { const n = new Set(s); n.delete(matchId); return n })
-      const hadPred = savedIds.has(matchId)
+      const hadPred = savedIdsRef.current.has(matchId)
       if (hadPred) {
-        await supabase.from('predictions_group').delete().eq('user_id', userId).eq('match_id', matchId)
+        await supabase.from('predictions_group').delete().eq('user_id', uid).eq('match_id', matchId)
         setSavedIds(s => { const n = new Set(s); n.delete(matchId); return n })
         setSavedCount(c => { const next = c - 1; onCountChange?.(next); return next })
       }
@@ -233,10 +211,10 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
     const homeScore = parseInt(home), awayScore = parseInt(away)
     if (isNaN(homeScore) || isNaN(awayScore) || homeScore < 0 || awayScore < 0) return
 
+    const isNew = !savedIdsRef.current.has(matchId)
     setSavingIds(s => new Set([...s, matchId]))
-    const isNew = !savedIds.has(matchId)
     const { error } = await supabase.from('predictions_group').upsert(
-      { user_id: userId, match_id: matchId, pred_home_score: homeScore, pred_away_score: awayScore, updated_at: new Date().toISOString() },
+      { user_id: uid, match_id: matchId, pred_home_score: homeScore, pred_away_score: awayScore, updated_at: new Date().toISOString() },
       { onConflict: 'user_id,match_id' }
     )
     setSavingIds(s => { const n = new Set(s); n.delete(matchId); return n })
@@ -244,7 +222,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       setSavedIds(s => new Set([...s, matchId]))
       setSavedCount(c => { const next = c + 1; onCountChange?.(next); return next })
     }
-  }, [userId, isLocked, preds, savedIds, supabase])
+  }, [isGloballyLocked, matches, supabase, onCountChange])
 
   const groupMatches = matches.filter(m => m.group_letter === activeGroup)
   const groupTeams = teams.filter(t => t.group_letter === activeGroup)
@@ -296,7 +274,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-[#0B1F3A]">Group Stage Predictions</h1>
-        {isLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
+        {isGloballyLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
       </div>
 
       {/* Group tabs */}
@@ -322,6 +300,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
             const pred = preds[match.id] ?? { home: '', away: '' }
             const saving = savingIds.has(match.id)
             const hasError = errorIds.has(match.id)
+            const matchLocked = isGloballyLocked || isMatchLocked(match.kickoff_at)
             const kickoff = match.kickoff_at
               ? new Date(match.kickoff_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short' })
               : ''
@@ -329,14 +308,10 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
             const awayCode = (match.away_team as any)?.fifa_code
 
             return (
-              <div key={match.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${hasError ? 'border-red-400' : 'border-transparent'}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-gray-400">{kickoff}</span>
-                  {match.venue && (
-                    <span className="text-[10px] font-medium text-[#0B1F3A]/60 bg-gray-50 border border-gray-100 rounded px-2 py-0.5 flex items-center gap-1">
-                      🏟 {match.venue}
-                    </span>
-                  )}
+              <div key={match.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${hasError ? 'border-red-400' : matchLocked ? 'border-gray-300' : 'border-transparent'}`}>
+                <div className="text-xs text-gray-400 mb-2 flex items-center gap-1.5">
+                  <span>{kickoff}{match.venue ? ` · ${match.venue}` : ''}</span>
+                  {matchLocked && !isGloballyLocked && <span className="text-orange-500 font-medium">🔒 locked</span>}
                 </div>
                 <div className="flex items-center gap-2">
                   {/* Home */}
@@ -346,15 +321,25 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   </div>
                   {/* Inputs */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.home}
-                      onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, home: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
-                      onFocus={() => handleFocus(match.id)}
+                    <input type="number" min={0} max={99} inputMode="numeric" disabled={matchLocked} value={pred.home}
+                      onChange={e => {
+                        const val = e.target.value
+                        const updated = { ...predsRef.current[match.id] ?? { home: '', away: '' }, home: val }
+                        predsRef.current = { ...predsRef.current, [match.id]: updated }
+                        setPreds(p => ({ ...p, [match.id]: updated }))
+                        setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n })
+                      }}
                       onBlur={() => handleBlur(match.id)}
                       className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.home === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                     <span className="text-gray-400 font-bold text-xs">–</span>
-                    <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.away}
-                      onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, away: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
-                      onFocus={() => handleFocus(match.id)}
+                    <input type="number" min={0} max={99} inputMode="numeric" disabled={matchLocked} value={pred.away}
+                      onChange={e => {
+                        const val = e.target.value
+                        const updated = { ...predsRef.current[match.id] ?? { home: '', away: '' }, away: val }
+                        predsRef.current = { ...predsRef.current, [match.id]: updated }
+                        setPreds(p => ({ ...p, [match.id]: updated }))
+                        setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n })
+                      }}
                       onBlur={() => handleBlur(match.id)}
                       className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.away === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                   </div>
@@ -385,83 +370,37 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
               </div>
               <div className="divide-y divide-gray-50">
                 {standings.slice(0, 3).map((s, i) => {
+                  const posKey = `${i + 1}${activeGroup}` // '1A', '2A', '3A'
+                  const path = i < 2 ? BRACKET_PATHS[posKey] : null
                   const teamCode = (s.team as any).fifa_code
-
-                  // For 3rd place: find their rank in best3rds
-                  let thirdRank: number | null = null
-                  let thirdPosKey: string | null = null
-                  if (i === 2) {
-                    const idx = best3rds.findIndex(r => r.team.id === s.team.id)
-                    if (idx >= 0 && idx < 8) {
-                      thirdRank = idx + 1
-                      thirdPosKey = `3rd${thirdRank}`
-                    }
-                  }
-
-                  const posKey = i < 2 ? `${i + 1}${activeGroup}` : thirdPosKey
-                  const r32OppKey = posKey ? getR32OppPosKey(posKey) : null
-                  const r32OppTeam = r32OppKey ? qualifiedTeams.get(r32OppKey) : null
-                  const r16OtherKeys = posKey ? getR16OtherKeys(posKey) : null
-                  const r16TeamA = r16OtherKeys ? qualifiedTeams.get(r16OtherKeys[0]) : null
-                  const r16TeamB = r16OtherKeys ? qualifiedTeams.get(r16OtherKeys[1]) : null
-
-                  const TeamChip = ({ posK, team }: { posK: string; team: Team | undefined }) => {
-                    if (team) {
-                      const code = (team as any).fifa_code
-                      return (
-                        <span className="inline-flex items-center gap-0.5 font-medium text-[#0B1F3A]">
-                          {code && <img src={flagUrl(code, 40)} alt="" className="w-3.5 h-auto rounded-sm" />}
-                          {team.name}
-                        </span>
-                      )
-                    }
-                    return <span className="text-gray-400">{posK}</span>
-                  }
-
                   return (
-                    <div key={s.team.id} className="px-4 py-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${i === 0 ? 'bg-yellow-400 text-[#0B1F3A]' : i === 1 ? 'bg-gray-300 text-[#0B1F3A]' : thirdRank ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-500'}`}>{i + 1}</span>
-                        {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />}
-                        <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-xs hover:underline">{s.team.name}</a>
-                        {i === 2 && (
-                          <span className="ml-auto text-[10px] font-semibold">
-                            {thirdRank
-                              ? <span className="text-amber-600">#{thirdRank} best 3rd ✓</span>
-                              : <span className="text-red-400">Out of top 8</span>}
-                          </span>
-                        )}
-                      </div>
-
-                      {(i < 2 || thirdRank) && posKey ? (
-                        <div className="ml-7 flex flex-col gap-1">
-                          {/* R32 */}
-                          <div className="text-[11px] text-gray-500 flex items-center gap-1 flex-wrap">
-                            <span className="bg-[#0B1F3A] text-white text-[9px] font-black px-1.5 py-0.5 rounded">R32</span>
-                            <span>vs</span>
-                            {r32OppTeam
-                              ? <TeamChip posK={r32OppKey!} team={r32OppTeam} />
-                              : <span className="text-gray-400 italic">{BRACKET_PATHS[posKey]?.r32OppShort ?? r32OppKey}</span>
-                            }
+                    <div key={s.team.id} className="flex items-center gap-3 px-4 py-3">
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${i === 0 ? 'bg-yellow-400 text-[#0B1F3A]' : i === 1 ? 'bg-gray-300 text-[#0B1F3A]' : 'bg-amber-100 text-amber-700'}`}>{i + 1}</span>
+                      {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
+                      <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-sm hover:underline flex-shrink-0">{s.team.name}</a>
+                      {path ? (
+                        <div className="ml-auto text-right min-w-0 max-w-[120px]">
+                          <div className="text-xs text-gray-500 truncate">
+                            R32: {(() => {
+                              const oppKey = getR32OppPosKey(posKey)
+                              const oppTeam = oppKey ? qualifiedTeams.get(oppKey) : null
+                              if (oppTeam) {
+                                const oppCode = (oppTeam as any).fifa_code
+                                return (
+                                  <span className="font-medium text-[#0B1F3A] inline-flex items-center gap-1">
+                                    {oppCode && <img src={flagUrl(oppCode, 40)} alt="" className="w-4 h-auto rounded-sm inline" />}
+                                    {oppTeam.name}
+                                  </span>
+                                )
+                              }
+                              return <span className="font-medium text-[#0B1F3A]">{path.r32OppShort}</span>
+                            })()}
                           </div>
-                          {/* R16 */}
-                          <div className="text-[11px] text-gray-500 flex items-center gap-1 flex-wrap">
-                            <span className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded">R16</span>
-                            <span>vs winner of</span>
-                            {r16OtherKeys ? (
-                              <span className="inline-flex items-center gap-1 flex-wrap">
-                                <TeamChip posK={r16OtherKeys[0]} team={r16TeamA ?? undefined} />
-                                <span className="text-gray-400">vs</span>
-                                <TeamChip posK={r16OtherKeys[1]} team={r16TeamB ?? undefined} />
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 italic">{BRACKET_PATHS[posKey]?.r16Desc ?? '—'}</span>
-                            )}
-                          </div>
+                          <div className="text-xs text-gray-400 truncate">R16: {path.r16Desc}</div>
                         </div>
-                      ) : i === 2 && !thirdRank ? (
-                        <div className="ml-7 text-[11px] text-red-400 italic">Doesn&apos;t qualify based on current predictions</div>
-                      ) : null}
+                      ) : (
+                        <div className="ml-auto text-xs text-gray-400 italic">Top 8 3rd → qualifies</div>
+                      )}
                     </div>
                   )
                 })}
@@ -511,25 +450,6 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
               <span><span className="inline-block w-2 h-2 bg-yellow-200 rounded-sm mr-1" />Best 3rd?</span>
             </div>
           </div>
-
-          {/* Venues for this group */}
-          {(GROUP_STADIUMS[activeGroup] ?? []).length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-[#0B1F3A] text-white px-4 py-2.5 text-sm font-bold">🏟 Group {activeGroup} Venues</div>
-              <div className="divide-y divide-gray-50">
-                {(GROUP_STADIUMS[activeGroup] ?? []).map(s => (
-                  <a key={s.slug} href={`/stadiums/${s.slug}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 transition-colors">
-                    <img src={`https://flagcdn.com/w20/${s.iso2}.png`} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-[#0B1F3A] truncate">{s.name}</p>
-                      <p className="text-[10px] text-gray-400">{s.city}</p>
-                    </div>
-                    <span className="ml-auto text-[10px] text-gray-400">→</span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Best 3rd places */}
           {best3rds.length > 0 && (

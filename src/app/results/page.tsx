@@ -381,10 +381,68 @@ function StandingsTab({
 
 // ── Bracket tab ───────────────────────────────────────────────────────────────
 
+// Slot ordering mirrors the predictions bracket (left→center→right)
+const BRACKET_LEFT_R32  = [2, 5, 1, 3, 11, 12, 9, 10]
+const BRACKET_LEFT_R16  = [17, 18, 21, 22]
+const BRACKET_LEFT_QF   = [25, 26]
+const BRACKET_LEFT_SF   = [29]
+const BRACKET_RIGHT_SF  = [30]
+const BRACKET_RIGHT_QF  = [27, 28]
+const BRACKET_RIGHT_R16 = [19, 20, 23, 24]
+const BRACKET_RIGHT_R32 = [4, 6, 7, 8, 14, 16, 13, 15]
+
+function BracketMatchCard({ match }: { match: MatchRow | undefined }) {
+  if (!match) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-100 p-2 shadow-sm opacity-40">
+        <div className="flex flex-col gap-1">
+          {[0, 1].map(i => (
+            <div key={i} className="flex items-center gap-1.5">
+              <span className="w-5 h-3.5 bg-gray-100 rounded-sm flex-shrink-0" />
+              <span className="flex-1 text-[11px] text-gray-300">TBD</span>
+              <span className="w-5 text-right text-xs text-gray-200">–</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const played = match.actual_home_score !== null && match.actual_away_score !== null
+  const homeWins = played && match.actual_home_score! > match.actual_away_score!
+  const awayWins = played && match.actual_away_score! > match.actual_home_score!
+
+  return (
+    <div className={`bg-white rounded-lg border-l-4 p-2 shadow-sm ${played ? 'border-green-500' : 'border-gray-200'}`}>
+      <div className="flex flex-col gap-1">
+        {([
+          { team: match.home_team, score: match.actual_home_score, wins: homeWins },
+          { team: match.away_team, score: match.actual_away_score, wins: awayWins },
+        ] as const).map(({ team, score, wins }, idx) => (
+          <div key={idx} className={`flex items-center gap-1.5 rounded px-0.5 ${wins ? 'bg-green-50' : ''}`}>
+            {team?.fifa_code
+              ? <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />
+              : <span className="w-5 h-3.5 bg-gray-100 rounded-sm flex-shrink-0" />}
+            <span className={`flex-1 min-w-0 text-[11px] font-medium truncate ${team ? (wins ? 'text-green-700' : 'text-[#0B1F3A]') : 'text-gray-300'}`}>
+              {team?.name ?? 'TBD'}
+            </span>
+            <span className={`text-xs font-bold flex-shrink-0 w-4 text-right ${wins ? 'text-green-700' : 'text-[#0B1F3A]'}`}>
+              {score !== null ? score : (team ? '–' : '')}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function BracketTab({ matches }: { matches: MatchRow[] }) {
-  const koStages = ['r32', 'r16', 'qf', 'sf', 'final', 'third']
-  const stageMatches = (stage: string) => matches.filter(m => m.stage === stage).sort((a, b) => (a.bracket_slot ?? 0) - (b.bracket_slot ?? 0))
-  const hasKO = koStages.some(s => stageMatches(s).length > 0)
+  const bySlot = new Map<number, MatchRow>()
+  for (const m of matches) {
+    if (m.bracket_slot !== null) bySlot.set(m.bracket_slot, m)
+  }
+
+  const hasKO = bySlot.size > 0
 
   if (!hasKO) return (
     <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
@@ -393,55 +451,36 @@ function BracketTab({ matches }: { matches: MatchRow[] }) {
     </div>
   )
 
-  const stageDefs = [
-    { key: 'r32', label: 'Round of 32' },
-    { key: 'r16', label: 'Round of 16' },
-    { key: 'qf', label: 'Quarterfinals' },
-    { key: 'sf', label: 'Semifinals' },
-    { key: 'final', label: 'Final' },
-    { key: 'third', label: '3rd Place' },
-  ]
+  const BracketColumn = ({ title, slots, className = '' }: { title: string; slots: number[]; className?: string }) => (
+    <div className={`flex flex-col gap-2 ${className}`}>
+      <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100">{title}</div>
+      <div className="flex flex-col justify-around flex-1 gap-2">
+        {slots.map(slot => <BracketMatchCard key={slot} match={bySlot.get(slot)} />)}
+      </div>
+    </div>
+  )
 
   return (
-    <div className="space-y-6">
-      {stageDefs.map(({ key, label }) => {
-        const ms = stageMatches(key)
-        if (ms.length === 0) return null
-        return (
-          <div key={key}>
-            <h2 className="text-base font-bold text-[#0B1F3A] mb-3">{label}</h2>
-            <div className={`grid gap-3 ${ms.length > 2 ? 'sm:grid-cols-2' : ''}`}>
-              {ms.map(m => {
-                const played = m.actual_home_score !== null && m.actual_away_score !== null
-                return (
-                  <div key={m.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${played ? 'border-green-500' : 'border-gray-200'}`}>
-                    <div className="flex flex-col gap-2">
-                      {[{ team: m.home_team, score: m.actual_home_score }, { team: m.away_team, score: m.actual_away_score }].map(({ team, score }, idx) => {
-                        const isWinner = played && (
-                          idx === 0 ? m.actual_home_score! > m.actual_away_score! : m.actual_away_score! > m.actual_home_score!
-                        )
-                        return (
-                          <div key={idx} className={`flex items-center gap-2 rounded-lg px-2 py-1 ${isWinner ? 'bg-green-50' : ''}`}>
-                            {team?.fifa_code
-                              ? <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />
-                              : <span className="w-6 h-4 bg-gray-100 rounded-sm flex-shrink-0" />}
-                            <span className={`flex-1 min-w-0 text-sm font-semibold truncate ${isWinner ? 'text-green-700' : 'text-[#0B1F3A]'}`}>
-                              {team?.name ?? 'TBD'}
-                            </span>
-                            <span className={`text-lg font-black flex-shrink-0 w-6 text-right ${isWinner ? 'text-green-700' : 'text-[#0B1F3A]'}`}>
-                              {score !== null ? score : '–'}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
+    <div className="overflow-x-auto -mx-4 px-4">
+      <div className="min-w-[1100px] flex gap-1.5 items-stretch">
+        <BracketColumn title="R32" slots={BRACKET_LEFT_R32}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R16" slots={BRACKET_LEFT_R16}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="QF"  slots={BRACKET_LEFT_QF}   className="flex-1 min-w-[120px]" />
+        <BracketColumn title="SF"  slots={BRACKET_LEFT_SF}   className="flex-1 min-w-[120px]" />
+
+        {/* Center: Final + 3rd */}
+        <div className="flex flex-col justify-center gap-3 flex-1 min-w-[120px] mx-0.5">
+          <div className="text-[10px] font-bold text-center text-[#0B1F3A] uppercase tracking-widest pb-1 border-b border-[#0B1F3A]/20">Final</div>
+          <BracketMatchCard match={bySlot.get(32)} />
+          <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100 mt-2">3rd Place</div>
+          <BracketMatchCard match={bySlot.get(31)} />
+        </div>
+
+        <BracketColumn title="SF"  slots={BRACKET_RIGHT_SF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="QF"  slots={BRACKET_RIGHT_QF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R16" slots={BRACKET_RIGHT_R16} className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R32" slots={BRACKET_RIGHT_R32} className="flex-1 min-w-[120px]" />
+      </div>
     </div>
   )
 }
