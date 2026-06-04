@@ -173,23 +173,23 @@ export default function SimulatePage() {
                     {isActual && <span className="text-[10px] text-green-600 font-semibold">Official result</span>}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="flex-1 text-right text-sm font-semibold text-[#0B1F3A]">
+                    <span className="flex-1 min-w-0 text-right text-xs sm:text-sm font-semibold text-[#0B1F3A] truncate">
                       {m.home_team?.flag_emoji} {m.home_team?.name}
                     </span>
                     <input
-                      type="number" min={0} max={99}
+                      type="number" min={0} max={99} inputMode="numeric"
                       value={score.h}
                       onChange={e => setScore(m.id, 'h', e.target.value)}
-                      className="w-11 text-center border border-gray-300 rounded-lg py-1 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
+                      className="w-11 flex-shrink-0 text-center border border-gray-300 rounded-lg py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
                     />
-                    <span className="text-gray-400 font-bold text-sm">–</span>
+                    <span className="text-gray-400 font-bold text-xs flex-shrink-0">–</span>
                     <input
-                      type="number" min={0} max={99}
+                      type="number" min={0} max={99} inputMode="numeric"
                       value={score.a}
                       onChange={e => setScore(m.id, 'a', e.target.value)}
-                      className="w-11 text-center border border-gray-300 rounded-lg py-1 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
+                      className="w-11 flex-shrink-0 text-center border border-gray-300 rounded-lg py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
                     />
-                    <span className="flex-1 text-sm font-semibold text-[#0B1F3A]">
+                    <span className="flex-1 min-w-0 text-xs sm:text-sm font-semibold text-[#0B1F3A] truncate">
                       {m.away_team?.name} {m.away_team?.flag_emoji}
                     </span>
                   </div>

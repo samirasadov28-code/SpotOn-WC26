@@ -112,7 +112,8 @@ export default function ResultsPage() {
                   activeGroup === g ? 'bg-[#0B1F3A] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                Group {g}
+                <span className="sm:hidden">{g}</span>
+                <span className="hidden sm:inline">Group {g}</span>
               </button>
             ))}
           </div>
@@ -155,19 +156,19 @@ function MatchList({ matches }: { matches: MatchRow[] }) {
           : ''
         return (
           <div key={m.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${played ? 'border-green-500' : 'border-gray-200'}`}>
-            <div className="text-xs text-gray-400 mb-2">{kickoff}{m.venue ? ` · ${m.venue}` : ''}</div>
-            <div className="flex items-center justify-between gap-4">
-              <span className="flex-1 text-right font-semibold text-sm text-[#0B1F3A]">
+            <div className="text-xs text-gray-400 mb-2 truncate">{kickoff}{m.venue ? ` · ${m.venue}` : ''}</div>
+            <div className="flex items-center gap-2">
+              <span className="flex-1 min-w-0 text-right font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">
                 {m.home_team?.flag_emoji} {m.home_team?.name ?? '?'}
               </span>
-              <div className="text-center min-w-[56px]">
+              <div className="text-center flex-shrink-0 min-w-[56px]">
                 {played ? (
                   <span className="font-black text-xl text-[#0B1F3A]">{m.home_score} – {m.away_score}</span>
                 ) : (
                   <span className="text-sm text-gray-400 font-medium">vs</span>
                 )}
               </div>
-              <span className="flex-1 font-semibold text-sm text-[#0B1F3A]">
+              <span className="flex-1 min-w-0 font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">
                 {m.away_team?.name ?? '?'} {m.away_team?.flag_emoji}
               </span>
             </div>

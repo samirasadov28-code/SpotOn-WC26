@@ -196,29 +196,29 @@ export default function GroupPredictionsPage() {
                 <div className="text-xs text-gray-400 mb-2">{kickoff}{match.venue ? ` · ${match.venue}` : ''}</div>
                 <div className="flex items-center gap-2">
                   {/* Home */}
-                  <div className="flex-1 flex items-center justify-end gap-2">
-                    <span className="font-semibold text-sm text-[#0B1F3A] text-right">{match.home_team?.name ?? '?'}</span>
-                    {homeCode && <img src={flagUrl(homeCode, 40)} alt="" className="w-7 h-auto rounded-sm flex-shrink-0" />}
+                  <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5 overflow-hidden">
+                    <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{match.home_team?.name ?? '?'}</span>
+                    {homeCode && <img src={flagUrl(homeCode, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0" />}
                   </div>
                   {/* Inputs */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <input type="number" min={0} max={99} disabled={isLocked} value={pred.home}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.home}
                       onChange={e => setPreds(p => ({ ...p, [match.id]: { ...pred, home: e.target.value } }))}
                       onBlur={() => handleBlur(match.id)}
-                      className="w-12 text-center border border-gray-300 rounded-lg py-1.5 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50" />
-                    <span className="text-gray-400 font-bold">–</span>
-                    <input type="number" min={0} max={99} disabled={isLocked} value={pred.away}
+                      className="w-11 text-center border border-gray-300 rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50" />
+                    <span className="text-gray-400 font-bold text-xs">–</span>
+                    <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.away}
                       onChange={e => setPreds(p => ({ ...p, [match.id]: { ...pred, away: e.target.value } }))}
                       onBlur={() => handleBlur(match.id)}
-                      className="w-12 text-center border border-gray-300 rounded-lg py-1.5 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50" />
+                      className="w-11 text-center border border-gray-300 rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50" />
                   </div>
                   {/* Away */}
-                  <div className="flex-1 flex items-center gap-2">
-                    {awayCode && <img src={flagUrl(awayCode, 40)} alt="" className="w-7 h-auto rounded-sm flex-shrink-0" />}
-                    <span className="font-semibold text-sm text-[#0B1F3A]">{match.away_team?.name ?? '?'}</span>
+                  <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
+                    {awayCode && <img src={flagUrl(awayCode, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0" />}
+                    <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{match.away_team?.name ?? '?'}</span>
                   </div>
                   {/* Save indicator */}
-                  <div className="w-5 text-center flex-shrink-0">
+                  <div className="w-4 text-center flex-shrink-0">
                     {saving ? <span className="text-xs text-yellow-500">…</span>
                       : preds[match.id]?.home !== undefined ? <span className="text-xs text-green-600">✓</span>
                       : null}

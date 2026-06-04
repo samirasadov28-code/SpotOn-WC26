@@ -109,13 +109,13 @@ export default function LeaderboardPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#0B1F3A] text-white">
-                <th className="py-3 px-4 text-left w-10">#</th>
-                <th className="py-3 px-4 text-left">Player</th>
-                <th className="py-3 px-4 text-center" title="Predictions submitted">Preds</th>
-                <th className="py-3 px-4 text-right">Group</th>
-                <th className="py-3 px-4 text-right">Adv.</th>
-                <th className="py-3 px-4 text-right">KO</th>
-                <th className="py-3 px-4 text-right font-bold">Total</th>
+                <th className="py-3 px-3 text-left w-10">#</th>
+                <th className="py-3 px-3 text-left">Player</th>
+                <th className="py-3 px-3 text-center" title="Predictions submitted">Preds</th>
+                <th className="py-3 px-3 text-right hidden sm:table-cell">Group</th>
+                <th className="py-3 px-3 text-right hidden sm:table-cell">Adv.</th>
+                <th className="py-3 px-3 text-right hidden sm:table-cell">KO</th>
+                <th className="py-3 px-3 text-right font-bold">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -130,35 +130,33 @@ export default function LeaderboardPage() {
                       isMe ? 'bg-blue-50 font-semibold' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'
                     }`}
                   >
-                    <td className="py-3 px-4 font-bold text-gray-500">
+                    <td className="py-3 px-3 font-bold text-gray-500 text-base">
                       {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : entry.rank}
                     </td>
-                    <td className="py-3 px-4 text-[#0B1F3A]">
-                      <span>{entry.displayName}</span>
-                      {isMe && <span className="ml-1.5 text-xs text-blue-500 font-normal">(you)</span>}
+                    <td className="py-3 px-3 text-[#0B1F3A] max-w-[120px] sm:max-w-none">
+                      <div className="truncate">{entry.displayName}</div>
+                      {isMe && <div className="text-xs text-blue-500 font-normal">(you)</div>}
                     </td>
-                    <td className="py-3 px-4 text-center">
+                    <td className="py-3 px-3 text-center">
                       {isComplete ? (
-                        <span className="inline-flex items-center gap-1 text-green-600 font-semibold text-xs">
-                          ✅ Full
-                        </span>
+                        <span className="inline-flex items-center gap-1 text-green-600 font-semibold text-xs">✅</span>
                       ) : entry.predictionCount === 0 ? (
                         <span className="text-gray-300 text-xs">—</span>
                       ) : (
                         <span className="text-orange-500 text-xs font-medium">{pctDone}%</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-right text-gray-600">{entry.groupPts}</td>
-                    <td className="py-3 px-4 text-right text-gray-600">{entry.advancementPts}</td>
-                    <td className="py-3 px-4 text-right text-gray-600">{entry.knockoutPts}</td>
-                    <td className="py-3 px-4 text-right font-bold text-green-600">{entry.totalPts}</td>
+                    <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.groupPts}</td>
+                    <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.advancementPts}</td>
+                    <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.knockoutPts}</td>
+                    <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
           <p className="text-xs text-gray-400 px-4 py-2 border-t border-gray-100">
-            ✅ Full = all {GROUP_MATCHES_TOTAL} group predictions submitted
+            ✅ = all {GROUP_MATCHES_TOTAL} group predictions submitted · Tap a row to see breakdown
           </p>
         </div>
       )}
