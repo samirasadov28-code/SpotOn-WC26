@@ -85,7 +85,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white dark:bg-gray-950">
+    <div className="flex flex-col min-h-screen bg-white">
 
       {/* ── HERO ── */}
       <section className="relative overflow-hidden bg-[#0B1F3A] text-white">
@@ -209,17 +209,17 @@ export default function HomePage() {
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section className="py-16 px-4 bg-gray-50 dark:bg-gray-900">
+      <section className="py-16 px-4 bg-gray-50">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl sm:text-3xl font-black text-center text-[#0B1F3A] dark:text-white mb-12">
+          <h2 className="text-2xl sm:text-3xl font-black text-center text-[#0B1F3A] mb-12">
             How It Works
           </h2>
           <div className="grid sm:grid-cols-3 gap-6">
             {HOW_IT_WORKS.map((item, i) => (
-              <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl p-7 shadow-sm border border-gray-100 dark:border-gray-700 text-center hover:shadow-md transition-shadow">
+              <div key={i} className="bg-white rounded-2xl p-7 shadow-sm border border-gray-100 text-center hover:shadow-md transition-shadow">
                 <div className="text-5xl mb-4">{item.emoji}</div>
-                <h3 className="text-xl font-black text-[#0B1F3A] dark:text-white mb-2">{item.title}</h3>
-                <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">{item.desc}</p>
+                <h3 className="text-xl font-black text-[#0B1F3A] mb-2">{item.title}</h3>
+                <p className="text-gray-500 text-sm leading-relaxed">{item.desc}</p>
               </div>
             ))}
           </div>
@@ -227,11 +227,11 @@ export default function HomePage() {
       </section>
 
       {/* ── STADIUMS ── */}
-      <section className="py-16 px-4 bg-white dark:bg-gray-950">
+      <section className="py-16 px-4 bg-white">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <p className="text-brand-green font-bold text-sm uppercase tracking-widest mb-2">16 Venues · 3 Countries</p>
-            <h2 className="text-2xl sm:text-3xl font-black text-[#0B1F3A] dark:text-white">
+            <h2 className="text-2xl sm:text-3xl font-black text-[#0B1F3A]">
               World-Class Stadiums
             </h2>
           </div>
@@ -265,17 +265,17 @@ export default function HomePage() {
       </section>
 
       {/* ── ALL 12 GROUPS ── */}
-      <section className="py-16 px-4 bg-gray-50 dark:bg-gray-900">
+      <section className="py-16 px-4 bg-gray-50">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <p className="text-[#DC2626] font-bold text-sm uppercase tracking-widest mb-2">48 Teams · 12 Groups</p>
-            <h2 className="text-2xl sm:text-3xl font-black text-[#0B1F3A] dark:text-white">
+            <h2 className="text-2xl sm:text-3xl font-black text-[#0B1F3A]">
               The Field
             </h2>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {GROUPS.map((g) => (
-              <div key={g.letter} className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm">
+              <div key={g.letter} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-7 h-7 bg-[#0B1F3A] text-white rounded-lg flex items-center justify-center font-black text-sm">
                     {g.letter}
@@ -284,14 +284,14 @@ export default function HomePage() {
                 </div>
                 <ul className="space-y-1">
                   {g.teams.map((t) => (
-                    <li key={t} className="text-sm text-gray-700 dark:text-gray-300 truncate">{t}</li>
+                    <li key={t} className="text-sm text-gray-700 truncate">{t}</li>
                   ))}
                 </ul>
               </div>
             ))}
           </div>
           <div className="text-center mt-8">
-            <Link href="/teams" className="inline-flex items-center gap-2 text-[#0B1F3A] dark:text-white font-bold border-2 border-[#0B1F3A] dark:border-white/30 rounded-xl px-6 py-3 hover:bg-[#0B1F3A] hover:text-white dark:hover:bg-white/10 transition-all text-sm">
+            <Link href="/teams" className="inline-flex items-center gap-2 text-[#0B1F3A] font-bold border-2 border-[#0B1F3A] rounded-xl px-6 py-3 hover:bg-[#0B1F3A] hover:text-white transition-all text-sm">
               Explore All Teams & Venues →
             </Link>
           </div>
@@ -322,14 +322,14 @@ export default function HomePage() {
       </section>
 
       {/* ── CTA ── */}
-      <section className="py-20 px-4 bg-gradient-to-b from-brand-green/10 to-transparent dark:from-brand-green/5 text-center">
+      <section className="py-20 px-4 bg-gradient-to-b from-green-50 to-white text-center">
         <div className="max-w-lg mx-auto">
           <p className="text-5xl mb-6">⚽</p>
-          <h2 className="text-3xl sm:text-4xl font-black text-[#0B1F3A] dark:text-white mb-4">
+          <h2 className="text-3xl sm:text-4xl font-black text-[#0B1F3A] mb-4">
             Ready to play?
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-8">
-            Predictions lock <strong className="text-[#0B1F3A] dark:text-white">2 hours before kick-off</strong> on June 11. Don&apos;t miss it.
+          <p className="text-gray-500 mb-8">
+            Predictions lock <strong className="text-[#0B1F3A]">2 hours before kick-off</strong> on June 11. Don&apos;t miss it.
           </p>
           <Link
             href="/auth/login"
@@ -341,19 +341,31 @@ export default function HomePage() {
       </section>
 
       {/* ── ASADOV-STACK ── */}
-      <section className="bg-gray-100 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 py-8 px-4 text-center">
-        <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">Part of</p>
-        <p className="text-base font-black text-[#0B1F3A] dark:text-white">{ASADOV_STACK.name}</p>
-        <p className="text-gray-400 text-xs mt-0.5">{ASADOV_STACK.tagline}</p>
+      <section className="bg-[#0B1F3A] border-t border-white/10 py-10 px-4">
+        <div className="max-w-xl mx-auto text-center">
+          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">SpotOn WC26 is part of</p>
+          <p className="text-2xl font-black text-white mb-1">{ASADOV_STACK.name}</p>
+          <p className="text-white/50 text-sm mb-6">{ASADOV_STACK.tagline}</p>
+          <a
+            href={ASADOV_STACK.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 bg-white text-[#0B1F3A] font-black px-8 py-3 rounded-2xl text-sm hover:bg-gray-100 transition-all hover:scale-105 active:scale-95 shadow-lg"
+          >
+            <span>🚀</span>
+            Explore Asadov-stack
+            <span className="text-gray-400">↗</span>
+          </a>
+        </div>
       </section>
 
       {/* ── FOOTER / VERSION ── */}
-      <footer className="bg-gray-100 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 py-4 px-4">
+      <footer className="bg-gray-50 border-t border-gray-200 py-4 px-4">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-400">
           <span>SpotOn WC26 · v{APP_VERSION}</span>
           <div className="flex items-center gap-3">
             {updateAvailable && (
-              <span className="text-brand-green font-semibold">Update available!</span>
+              <span className="text-green-600 font-semibold">Update available!</span>
             )}
             <button
               onClick={forceUpdate}

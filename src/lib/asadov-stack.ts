@@ -10,5 +10,5 @@ export const ASADOV_STACK_PRODUCTS = [
 export const ASADOV_STACK = {
   name: 'Asadov-stack',
   tagline: 'Tools and games, well-built.',
-  url: '#', // TBD
+  url: 'https://asadov-stack.netlify.app/',
 }
