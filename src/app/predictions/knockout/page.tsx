@@ -163,9 +163,10 @@ interface MatchCardProps {
   isSaved: boolean
   isLocked: boolean
   compact?: boolean
+  isLastFilled?: boolean
 }
 
-function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, isSaving, isSaved, isLocked, compact }: MatchCardProps) {
+function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, isSaving, isSaved, isLocked, compact, isLastFilled }: MatchCardProps) {
   const [localPred, setLocalPred] = useState(pred)
   const isFocusedRef = useRef(false)
 
@@ -200,7 +201,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
 
   if (compact) {
     return (
-      <div className={`bg-white rounded-lg border-l-4 p-2 shadow-sm ${showError ? 'border-red-400' : 'border-gray-200'}`}>
+      <div className={`bg-white rounded-lg border-l-4 p-2 shadow-sm transition-all duration-300 ease-in-out ${showError ? 'border-red-400' : isLastFilled ? 'border-green-400 ring-2 ring-green-400 animate-pulse' : 'border-gray-200'}`}>
         <div className="text-[10px] text-gray-400 mb-1 truncate">{label}</div>
         <div className="flex flex-col gap-1">
           {([['homeScore', homeTeam], ['awayScore', awayTeam]] as const).map(([side, team]) => (
@@ -208,7 +209,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
               {team?.fifa_code
                 ? <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />
                 : <span className="w-5 h-3.5 bg-gray-100 rounded-sm flex-shrink-0" />}
-              <span className="flex-1 min-w-0 text-[11px] font-medium text-[#0B1F3A] truncate">{team?.name ?? 'TBD'}</span>
+              <span className={`flex-1 min-w-0 text-[11px] font-medium text-[#0B1F3A] truncate transition-all duration-300 ease-in-out ${team ? 'animate-fade-slide' : ''}`}>{team?.name ?? 'TBD'}</span>
               <input
                 type="number" min={0} max={99} inputMode="numeric"
                 disabled={disabled || !team}
@@ -290,6 +291,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
   const [errorSlots, setErrorSlots] = useState<Set<number>>(new Set())
   const [savedSlotCount, setSavedSlotCount] = useState(0)
   const [showWinner, setShowWinner] = useState(false)
+  const [lastFilledSlot, setLastFilledSlot] = useState<number | null>(null)
   const isLocked = new Date() >= LOCK_AT
   const supabase = createClient()
 
@@ -411,6 +413,8 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
 
     if (!wasAlreadySaved) {
       setSavedSlotCount(c => { const next = c + 1; onCountChange?.(next); return next })
+      setLastFilledSlot(slot)
+      setTimeout(() => setLastFilledSlot(null), 1500)
     }
   }, [isLocked, supabase, onCountChange])
 
@@ -429,8 +433,9 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
       isSaving: savingSlots.has(slot),
       isSaved,
       isLocked,
+      isLastFilled: lastFilledSlot === slot,
     }
-  }, [koPreds, qualified, errorSlots, savingSlots, isLocked, handleSave])
+  }, [koPreds, qualified, errorSlots, savingSlots, isLocked, handleSave, lastFilledSlot])
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading bracket…</div>
@@ -620,8 +625,8 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
     return `W${def.homeParent} vs W${def.awayParent}`
   }
 
-  const BracketColumn = ({ title, slots, className = '' }: { title: string; slots: number[]; className?: string }) => (
-    <div className={`flex flex-col gap-2 ${className}`}>
+  const BracketColumn = ({ title, slots, className = '', delay = 0 }: { title: string; slots: number[]; className?: string; delay?: number }) => (
+    <div className={`flex flex-col gap-2 animate-fade-slide opacity-0 ${className}`} style={{ animationDelay: `${delay}ms` }}>
       <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100">{title}</div>
       <div className="flex flex-col justify-around flex-1 gap-2">
         {slots.map(slot => (
@@ -635,13 +640,13 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
     <div className="overflow-x-auto -mx-4 px-4">
       <div className="min-w-[1100px] flex gap-1.5 items-stretch">
         {/* Left half — R32 → R16 → QF → SF */}
-        <BracketColumn title="R32" slots={leftR32} className="flex-1 min-w-[120px]" />
-        <BracketColumn title="R16" slots={leftR16} className="flex-1 min-w-[120px]" />
-        <BracketColumn title="QF"  slots={leftQF}  className="flex-1 min-w-[120px]" />
-        <BracketColumn title="SF"  slots={leftSF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R32" slots={leftR32} className="flex-1 min-w-[120px]" delay={0} />
+        <BracketColumn title="R16" slots={leftR16} className="flex-1 min-w-[120px]" delay={80} />
+        <BracketColumn title="QF"  slots={leftQF}  className="flex-1 min-w-[120px]" delay={160} />
+        <BracketColumn title="SF"  slots={leftSF}  className="flex-1 min-w-[120px]" delay={240} />
 
         {/* Center: Final + 3rd */}
-        <div className="flex flex-col justify-center gap-3 flex-1 min-w-[120px] mx-0.5">
+        <div className="flex flex-col justify-center gap-3 flex-1 min-w-[120px] mx-0.5 animate-fade-slide opacity-0" style={{ animationDelay: '320ms' }}>
           <div className="text-[10px] font-bold text-center text-[#0B1F3A] uppercase tracking-widest pb-1 border-b border-[#0B1F3A]/20">Final</div>
           <MatchCard compact label="🏆 Final" {...slotProps(32)} />
           <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100 mt-2">3rd Place</div>
@@ -649,10 +654,10 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
         </div>
 
         {/* Right half — SF → QF → R16 → R32 */}
-        <BracketColumn title="SF"  slots={rightSF}  className="flex-1 min-w-[120px]" />
-        <BracketColumn title="QF"  slots={rightQF}  className="flex-1 min-w-[120px]" />
-        <BracketColumn title="R16" slots={rightR16} className="flex-1 min-w-[120px]" />
-        <BracketColumn title="R32" slots={rightR32} className="flex-1 min-w-[120px]" />
+        <BracketColumn title="SF"  slots={rightSF}  className="flex-1 min-w-[120px]" delay={240} />
+        <BracketColumn title="QF"  slots={rightQF}  className="flex-1 min-w-[120px]" delay={160} />
+        <BracketColumn title="R16" slots={rightR16} className="flex-1 min-w-[120px]" delay={80} />
+        <BracketColumn title="R32" slots={rightR32} className="flex-1 min-w-[120px]" delay={0} />
       </div>
     </div>
   )
