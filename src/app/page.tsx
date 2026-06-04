@@ -66,10 +66,15 @@ export default function HomePage() {
     if (!fbMsg.trim()) return
     setFbStatus('sending')
     try {
-      const subject = encodeURIComponent(`SpotOn WC26 Feedback${fbName ? ` from ${fbName}` : ''}`)
-      const body = encodeURIComponent(`Name: ${fbName || 'Anonymous'}\nEmail: ${fbEmail || 'Not provided'}\n\n${fbMsg}`)
-      const mailto = `mailto:FinModeloop@gmail.com?subject=${subject}&body=${body}`
-      window.open(mailto, '_blank')
+      const supabase = (await import('@/lib/supabase/client')).createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      const { error } = await (supabase as any).from('feedback').insert({
+        name: fbName.trim() || null,
+        email: fbEmail.trim() || null,
+        message: fbMsg.trim(),
+        user_id: user?.id ?? null,
+      })
+      if (error) throw error
       setFbStatus('sent')
       setFbName(''); setFbEmail(''); setFbMsg('')
     } catch {
@@ -430,19 +435,18 @@ export default function HomePage() {
               </div>
               {fbStatus === 'sent' && (
                 <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 text-center font-medium">
-                  ✓ Your email client has opened — just hit send!
+                  ✓ Feedback sent — thank you!
                 </div>
               )}
               {fbStatus === 'error' && (
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600 text-center">
-                  Something went wrong. Email us at <a href="mailto:FinModeloop@gmail.com" className="font-bold underline">FinModeloop@gmail.com</a>
+                  Something went wrong. Please try again or email <a href="mailto:FinModeloop@gmail.com" className="font-bold underline">FinModeloop@gmail.com</a>
                 </div>
               )}
               <button type="submit" disabled={fbStatus === 'sending' || !fbMsg.trim()}
                 className="bg-[#0B1F3A] hover:bg-[#162d52] disabled:opacity-50 text-white font-black py-3 px-8 rounded-2xl transition-colors text-sm">
-                {fbStatus === 'sending' ? 'Opening email…' : '✉ Send Feedback'}
+                {fbStatus === 'sending' ? 'Sending…' : '✉ Send Feedback'}
               </button>
-              <p className="text-xs text-gray-400 text-center">Clicking send will open your email client with the message pre-filled.</p>
             </form>
           </div>
         </div>

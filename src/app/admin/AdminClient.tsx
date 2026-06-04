@@ -15,7 +15,15 @@ interface ResultState {
   winnerId: string
 }
 
-export default function AdminClient({ matches }: { matches: MatchWithTeams[] }) {
+interface FeedbackRow {
+  id: string
+  name: string | null
+  email: string | null
+  message: string
+  created_at: string
+}
+
+export default function AdminClient({ matches, feedback }: { matches: MatchWithTeams[]; feedback: FeedbackRow[] }) {
   const [results, setResults] = useState<Record<string, ResultState>>({})
   const [saving, setSaving] = useState<Set<string>>(new Set())
   const [saved, setSaved] = useState<Set<string>>(new Set())
@@ -189,11 +197,36 @@ export default function AdminClient({ matches }: { matches: MatchWithTeams[] }) 
         </div>
       </div>
 
-      <div>
+      <div className="mb-10">
         <h2 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-3">Knockout</h2>
         <div className="flex flex-col gap-3">
           {knockoutMatches.map(renderMatch)}
         </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-3">
+          💬 Feedback ({feedback.length})
+        </h2>
+        {feedback.length === 0 ? (
+          <p className="text-gray-400 text-sm">No feedback yet.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {feedback.map(f => (
+              <div key={f.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-semibold text-sm text-[#0B1F3A]">
+                    {f.name || 'Anonymous'}{f.email ? ` — ${f.email}` : ''}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {new Date(f.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{f.message}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

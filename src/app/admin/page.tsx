@@ -27,5 +27,10 @@ export default async function AdminPage() {
     .select('*, home_team:teams!matches_home_team_id_fkey(name, flag_emoji, fifa_code), away_team:teams!matches_away_team_id_fkey(name, flag_emoji, fifa_code)')
     .order('kickoff_at')
 
-  return <AdminClient matches={matches ?? []} />
+  const { data: feedbackRows } = await (supabase as any)
+    .from('feedback')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  return <AdminClient matches={matches ?? []} feedback={feedbackRows ?? []} />
 }
