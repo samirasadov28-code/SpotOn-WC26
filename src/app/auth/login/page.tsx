@@ -1,18 +1,42 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 type Mode = 'signin' | 'signup'
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<Mode>('signin')
+  const searchParams = useSearchParams()
+  const leagueCode = searchParams.get('league')
+
+  const [mode, setMode] = useState<Mode>(leagueCode ? 'signup' : 'signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  const joinLeagueAndRedirect = async (supabase: ReturnType<typeof createClient>, userId: string) => {
+    if (!leagueCode) {
+      window.location.href = '/predictions/groups'
+      return
+    }
+    const { data: league } = await supabase
+      .from('leagues')
+      .select('id')
+      .eq('join_code', leagueCode.toUpperCase())
+      .single() as any
+    if (league) {
+      await (supabase as any)
+        .from('league_members')
+        .upsert({ league_id: league.id, user_id: userId }, { onConflict: 'league_id,user_id' })
+      window.location.href = `/league/${league.id}`
+    } else {
+      window.location.href = '/predictions/groups'
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,7 +55,7 @@ export default function LoginPage() {
       }
 
       const upsertUser = async (userId: string) => {
-        await supabase.from('users').upsert(
+        await (supabase as any).from('users').upsert(
           { id: userId, email, display_name: displayName.trim() || null },
           { onConflict: 'id' }
         )
@@ -39,7 +63,7 @@ export default function LoginPage() {
 
       if (data.session) {
         await upsertUser(data.session.user.id)
-        window.location.href = '/predictions/groups'
+        await joinLeagueAndRedirect(supabase, data.session.user.id)
         return
       }
 
@@ -49,11 +73,13 @@ export default function LoginPage() {
         setSuccess('Account created! Check your email to confirm it, then sign in.')
         setMode('signin')
       } else {
-        if (signInData.session) await upsertUser(signInData.session.user.id)
-        window.location.href = '/predictions/groups'
+        if (signInData.session) {
+          await upsertUser(signInData.session.user.id)
+          await joinLeagueAndRedirect(supabase, signInData.session.user.id)
+        }
       }
     } else {
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password })
+      const { data: signInData, error: err } = await supabase.auth.signInWithPassword({ email, password })
       setLoading(false)
       if (err) {
         const msg = err.message.toLowerCase()
@@ -65,7 +91,11 @@ export default function LoginPage() {
           setError(err.message)
         }
       } else {
-        window.location.href = '/predictions/groups'
+        if (signInData.session) {
+          await joinLeagueAndRedirect(supabase, signInData.session.user.id)
+        } else {
+          window.location.href = '/predictions/groups'
+        }
       }
     }
   }
@@ -84,6 +114,12 @@ export default function LoginPage() {
             {mode === 'signup' ? 'Join the prediction league' : 'Welcome back'}
           </p>
         </div>
+
+        {leagueCode && mode === 'signup' && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-lg px-4 py-3 mb-4">
+            You&apos;re joining league &quot;{leagueCode}&quot; — enter your details to sign up
+          </div>
+        )}
 
         {success && (
           <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3 mb-4">
