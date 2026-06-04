@@ -157,8 +157,7 @@ interface MatchCardProps {
   homeTeam: Team | null
   awayTeam: Team | null
   pred: { homeScore: string; awayScore: string }
-  onChange: (p: { homeScore: string; awayScore: string }) => void
-  onBlur: () => void
+  onSave: (p: { homeScore: string; awayScore: string }) => void
   hasError: boolean
   isSaving: boolean
   isSaved: boolean
@@ -166,7 +165,7 @@ interface MatchCardProps {
   compact?: boolean
 }
 
-function MatchCard({ slot, label, homeTeam, awayTeam, pred, onChange, onBlur, hasError, isSaving, isSaved, isLocked, compact }: MatchCardProps) {
+function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, isSaving, isSaved, isLocked, compact }: MatchCardProps) {
   const [localPred, setLocalPred] = useState(pred)
   const isFocusedRef = useRef(false)
 
@@ -185,8 +184,13 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onChange, onBlur, ha
 
   const handleBlur = () => {
     isFocusedRef.current = false
-    onChange(localPred)
-    onBlur()
+    // Delay so a sibling input's onFocus fires first when tabbing between score fields
+    setTimeout(() => {
+      if (!isFocusedRef.current) {
+        // Pass localPred directly — avoids stale closure on parent koPreds state
+        onSave(localPred)
+      }
+    }, 0)
   }
 
   const drawError = localPred.homeScore !== '' && localPred.awayScore !== '' && localPred.homeScore === localPred.awayScore
@@ -274,7 +278,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onChange, onBlur, ha
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function KnockoutPredictionsPage() {
+export default function KnockoutPredictionsPage({ onCountChange }: { onCountChange?: (n: number) => void }) {
   const [groupMatches, setGroupMatches] = useState<MatchWithTeams[]>([])
   const [allTeams, setAllTeams] = useState<Team[]>([])
   const [groupPreds, setGroupPreds] = useState<GroupPredMap>({})
@@ -284,15 +288,24 @@ export default function KnockoutPredictionsPage() {
   const [view, setView] = useState<ViewMode>('list')
   const [savingSlots, setSavingSlots] = useState<Set<number>>(new Set())
   const [errorSlots, setErrorSlots] = useState<Set<number>>(new Set())
+  const [savedSlotCount, setSavedSlotCount] = useState(0)
   const [showWinner, setShowWinner] = useState(false)
   const isLocked = new Date() >= LOCK_AT
   const supabase = createClient()
+
+  // Ref mirrors koPreds for use in callbacks without stale closure issues
+  const koPredsRef = useRef<KOPredMap>({})
+  useEffect(() => { koPredsRef.current = koPreds }, [koPreds])
+
+  const userIdRef = useRef<string | null>(null)
+  useEffect(() => { userIdRef.current = userId }, [userId])
 
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
       setUserId(user.id)
+      userIdRef.current = user.id
 
       const [matchRes, teamRes, gpRes, kpRes] = await Promise.all([
         supabase.from('matches')
@@ -314,13 +327,18 @@ export default function KnockoutPredictionsPage() {
       setGroupPreds(gpMap)
 
       const kpMap: KOPredMap = {}
+      let count = 0
       for (const p of kpRes.data ?? []) {
         kpMap[p.bracket_slot] = {
           homeScore: p.pred_home_score !== null ? String(p.pred_home_score) : '',
           awayScore: p.pred_away_score !== null ? String(p.pred_away_score) : '',
         }
+        if (p.pred_home_score !== null && p.pred_away_score !== null) count++
       }
       setKoPreds(kpMap)
+      koPredsRef.current = kpMap
+      setSavedSlotCount(count)
+      onCountChange?.(count)
       setLoading(false)
     }
     init()
@@ -344,10 +362,10 @@ export default function KnockoutPredictionsPage() {
     prevWinnerRef.current = predictedWinner
   }, [predictedWinner])
 
-  const handleBlur = useCallback(async (slot: number) => {
-    if (!userId || isLocked) return
-    const pred = koPreds[slot]
-    if (!pred) return
+  // handleSave receives pred directly from MatchCard — no stale closure on koPreds
+  const handleSave = useCallback(async (slot: number, pred: { homeScore: string; awayScore: string }) => {
+    const uid = userIdRef.current
+    if (!uid || isLocked) return
     const { homeScore, awayScore } = pred
 
     if (homeScore === '' && awayScore === '') return
@@ -364,19 +382,26 @@ export default function KnockoutPredictionsPage() {
     }
 
     setErrorSlots(s => { const n = new Set(s); n.delete(slot); return n })
+
+    // Use ref to read previous saved state without stale closure
+    const prev = koPredsRef.current[slot]
+    const wasAlreadySaved = prev?.homeScore !== '' && prev?.awayScore !== '' &&
+      prev?.homeScore !== undefined && prev?.awayScore !== undefined
+
+    // Update state with new pred
+    setKoPreds(p => ({ ...p, [slot]: pred }))
+
     setSavingSlots(s => new Set([...s, slot]))
     await supabase.from('predictions_knockout').upsert(
-      { user_id: userId, bracket_slot: slot, pred_home_score: h, pred_away_score: a, updated_at: new Date().toISOString() },
+      { user_id: uid, bracket_slot: slot, pred_home_score: h, pred_away_score: a, updated_at: new Date().toISOString() },
       { onConflict: 'user_id,bracket_slot' }
     )
     setSavingSlots(s => { const n = new Set(s); n.delete(slot); return n })
-  }, [userId, isLocked, koPreds, supabase])
 
-  const setPred = useCallback((slot: number, p: { homeScore: string; awayScore: string }) => {
-    setKoPreds(prev => ({ ...prev, [slot]: p }))
-    // Clear error as soon as user starts typing
-    setErrorSlots(s => { const n = new Set(s); n.delete(slot); return n })
-  }, [])
+    if (!wasAlreadySaved) {
+      setSavedSlotCount(c => { const next = c + 1; onCountChange?.(next); return next })
+    }
+  }, [isLocked, supabase, onCountChange])
 
   const slotProps = useCallback((slot: number) => {
     const { home, away } = getSlotTeams(slot, koPreds, qualified)
@@ -388,14 +413,13 @@ export default function KnockoutPredictionsPage() {
       homeTeam: home,
       awayTeam: away,
       pred,
-      onChange: (p: { homeScore: string; awayScore: string }) => setPred(slot, p),
-      onBlur: () => handleBlur(slot),
+      onSave: (p: { homeScore: string; awayScore: string }) => handleSave(slot, p),
       hasError: errorSlots.has(slot),
       isSaving: savingSlots.has(slot),
       isSaved,
       isLocked,
     }
-  }, [koPreds, qualified, errorSlots, savingSlots, isLocked, setPred, handleBlur])
+  }, [koPreds, qualified, errorSlots, savingSlots, isLocked, handleSave])
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading bracket…</div>
@@ -563,20 +587,14 @@ function ListView({ slotProps, koPreds, onShowWinner }: { slotProps: (slot: numb
 // ── Bracket View ──────────────────────────────────────────────────────────────
 
 function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCardProps, 'label' | 'compact'> }) {
-  // Left half: slots 1-8 → R16 17-20 → QF 25-26 → SF 29
-  // Right half: slots 9-16 → R16 21-24 → QF 27-28 → SF 30
-  // Center: Final 32 + 3rd Place 31
-
-  // Left half → SF 29: R32 pairs (2,5)→R16-17, (1,3)→R16-18, (11,12)→R16-21, (9,10)→R16-22
   const leftR32  = [2, 5, 1, 3, 11, 12, 9, 10]
   const leftR16  = [17, 18, 21, 22]
-  const leftQF   = [25, 26]   // QF25=W(17)vsW(18), QF26=W(21)vsW(22) → both feed SF29
+  const leftQF   = [25, 26]
   const leftSF   = [29]
 
-  // Right half → SF 30: R32 pairs (4,6)→R16-19, (7,8)→R16-20, (14,16)→R16-23, (13,15)→R16-24
   const rightR32 = [4, 6, 7, 8, 14, 16, 13, 15]
   const rightR16 = [19, 20, 23, 24]
-  const rightQF  = [27, 28]   // QF27=W(19)vsW(20), QF28=W(23)vsW(24) → both feed SF30
+  const rightQF  = [27, 28]
   const rightSF  = [30]
 
   const posLabel = (slot: number): string => {
@@ -603,26 +621,26 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
 
   return (
     <div className="overflow-x-auto -mx-4 px-4">
-      <div className="min-w-[720px] flex gap-2 items-stretch">
-        {/* Left half — reads left to right: R32 → R16 → QF → SF */}
-        <BracketColumn title="R32" slots={leftR32} className="w-44" />
-        <BracketColumn title="R16" slots={leftR16} className="w-44" />
-        <BracketColumn title="QF" slots={leftQF} className="w-44" />
-        <BracketColumn title="SF" slots={leftSF} className="w-44" />
+      <div className="min-w-[1100px] flex gap-1.5 items-stretch">
+        {/* Left half — R32 → R16 → QF → SF */}
+        <BracketColumn title="R32" slots={leftR32} className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R16" slots={leftR16} className="flex-1 min-w-[120px]" />
+        <BracketColumn title="QF"  slots={leftQF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="SF"  slots={leftSF}  className="flex-1 min-w-[120px]" />
 
         {/* Center: Final + 3rd */}
-        <div className="flex flex-col justify-center gap-3 w-44 mx-1">
+        <div className="flex flex-col justify-center gap-3 flex-1 min-w-[120px] mx-0.5">
           <div className="text-[10px] font-bold text-center text-[#0B1F3A] uppercase tracking-widest pb-1 border-b border-[#0B1F3A]/20">Final</div>
           <MatchCard compact label="🏆 Final" {...slotProps(32)} />
           <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100 mt-2">3rd Place</div>
           <MatchCard compact label="3rd Place" {...slotProps(31)} />
         </div>
 
-        {/* Right half — reads right to left: SF → QF → R16 → R32 */}
-        <BracketColumn title="SF" slots={rightSF} className="w-44" />
-        <BracketColumn title="QF" slots={rightQF} className="w-44" />
-        <BracketColumn title="R16" slots={rightR16} className="w-44" />
-        <BracketColumn title="R32" slots={rightR32} className="w-44" />
+        {/* Right half — SF → QF → R16 → R32 */}
+        <BracketColumn title="SF"  slots={rightSF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="QF"  slots={rightQF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R16" slots={rightR16} className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R32" slots={rightR32} className="flex-1 min-w-[120px]" />
       </div>
     </div>
   )
