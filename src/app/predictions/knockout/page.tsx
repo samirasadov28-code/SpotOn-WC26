@@ -185,8 +185,13 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onChange, onBlur, ha
 
   const handleBlur = () => {
     isFocusedRef.current = false
-    onChange(localPred)
-    onBlur()
+    // Delay so the sibling input's onFocus fires first (tabbing between the two score fields)
+    setTimeout(() => {
+      if (!isFocusedRef.current) {
+        onChange(localPred)
+        onBlur()
+      }
+    }, 0)
   }
 
   const drawError = localPred.homeScore !== '' && localPred.awayScore !== '' && localPred.homeScore === localPred.awayScore

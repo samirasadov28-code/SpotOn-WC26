@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
@@ -156,6 +156,8 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [errorIds, setErrorIds] = useState<Set<string>>(new Set())
   const [dbError, setDbError] = useState<string | null>(null)
   const isLocked = new Date() >= LOCK_AT
+  // Track which match card is focused (to avoid validating when tabbing between the two score inputs)
+  const focusedMatchRef = useRef<string | null>(null)
 
   const supabase = createClient()
 
@@ -195,7 +197,15 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
     init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleFocus = useCallback((matchId: string) => {
+    focusedMatchRef.current = matchId
+  }, [])
+
   const handleBlur = useCallback(async (matchId: string) => {
+    focusedMatchRef.current = null
+    // Delay so the sibling input's onFocus fires first (tabbing between the two score inputs)
+    await new Promise(r => setTimeout(r, 0))
+    if (focusedMatchRef.current === matchId) return  // focus moved to the other input in the same card
     if (!userId || isLocked) return
     const pred = preds[matchId]
     if (!pred) return
@@ -338,11 +348,13 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.home}
                       onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, home: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
+                      onFocus={() => handleFocus(match.id)}
                       onBlur={() => handleBlur(match.id)}
                       className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.home === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                     <span className="text-gray-400 font-bold text-xs">–</span>
                     <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.away}
                       onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, away: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
+                      onFocus={() => handleFocus(match.id)}
                       onBlur={() => handleBlur(match.id)}
                       className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.away === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                   </div>
