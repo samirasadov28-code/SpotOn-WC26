@@ -47,9 +47,9 @@ export default function SimulatePage() {
 
   useEffect(() => {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    const uid = user?.id ?? null
-    setCurrentUserId(uid)
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id ?? null)
+    })
 
     Promise.all([
       supabase.from('matches').select('*, home_team:teams!matches_home_team_id_fkey(id,name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(id,name,flag_emoji,fifa_code)').eq('stage', 'group').order('kickoff_at'),
