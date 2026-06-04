@@ -6,6 +6,12 @@ import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
+const TWO_HOURS_MS = 2 * 60 * 60 * 1000
+
+function isMatchLocked(kickoffAt: string | null | undefined): boolean {
+  if (!kickoffAt) return false
+  return Date.now() >= new Date(kickoffAt).getTime() - TWO_HOURS_MS
+}
 const GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
 
 // Official R32 path per group position
@@ -121,7 +127,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [errorIds, setErrorIds] = useState<Set<string>>(new Set())
   const [dbError, setDbError] = useState<string | null>(null)
-  const isLocked = new Date() >= LOCK_AT
+  const isGloballyLocked = new Date() >= LOCK_AT
 
   const supabase = createClient()
 
@@ -162,7 +168,8 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleBlur = useCallback(async (matchId: string) => {
-    if (!userId || isLocked) return
+    const match = matches.find(m => m.id === matchId)
+    if (!userId || isGloballyLocked || isMatchLocked(match?.kickoff_at)) return
     const pred = preds[matchId]
     if (!pred) return
     const { home, away } = pred
@@ -200,7 +207,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       setSavedIds(s => new Set([...s, matchId]))
       setSavedCount(c => { const next = c + 1; onCountChange?.(next); return next })
     }
-  }, [userId, isLocked, preds, savedIds, supabase])
+  }, [userId, isGloballyLocked, matches, preds, savedIds, supabase])
 
   const groupMatches = matches.filter(m => m.group_letter === activeGroup)
   const groupTeams = teams.filter(t => t.group_letter === activeGroup)
@@ -252,7 +259,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-[#0B1F3A]">Group Stage Predictions</h1>
-        {isLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
+        {isGloballyLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
       </div>
 
       {/* Group tabs */}
@@ -278,6 +285,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
             const pred = preds[match.id] ?? { home: '', away: '' }
             const saving = savingIds.has(match.id)
             const hasError = errorIds.has(match.id)
+            const matchLocked = isGloballyLocked || isMatchLocked(match.kickoff_at)
             const kickoff = match.kickoff_at
               ? new Date(match.kickoff_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short' })
               : ''
@@ -285,8 +293,11 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
             const awayCode = (match.away_team as any)?.fifa_code
 
             return (
-              <div key={match.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${hasError ? 'border-red-400' : 'border-transparent'}`}>
-                <div className="text-xs text-gray-400 mb-2">{kickoff}{match.venue ? ` · ${match.venue}` : ''}</div>
+              <div key={match.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${hasError ? 'border-red-400' : matchLocked ? 'border-gray-300' : 'border-transparent'}`}>
+                <div className="text-xs text-gray-400 mb-2 flex items-center gap-1.5">
+                  <span>{kickoff}{match.venue ? ` · ${match.venue}` : ''}</span>
+                  {matchLocked && !isGloballyLocked && <span className="text-orange-500 font-medium">🔒 locked</span>}
+                </div>
                 <div className="flex items-center gap-2">
                   {/* Home */}
                   <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5 overflow-hidden">
@@ -295,12 +306,12 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   </div>
                   {/* Inputs */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.home}
+                    <input type="number" min={0} max={99} inputMode="numeric" disabled={matchLocked} value={pred.home}
                       onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, home: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
                       onBlur={() => handleBlur(match.id)}
                       className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.home === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                     <span className="text-gray-400 font-bold text-xs">–</span>
-                    <input type="number" min={0} max={99} inputMode="numeric" disabled={isLocked} value={pred.away}
+                    <input type="number" min={0} max={99} inputMode="numeric" disabled={matchLocked} value={pred.away}
                       onChange={e => { setPreds(p => ({ ...p, [match.id]: { ...pred, away: e.target.value } })); setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n }) }}
                       onBlur={() => handleBlur(match.id)}
                       className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.away === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
