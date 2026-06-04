@@ -12,6 +12,7 @@ const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const NAV_LINKS = [
   { href: '/predictions', label: 'Predictions' },
   { href: '/results', label: 'Results' },
+  { href: '/simulate', label: 'Simulate' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/teams', label: 'Teams' },
   { href: '/stadiums', label: 'Stadiums' },
