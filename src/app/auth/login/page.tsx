@@ -33,8 +33,8 @@ export default function LoginPage() {
     setLoading(false)
     if (err) {
       if (err.message.toLowerCase().includes('rate limit') || err.status === 429) {
-        setError('Too many requests — please wait 60 seconds before trying again.')
-        setResendCooldown(60)
+        setError('Email limit reached — Supabase restricts how often codes can be sent. Please wait a few minutes and try again.')
+        setResendCooldown(120)
       } else {
         setError(err.message)
       }
@@ -156,7 +156,7 @@ export default function LoginPage() {
                   const { error: err } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
                   setLoading(false)
                   if (err) {
-                    setError(err.message.toLowerCase().includes('rate limit') ? 'Still rate limited — please wait.' : err.message)
+                    setError(err.message.toLowerCase().includes('rate limit') ? 'Still rate limited — please wait a few more minutes.' : err.message)
                     setResendCooldown(60)
                   } else {
                     setResendCooldown(60)
