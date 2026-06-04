@@ -282,6 +282,8 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
         {isGloballyLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
       </div>
 
+      {isGloballyLocked && <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-red-700 font-semibold text-center">🔒 Predictions are locked. The tournament has started!</div>}
+
       {/* Group tabs */}
       <div className="flex flex-wrap gap-1 mb-6">
         {GROUPS.map(g => {
@@ -339,7 +341,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                         setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n })
                       }}
                       onBlur={() => handleBlur(match.id)}
-                      className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.home === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
+                      className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${hasError && pred.home === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                     <span className="text-gray-400 font-bold text-xs">–</span>
                     <input type="number" min={0} max={99} inputMode="numeric" disabled={matchLocked} value={pred.away}
                       onChange={e => {
@@ -350,7 +352,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                         setErrorIds(s => { const n = new Set(s); n.delete(match.id); return n })
                       }}
                       onBlur={() => handleBlur(match.id)}
-                      className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 ${hasError && pred.away === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
+                      className={`w-11 text-center border rounded-lg py-2 text-sm font-bold focus:ring-2 focus:ring-[#0B1F3A] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${hasError && pred.away === '' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
                   </div>
                   {/* Away */}
                   <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">

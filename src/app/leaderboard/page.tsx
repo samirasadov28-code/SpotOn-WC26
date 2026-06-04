@@ -24,6 +24,14 @@ interface LeaderboardEntry {
   updatedAt: Date | null
 }
 
+interface H2HStats {
+  bothRight: number
+  rivalOnly: number
+  youOnly: number
+  neither: number
+  rivalPtsLead: number
+}
+
 interface ScoreBreakdown {
   groupExact: number    // 3-pt hits
   groupGD: number       // 2-pt hits
@@ -34,6 +42,15 @@ interface ScoreBreakdown {
   koGD: number
   koOutcome: number
   koTotal: number
+  h2h?: H2HStats
+}
+
+function getMatchPts(pred_home: number, pred_away: number, actual_home: number, actual_away: number): number {
+  if (pred_home === actual_home && pred_away === actual_away) return 3
+  const predGD = pred_home - pred_away, actualGD = actual_home - actual_away
+  if (predGD === actualGD) return 2
+  if (Math.sign(predGD) === Math.sign(actualGD)) return 1
+  return 0
 }
 
 function calcBreakdown(
@@ -159,29 +176,83 @@ export default function LeaderboardPage() {
     return () => { supabase.removeChannel(channel) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadBreakdown = async (userId: string, advTotal: number) => {
+  const loadBreakdown = async (userId: string, advTotal: number, meId: string | null) => {
     if (breakdowns[userId]) return
     setLoadingBreakdown(userId)
-    const [gpRes, matchRes, kpRes, koMatchRes] = await Promise.all([
+
+    const fetchesForRival = [
       (supabase as any).from('predictions_group').select('match_id, pred_home_score, pred_away_score').eq('user_id', userId),
       (supabase as any).from('matches').select('id, actual_home_score, actual_away_score').eq('stage', 'group').not('actual_home_score', 'is', null),
       (supabase as any).from('predictions_knockout').select('bracket_slot, pred_home_score, pred_away_score').eq('user_id', userId),
       (supabase as any).from('matches').select('id, bracket_slot, actual_home_score, actual_away_score').eq('stage', 'knockout').not('actual_home_score', 'is', null),
-    ])
+    ]
+
+    // If viewing a rival (not self) and we're logged in, also fetch current user's predictions for H2H
+    const isRival = meId && meId !== userId
+    let myGroupPredsPromise: Promise<any> | null = null
+    let myKoPredsPromise: Promise<any> | null = null
+    if (isRival) {
+      myGroupPredsPromise = (supabase as any).from('predictions_group').select('match_id, pred_home_score, pred_away_score').eq('user_id', meId)
+      myKoPredsPromise = (supabase as any).from('predictions_knockout').select('bracket_slot, pred_home_score, pred_away_score').eq('user_id', meId)
+    }
+
+    const [gpRes, matchRes, kpRes, koMatchRes] = await Promise.all(fetchesForRival)
 
     const actualGroupMap = new Map((matchRes.data ?? []).map((m: any) => [m.id, m]))
     const groupPreds = (gpRes.data ?? []).filter((p: any) => actualGroupMap.has(p.match_id)).map((p: any) => {
       const m = actualGroupMap.get(p.match_id)
-      return { pred_home: p.pred_home_score, pred_away: p.pred_away_score, actual_home: m.actual_home_score, actual_away: m.actual_away_score }
+      return { match_id: p.match_id, pred_home: p.pred_home_score, pred_away: p.pred_away_score, actual_home: m.actual_home_score, actual_away: m.actual_away_score }
     })
 
     const actualKoMap = new Map((koMatchRes.data ?? []).map((m: any) => [m.bracket_slot, m]))
     const koPreds = (kpRes.data ?? []).filter((p: any) => actualKoMap.has(p.bracket_slot)).map((p: any) => {
       const m = actualKoMap.get(p.bracket_slot)
-      return { pred_home: p.pred_home_score, pred_away: p.pred_away_score, actual_home: m.actual_home_score, actual_away: m.actual_away_score }
+      return { bracket_slot: p.bracket_slot, pred_home: p.pred_home_score, pred_away: p.pred_away_score, actual_home: m.actual_home_score, actual_away: m.actual_away_score }
     })
 
     const bd = calcBreakdown(groupPreds, koPreds, advTotal)
+
+    // Compute H2H if viewing a rival
+    if (isRival && myGroupPredsPromise && myKoPredsPromise) {
+      const [myGpRes, myKpRes] = await Promise.all([myGroupPredsPromise, myKoPredsPromise])
+
+      const myGroupMap = new Map((myGpRes.data ?? []).map((p: any) => [p.match_id, p]))
+      const myKoMap = new Map((myKpRes.data ?? []).map((p: any) => [p.bracket_slot, p]))
+
+      let bothRight = 0, rivalOnly = 0, youOnly = 0, neither = 0
+      let rivalPts = 0, myPts = 0
+
+      for (const rp of groupPreds) {
+        const mp = myGroupMap.get(rp.match_id)
+        const rivalCorrect = getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away) > 0
+        const myCorrect = mp ? getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away) > 0 : false
+
+        if (rivalCorrect && myCorrect) bothRight++
+        else if (rivalCorrect && !myCorrect) rivalOnly++
+        else if (!rivalCorrect && myCorrect) youOnly++
+        else neither++
+
+        rivalPts += getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away)
+        if (mp) myPts += getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away)
+      }
+
+      for (const rp of koPreds) {
+        const mp = myKoMap.get(rp.bracket_slot)
+        const rivalCorrect = getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away) > 0
+        const myCorrect = mp ? getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away) > 0 : false
+
+        if (rivalCorrect && myCorrect) bothRight++
+        else if (rivalCorrect && !myCorrect) rivalOnly++
+        else if (!rivalCorrect && myCorrect) youOnly++
+        else neither++
+
+        rivalPts += getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away)
+        if (mp) myPts += getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away)
+      }
+
+      bd.h2h = { bothRight, rivalOnly, youOnly, neither, rivalPtsLead: rivalPts - myPts }
+    }
+
     setBreakdowns(prev => ({ ...prev, [userId]: bd }))
     setLoadingBreakdown(null)
   }
@@ -189,7 +260,7 @@ export default function LeaderboardPage() {
   const handleRowClick = async (entry: LeaderboardEntry) => {
     const isOpen = expandedId === entry.userId
     setExpandedId(isOpen ? null : entry.userId)
-    if (!isOpen) await loadBreakdown(entry.userId, entry.advancementPts)
+    if (!isOpen) await loadBreakdown(entry.userId, entry.advancementPts, currentUserId)
   }
 
   const handleLeagueChange = async (leagueId: string) => {
@@ -317,35 +388,78 @@ export default function LeaderboardPage() {
                           {loadingBreakdown === entry.userId ? (
                             <div className="text-xs text-gray-400 py-2">Loading breakdown…</div>
                           ) : bd ? (
-                            <div className="grid sm:grid-cols-3 gap-3 mt-1">
-                              {/* Group stage */}
-                              <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                                <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">⚽ Group Stage <span className="text-gray-400 font-normal ml-auto">{bd.groupTotal} pts</span></div>
-                                <div className="space-y-1 text-xs text-gray-600">
-                                  <div className="flex justify-between"><span>🎯 Exact score <span className="text-gray-400">(×3)</span></span><span className="font-semibold text-green-600">{bd.groupExact} × 3 = {bd.groupExact * 3}</span></div>
-                                  <div className="flex justify-between"><span>📐 Correct GD <span className="text-gray-400">(×2)</span></span><span className="font-semibold text-blue-600">{bd.groupGD} × 2 = {bd.groupGD * 2}</span></div>
-                                  <div className="flex justify-between"><span>✅ Correct outcome <span className="text-gray-400">(×1)</span></span><span className="font-semibold text-gray-600">{bd.groupOutcome} × 1 = {bd.groupOutcome}</span></div>
+                            <>
+                              <div className="grid sm:grid-cols-3 gap-3 mt-1">
+                                {/* Group stage */}
+                                <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">⚽ Group Stage <span className="text-gray-400 font-normal ml-auto">{bd.groupTotal} pts</span></div>
+                                  <div className="space-y-1 text-xs text-gray-600">
+                                    <div className="flex justify-between"><span>🎯 Exact score <span className="text-gray-400">(×3)</span></span><span className="font-semibold text-green-600">{bd.groupExact} × 3 = {bd.groupExact * 3}</span></div>
+                                    <div className="flex justify-between"><span>📐 Correct GD <span className="text-gray-400">(×2)</span></span><span className="font-semibold text-blue-600">{bd.groupGD} × 2 = {bd.groupGD * 2}</span></div>
+                                    <div className="flex justify-between"><span>✅ Correct outcome <span className="text-gray-400">(×1)</span></span><span className="font-semibold text-gray-600">{bd.groupOutcome} × 1 = {bd.groupOutcome}</span></div>
+                                  </div>
+                                </div>
+                                {/* Advancement */}
+                                <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">🏅 Group Advancement <span className="text-gray-400 font-normal ml-auto">{bd.advTotal} pts</span></div>
+                                  <p className="text-xs text-gray-500 leading-relaxed">Bonus points awarded for each team you correctly predicted to advance from the group stage. Points scale per round — see Rules for full table.</p>
+                                </div>
+                                {/* Knockout */}
+                                <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">🏆 Playoff Matches <span className="text-gray-400 font-normal ml-auto">{bd.koTotal} pts</span></div>
+                                  {bd.koExact + bd.koGD + bd.koOutcome === 0 ? (
+                                    <p className="text-xs text-gray-400 italic">No playoff matches played yet.</p>
+                                  ) : (
+                                    <div className="space-y-1 text-xs text-gray-600">
+                                      <div className="flex justify-between"><span>🎯 Exact score <span className="text-gray-400">(×3)</span></span><span className="font-semibold text-green-600">{bd.koExact} × 3 = {bd.koExact * 3}</span></div>
+                                      <div className="flex justify-between"><span>📐 Correct GD <span className="text-gray-400">(×2)</span></span><span className="font-semibold text-blue-600">{bd.koGD} × 2 = {bd.koGD * 2}</span></div>
+                                      <div className="flex justify-between"><span>✅ Correct outcome <span className="text-gray-400">(×1)</span></span><span className="font-semibold text-gray-600">{bd.koOutcome} × 1 = {bd.koOutcome}</span></div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                              {/* Advancement */}
-                              <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                                <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">🏅 Group Advancement <span className="text-gray-400 font-normal ml-auto">{bd.advTotal} pts</span></div>
-                                <p className="text-xs text-gray-500 leading-relaxed">Bonus points awarded for each team you correctly predicted to advance from the group stage. Points scale per round — see Rules for full table.</p>
-                              </div>
-                              {/* Knockout */}
-                              <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                                <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">🏆 Playoff Matches <span className="text-gray-400 font-normal ml-auto">{bd.koTotal} pts</span></div>
-                                {bd.koExact + bd.koGD + bd.koOutcome === 0 ? (
-                                  <p className="text-xs text-gray-400 italic">No playoff matches played yet.</p>
-                                ) : (
-                                  <div className="space-y-1 text-xs text-gray-600">
-                                    <div className="flex justify-between"><span>🎯 Exact score <span className="text-gray-400">(×3)</span></span><span className="font-semibold text-green-600">{bd.koExact} × 3 = {bd.koExact * 3}</span></div>
-                                    <div className="flex justify-between"><span>📐 Correct GD <span className="text-gray-400">(×2)</span></span><span className="font-semibold text-blue-600">{bd.koGD} × 2 = {bd.koGD * 2}</span></div>
-                                    <div className="flex justify-between"><span>✅ Correct outcome <span className="text-gray-400">(×1)</span></span><span className="font-semibold text-gray-600">{bd.koOutcome} × 1 = {bd.koOutcome}</span></div>
+
+                              {/* H2H section — only shown when viewing a rival and current user is logged in */}
+                              {!isMe && currentUserId && bd.h2h && (
+                                <div className="mt-3 bg-white rounded-xl border border-[#0B1F3A]/20 p-3 shadow-sm">
+                                  <div className="text-xs font-bold text-[#0B1F3A] mb-3 flex items-center gap-1">
+                                    ⚔️ vs You
+                                    <span className="text-gray-400 font-normal ml-auto text-[11px]">on scored matches</span>
                                   </div>
-                                )}
-                              </div>
-                            </div>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                                    <div className="rounded-lg bg-green-50 border border-green-100 p-2 text-center">
+                                      <div className="text-lg font-bold text-green-600">{bd.h2h.bothRight}</div>
+                                      <div className="text-[10px] text-green-700 font-medium">Both correct</div>
+                                    </div>
+                                    <div className="rounded-lg bg-red-50 border border-red-100 p-2 text-center">
+                                      <div className="text-lg font-bold text-red-500">{bd.h2h.rivalOnly}</div>
+                                      <div className="text-[10px] text-red-600 font-medium">Rival only ✓</div>
+                                    </div>
+                                    <div className="rounded-lg bg-blue-50 border border-blue-100 p-2 text-center">
+                                      <div className="text-lg font-bold text-blue-500">{bd.h2h.youOnly}</div>
+                                      <div className="text-[10px] text-blue-600 font-medium">You only ✓</div>
+                                    </div>
+                                    <div className="rounded-lg bg-gray-50 border border-gray-100 p-2 text-center">
+                                      <div className="text-lg font-bold text-gray-400">{bd.h2h.neither}</div>
+                                      <div className="text-[10px] text-gray-500 font-medium">Neither</div>
+                                    </div>
+                                  </div>
+                                  <div className={`text-xs font-semibold text-center py-1 px-3 rounded-full inline-block ${
+                                    bd.h2h.rivalPtsLead > 0
+                                      ? 'bg-red-50 text-red-600'
+                                      : bd.h2h.rivalPtsLead < 0
+                                      ? 'bg-blue-50 text-blue-600'
+                                      : 'bg-gray-50 text-gray-500'
+                                  }`}>
+                                    {bd.h2h.rivalPtsLead === 0
+                                      ? 'Tied on scored matches'
+                                      : bd.h2h.rivalPtsLead > 0
+                                      ? `Rival leads by ${bd.h2h.rivalPtsLead} pts on scored matches`
+                                      : `You lead by ${Math.abs(bd.h2h.rivalPtsLead)} pts on scored matches`}
+                                  </div>
+                                </div>
+                              )}
+                            </>
                           ) : (
                             <div className="text-xs text-gray-400 py-2">No scored predictions yet.</div>
                           )}
