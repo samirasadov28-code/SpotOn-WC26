@@ -184,7 +184,7 @@ export default function HomePage() {
               Prizes to Be Announced
             </p>
             <p className="text-[#0B1F3A]/70 text-sm font-medium mt-0.5">
-              Exciting prizes are coming — details will be revealed before kickoff. Stay tuned!
+              Exciting prizes are coming — details will be revealed after kickoff. Stay tuned!
             </p>
           </div>
           <span className="text-4xl">🎁</span>
