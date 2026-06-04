@@ -5,8 +5,9 @@ import { Suspense, useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import GroupPredictionsPage from './groups/page'
 import KnockoutPredictionsPage from './knockout/page'
+import StatsPage from '../stats/page'
 
-type Tab = 'groups' | 'bracket'
+type Tab = 'groups' | 'bracket' | 'stats'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const GROUP_TOTAL = 72
@@ -58,7 +59,7 @@ function PredictionsInner() {
       <div className="border-b border-gray-200 bg-white sticky top-16 z-10">
         <div className="max-w-6xl mx-auto px-4 flex items-center justify-between">
           <div className="flex">
-            {(['groups', 'bracket'] as Tab[]).map((t) => (
+            {(['groups', 'bracket', 'stats'] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -68,7 +69,7 @@ function PredictionsInner() {
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
-                {t === 'groups' ? '⚽ Group Stage' : '🏆 Playoff Bracket'}
+                {t === 'groups' ? '⚽ Group Stage' : t === 'bracket' ? '🏆 Playoff Bracket' : '📊 My Stats'}
                 {t === 'groups' && groupsDone && (
                   <span className="text-[10px] bg-green-500 text-white rounded-full px-1.5 py-0.5 font-bold leading-none">✓</span>
                 )}
@@ -106,7 +107,9 @@ function PredictionsInner() {
         </div>
       )}
 
-      {tab === 'groups' ? <GroupPredictionsPage onCountChange={setGroupsSaved} /> : <KnockoutPredictionsPage onCountChange={setKoSaved} />}
+      {tab === 'groups' && <GroupPredictionsPage onCountChange={setGroupsSaved} />}
+      {tab === 'bracket' && <KnockoutPredictionsPage onCountChange={setKoSaved} />}
+      {tab === 'stats' && <StatsPage />}
     </div>
   )
 }
