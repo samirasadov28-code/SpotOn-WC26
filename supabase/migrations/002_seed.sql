@@ -59,10 +59,12 @@ INSERT INTO teams (name, fifa_code, group_letter, flag_emoji, confederation, blu
 ('England', 'ENG', 'L', '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'UEFA', 'Euro 2024 runners-up chasing a first major trophy since 1966 with a golden generation.', ARRAY['Harry Kane','Jude Bellingham','Bukayo Saka','Phil Foden']),
 ('Croatia', 'CRO', 'L', '🇭🇷', 'UEFA', 'Overachievers of the last decade — 2018 finalists, 2022 third place — still marshaled by a legendary midfield maestro.', ARRAY['Luka Modrić','Joško Gvardiol','Mateo Kovačić']),
 ('Ghana', 'GHA', 'L', '🇬🇭', 'CAF', 'The Black Stars return with an energetic, talented squad.', ARRAY['Mohammed Kudus','Thomas Partey','Iñaki Williams']),
-('Panama', 'PAN', 'L', '🇵🇦', 'CONCACAF', 'Second World Cup (after 2018) for a side that has become a real CONCACAF force.', ARRAY['Adalberto Carrasquilla','José Fajardo']);
+('Panama', 'PAN', 'L', '🇵🇦', 'CONCACAF', 'Second World Cup (after 2018) for a side that has become a real CONCACAF force.', ARRAY['Adalberto Carrasquilla','José Fajardo'])
+ON CONFLICT (fifa_code) DO NOTHING;
 
 -- Default league
-INSERT INTO leagues (name, join_code) VALUES ('SpotOn WC26', 'SPOTON26');
+INSERT INTO leagues (name, join_code) VALUES ('SpotOn WC26', 'SPOTON26')
+ON CONFLICT (join_code) DO NOTHING;
 
 -- Group stage matches (72 total)
 -- Using a DO block to resolve team IDs by fifa_code
@@ -93,6 +95,9 @@ DECLARE
   -- Group L
   v_ENG uuid; v_CRO uuid; v_GHA uuid; v_PAN uuid;
 BEGIN
+  -- Clear existing group matches to allow re-running
+  DELETE FROM matches WHERE stage = 'group';
+
   SELECT id INTO v_MEX FROM teams WHERE fifa_code='MEX';
   SELECT id INTO v_RSA FROM teams WHERE fifa_code='RSA';
   SELECT id INTO v_KOR FROM teams WHERE fifa_code='KOR';
