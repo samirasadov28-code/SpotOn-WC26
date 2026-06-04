@@ -29,8 +29,10 @@ export default function OnboardingPage() {
 
     const { error: err } = await supabase
       .from('users')
-      .update({ display_name: name })
-      .eq('id', user.id)
+      .upsert(
+        { id: user.id, email: user.email ?? '', display_name: name },
+        { onConflict: 'id' }
+      )
 
     setLoading(false)
     if (err) {
