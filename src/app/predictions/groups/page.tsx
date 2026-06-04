@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
+import { GROUP_STADIUMS } from '@/lib/schedule-data'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
@@ -286,7 +287,14 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
 
             return (
               <div key={match.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${hasError ? 'border-red-400' : 'border-transparent'}`}>
-                <div className="text-xs text-gray-400 mb-2">{kickoff}{match.venue ? ` · ${match.venue}` : ''}</div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-400">{kickoff}</span>
+                  {match.venue && (
+                    <span className="text-[10px] font-medium text-[#0B1F3A]/60 bg-gray-50 border border-gray-100 rounded px-2 py-0.5 flex items-center gap-1">
+                      🏟 {match.venue}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   {/* Home */}
                   <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5 overflow-hidden">
@@ -412,6 +420,25 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
               <span><span className="inline-block w-2 h-2 bg-yellow-200 rounded-sm mr-1" />Best 3rd?</span>
             </div>
           </div>
+
+          {/* Venues for this group */}
+          {(GROUP_STADIUMS[activeGroup] ?? []).length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="bg-[#0B1F3A] text-white px-4 py-2.5 text-sm font-bold">🏟 Group {activeGroup} Venues</div>
+              <div className="divide-y divide-gray-50">
+                {(GROUP_STADIUMS[activeGroup] ?? []).map(s => (
+                  <a key={s.slug} href={`/stadiums/${s.slug}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                    <img src={`https://flagcdn.com/w20/${s.iso2}.png`} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-[#0B1F3A] truncate">{s.name}</p>
+                      <p className="text-[10px] text-gray-400">{s.city}</p>
+                    </div>
+                    <span className="ml-auto text-[10px] text-gray-400">→</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Best 3rd places */}
           {best3rds.length > 0 && (

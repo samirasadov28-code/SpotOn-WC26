@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { getStadiumGroups, GROUP_STADIUMS } from '@/lib/schedule-data'
+import { STATIC_TEAMS } from '@/lib/teams-data'
 
 const STADIUMS = [
   { slug: 'azteca', name: 'Estadio Azteca', city: 'Mexico City', country: 'Mexico', iso2: 'mx', capacity: '87,500', opened: 1966, surface: 'Grass', note: 'Opening Match', matches: 'Group stage + Round of 32', desc: 'The Azteca is the only stadium to have hosted two World Cup finals — 1970 (Brazil 4–1 Italy) and 1986 (Argentina 3–2 West Germany, the "Hand of God" tournament). It is the largest stadium in Mexico and one of the most atmospheric venues in football. The opening match of WC2026 is played here: Mexico vs South Africa.', facts: ['Hosted the 1970 and 1986 World Cup finals', 'Capacity once exceeded 115,000 before safety modifications', 'Site of Diego Maradona\'s "Goal of the Century" in 1986', 'Home of Club América and the Mexican national team'] },
@@ -20,9 +22,20 @@ const STADIUMS = [
   { slug: 'bbva', name: 'Estadio BBVA', city: 'Monterrey', country: 'Mexico', iso2: 'mx', capacity: '53,500', opened: 2015, surface: 'Natural grass', note: 'Mexican Host', matches: 'Group stage', desc: 'One of Latin America\'s most impressive modern stadiums, home to CF Monterrey (Rayados). Set against the breathtaking backdrop of the Sierra Madre Oriental mountains, Estadio BBVA is consistently ranked among the most beautiful football venues in the world. Monterrey is Mexico\'s industrial capital and its passionate football culture is legendary.', facts: ['Stunning backdrop of the Sierra Madre mountains', 'Opened in 2015 — one of the most modern in Latin America', 'Home of CF Monterrey, winners of multiple CONCACAF Champions Cups', 'Monterrey is known for the most passionate football crowds in Mexico'] },
 ]
 
+function flagUrl(iso2: string) {
+  return `https://flagcdn.com/w40/${iso2}.png`
+}
+
 export default function StadiumPage({ params }: { params: { slug: string } }) {
   const stadium = STADIUMS.find(s => s.slug === params.slug)
   if (!stadium) notFound()
+
+  const hostedGroups = getStadiumGroups(params.slug)
+  const groupTeams = hostedGroups.map(letter => ({
+    letter,
+    teams: STATIC_TEAMS.filter(t => t.groupLetter === letter),
+    stadiums: GROUP_STADIUMS[letter] ?? [],
+  }))
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -87,8 +100,42 @@ export default function StadiumPage({ params }: { params: { slug: string } }) {
         </div>
       </div>
 
+      {/* Group stage matches hosted here */}
+      {hostedGroups.length > 0 && (
+        <div className="mb-10">
+          <h2 className="text-lg font-black text-[#0B1F3A] mb-4">⚽ Group Stage Matches Here</h2>
+          <div className="flex flex-col gap-4">
+            {groupTeams.map(({ letter, teams }) => (
+              <div key={letter} className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-[#0B1F3A] px-4 py-2.5 flex items-center gap-2">
+                  <div className="w-6 h-6 bg-white/15 text-white rounded-lg flex items-center justify-center font-black text-xs">{letter}</div>
+                  <span className="text-white font-bold text-sm">Group {letter}</span>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {teams.map(t => (
+                    <Link
+                      key={t.fifaCode}
+                      href={`/teams/${t.fifaCode}`}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={flagUrl(t.iso2)} alt={t.name} className="w-7 h-auto rounded-sm flex-shrink-0" />
+                      <span className="font-semibold text-[#0B1F3A] text-sm">{t.name}</span>
+                      <span className="ml-auto text-xs text-gray-400 flex-shrink-0">{t.confederation}</span>
+                    </Link>
+                  ))}
+                </div>
+                <div className="px-4 py-2 bg-gray-50 border-t border-gray-100">
+                  <p className="text-[10px] text-gray-400">Group {letter} plays some of its 6 matches at this venue</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="text-center">
-        <Link href="/teams#stadiums" className="inline-block border-2 border-[#0B1F3A] text-[#0B1F3A] font-black px-8 py-3 rounded-2xl hover:bg-[#0B1F3A] hover:text-white transition-all mr-4">
+        <Link href="/stadiums" className="inline-block border-2 border-[#0B1F3A] text-[#0B1F3A] font-black px-8 py-3 rounded-2xl hover:bg-[#0B1F3A] hover:text-white transition-all mr-4">
           ← All Stadiums
         </Link>
         <Link href="/predictions/groups" className="inline-block bg-[#0B1F3A] text-white font-black px-8 py-3 rounded-2xl hover:bg-[#162d52] transition-colors">

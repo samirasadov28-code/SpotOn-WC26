@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { ASADOV_STACK } from '@/lib/asadov-stack'
 import { STATIC_TEAMS, GROUPS_ORDER } from '@/lib/teams-data'
+import { GROUP_STADIUMS } from '@/lib/schedule-data'
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0'
 const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA || 'dev'
@@ -288,41 +289,68 @@ export default function HomePage() {
             <h2 className="text-2xl sm:text-3xl font-black text-[#0B1F3A]">The Field</h2>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {GROUPS.map((g) => (
-              <Link
-                key={g.letter}
-                href={`/teams#group-${g.letter}`}
-                className="group bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md hover:border-[#0B1F3A]/30 transition-all hover:-translate-y-0.5"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-7 h-7 bg-[#0B1F3A] text-white rounded-lg flex items-center justify-center font-black text-sm">
-                    {g.letter}
+            {GROUPS.map((g) => {
+              const stadiums = GROUP_STADIUMS[g.letter] ?? []
+              return (
+                <div
+                  key={g.letter}
+                  className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm"
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-7 h-7 bg-[#0B1F3A] text-white rounded-lg flex items-center justify-center font-black text-sm">
+                      {g.letter}
+                    </div>
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Group {g.letter}</span>
                   </div>
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Group {g.letter}</span>
+                  <ul className="space-y-1.5">
+                    {g.teams.map((t) => (
+                      <li key={t.fifaCode}>
+                        <Link
+                          href={`/teams/${t.fifaCode}`}
+                          className="flex items-center gap-2 hover:bg-gray-50 rounded-md px-1 py-0.5 -mx-1 transition-colors"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`https://flagcdn.com/w40/${t.iso2}.png`}
+                            alt={t.name}
+                            width={20}
+                            height={14}
+                            className="rounded-sm object-cover flex-shrink-0"
+                            style={{ width: 20, height: 14 }}
+                          />
+                          <span className="text-sm text-gray-700 truncate hover:text-[#0B1F3A] hover:font-medium">{t.shortName}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                  {stadiums.length > 0 && (
+                    <div className="mt-3 pt-2.5 border-t border-gray-100">
+                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">🏟 Venues</p>
+                      <div className="flex flex-col gap-1">
+                        {stadiums.map((s) => (
+                          <Link
+                            key={s.slug}
+                            href={`/stadiums/${s.slug}`}
+                            className="flex items-center gap-1.5 text-[10px] text-[#0B1F3A] hover:underline"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={`https://flagcdn.com/w20/${s.iso2}.png`} alt="" className="w-3.5 h-auto rounded-sm" />
+                            <span className="truncate">{s.city}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <ul className="space-y-1.5">
-                  {g.teams.map((t) => (
-                    <li key={t.fifaCode} className="flex items-center gap-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`https://flagcdn.com/w40/${t.iso2}.png`}
-                        alt={t.name}
-                        width={20}
-                        height={14}
-                        className="rounded-sm object-cover flex-shrink-0"
-                        style={{ width: 20, height: 14 }}
-                      />
-                      <span className="text-sm text-gray-700 truncate">{t.shortName}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-[10px] text-[#0B1F3A] font-semibold mt-3 group-hover:underline">View group →</p>
-              </Link>
-            ))}
+              )
+            })}
           </div>
-          <div className="text-center mt-8">
+          <div className="text-center mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <Link href="/teams" className="inline-flex items-center gap-2 text-[#0B1F3A] font-bold border-2 border-[#0B1F3A] rounded-xl px-6 py-3 hover:bg-[#0B1F3A] hover:text-white transition-all text-sm">
-              Explore All Teams & Venues →
+              Explore All Teams →
+            </Link>
+            <Link href="/stadiums" className="inline-flex items-center gap-2 text-[#0B1F3A] font-bold border-2 border-[#0B1F3A] rounded-xl px-6 py-3 hover:bg-[#0B1F3A] hover:text-white transition-all text-sm">
+              View All Stadiums →
             </Link>
           </div>
         </div>
