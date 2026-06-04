@@ -67,97 +67,135 @@ INSERT INTO leagues (name, join_code) VALUES ('SpotOn WC26', 'SPOTON26')
 ON CONFLICT (join_code) DO NOTHING;
 
 
--- Group stage matches (72 total) — using WITH to resolve team IDs by fifa_code
+-- Group stage matches (72 total) — actual FIFA WC 2026 schedule
+-- All times UTC. US venues use EDT (UTC-4), Mexican venues UTC-6 (no DST since 2023),
+-- Canadian/Pacific venues use PDT (UTC-7). MD3 games per group kick off simultaneously.
 DELETE FROM matches WHERE stage = 'group';
 
 WITH t AS (SELECT fifa_code, id FROM teams)
 INSERT INTO matches (stage, group_letter, home_team_id, away_team_id, kickoff_at, venue)
 SELECT 'group', grp, h.id, a.id, kickoff::timestamptz, venue
 FROM (VALUES
-  -- GROUP A
-  ('A','MEX','RSA','2026-06-11 15:00:00+00','Estadio Azteca, Mexico City'),
-  ('A','MEX','KOR','2026-06-15 18:00:00+00','Estadio Azteca, Mexico City'),
-  ('A','MEX','CZE','2026-06-19 21:00:00+00','Estadio Azteca, Mexico City'),
-  ('A','RSA','KOR','2026-06-12 18:00:00+00','Rose Bowl, Los Angeles'),
-  ('A','RSA','CZE','2026-06-16 21:00:00+00','Rose Bowl, Los Angeles'),
-  ('A','KOR','CZE','2026-06-20 18:00:00+00','Rose Bowl, Los Angeles'),
-  -- GROUP B
-  ('B','CAN','BIH','2026-06-12 15:00:00+00','BC Place, Vancouver'),
-  ('B','CAN','QAT','2026-06-16 18:00:00+00','BC Place, Vancouver'),
-  ('B','CAN','SUI','2026-06-20 21:00:00+00','BC Place, Vancouver'),
-  ('B','BIH','QAT','2026-06-13 15:00:00+00','SoFi Stadium, Los Angeles'),
-  ('B','BIH','SUI','2026-06-17 18:00:00+00','SoFi Stadium, Los Angeles'),
-  ('B','QAT','SUI','2026-06-21 18:00:00+00','SoFi Stadium, Los Angeles'),
-  -- GROUP C
-  ('C','BRA','MAR','2026-06-12 21:00:00+00','MetLife Stadium, New York'),
-  ('C','BRA','HAI','2026-06-17 15:00:00+00','MetLife Stadium, New York'),
-  ('C','BRA','SCO','2026-06-21 21:00:00+00','MetLife Stadium, New York'),
-  ('C','MAR','HAI','2026-06-13 18:00:00+00','Hard Rock Stadium, Miami'),
-  ('C','MAR','SCO','2026-06-17 21:00:00+00','Hard Rock Stadium, Miami'),
-  ('C','HAI','SCO','2026-06-21 15:00:00+00','Hard Rock Stadium, Miami'),
-  -- GROUP D
-  ('D','USA','PAR','2026-06-13 21:00:00+00','AT&T Stadium, Dallas'),
-  ('D','USA','AUS','2026-06-18 18:00:00+00','AT&T Stadium, Dallas'),
-  ('D','USA','TUR','2026-06-22 21:00:00+00','AT&T Stadium, Dallas'),
-  ('D','PAR','AUS','2026-06-14 15:00:00+00','Lumen Field, Seattle'),
-  ('D','PAR','TUR','2026-06-18 21:00:00+00','Lumen Field, Seattle'),
-  ('D','AUS','TUR','2026-06-22 18:00:00+00','Lumen Field, Seattle'),
-  -- GROUP E
-  ('E','GER','CUW','2026-06-14 18:00:00+00','Mercedes-Benz Stadium, Atlanta'),
-  ('E','GER','CIV','2026-06-18 15:00:00+00','Mercedes-Benz Stadium, Atlanta'),
-  ('E','GER','ECU','2026-06-22 15:00:00+00','Mercedes-Benz Stadium, Atlanta'),
-  ('E','CUW','CIV','2026-06-14 21:00:00+00','Estadio BBVA, Monterrey'),
-  ('E','CUW','ECU','2026-06-19 15:00:00+00','Estadio BBVA, Monterrey'),
-  ('E','CIV','ECU','2026-06-23 18:00:00+00','Estadio BBVA, Monterrey'),
-  -- GROUP F
-  ('F','NED','JPN','2026-06-15 15:00:00+00','Gillette Stadium, Boston'),
-  ('F','NED','SWE','2026-06-19 18:00:00+00','Gillette Stadium, Boston'),
-  ('F','NED','TUN','2026-06-23 21:00:00+00','Gillette Stadium, Boston'),
-  ('F','JPN','SWE','2026-06-15 21:00:00+00','Lincoln Financial Field, Philadelphia'),
-  ('F','JPN','TUN','2026-06-20 15:00:00+00','Lincoln Financial Field, Philadelphia'),
-  ('F','SWE','TUN','2026-06-24 15:00:00+00','Lincoln Financial Field, Philadelphia'),
-  -- GROUP G
-  ('G','BEL','EGY','2026-06-15 21:00:00+00','Arrowhead Stadium, Kansas City'),
-  ('G','BEL','IRN','2026-06-20 18:00:00+00','Arrowhead Stadium, Kansas City'),
-  ('G','BEL','NZL','2026-06-24 18:00:00+00','Arrowhead Stadium, Kansas City'),
-  ('G','EGY','IRN','2026-06-16 15:00:00+00','Empower Field, Denver'),
-  ('G','EGY','NZL','2026-06-20 21:00:00+00','Empower Field, Denver'),
-  ('G','IRN','NZL','2026-06-24 21:00:00+00','Empower Field, Denver'),
-  -- GROUP H
-  ('H','ESP','CPV','2026-06-16 18:00:00+00','NRG Stadium, Houston'),
-  ('H','ESP','KSA','2026-06-20 15:00:00+00','NRG Stadium, Houston'),
-  ('H','ESP','URU','2026-06-24 21:00:00+00','NRG Stadium, Houston'),
-  ('H','CPV','KSA','2026-06-16 21:00:00+00','Estadio Akron, Guadalajara'),
-  ('H','CPV','URU','2026-06-21 18:00:00+00','Estadio Akron, Guadalajara'),
-  ('H','KSA','URU','2026-06-25 15:00:00+00','Estadio Akron, Guadalajara'),
-  -- GROUP I
-  ('I','FRA','SEN','2026-06-17 18:00:00+00','Allegiant Stadium, Las Vegas'),
-  ('I','FRA','IRQ','2026-06-21 15:00:00+00','Allegiant Stadium, Las Vegas'),
-  ('I','FRA','NOR','2026-06-25 18:00:00+00','Allegiant Stadium, Las Vegas'),
-  ('I','SEN','IRQ','2026-06-17 21:00:00+00','Oracle Park, San Francisco'),
-  ('I','SEN','NOR','2026-06-22 15:00:00+00','Oracle Park, San Francisco'),
-  ('I','IRQ','NOR','2026-06-25 21:00:00+00','Oracle Park, San Francisco'),
-  -- GROUP J
-  ('J','ARG','ALG','2026-06-18 21:00:00+00','MetLife Stadium, New York'),
-  ('J','ARG','AUT','2026-06-22 18:00:00+00','MetLife Stadium, New York'),
-  ('J','ARG','JOR','2026-06-26 21:00:00+00','MetLife Stadium, New York'),
-  ('J','ALG','AUT','2026-06-19 18:00:00+00','Lincoln Financial Field, Philadelphia'),
-  ('J','ALG','JOR','2026-06-23 15:00:00+00','Lincoln Financial Field, Philadelphia'),
-  ('J','AUT','JOR','2026-06-26 18:00:00+00','Lincoln Financial Field, Philadelphia'),
-  -- GROUP K
-  ('K','POR','COD','2026-06-19 21:00:00+00','Camping World Stadium, Orlando'),
-  ('K','POR','UZB','2026-06-23 18:00:00+00','Camping World Stadium, Orlando'),
-  ('K','POR','COL','2026-06-27 21:00:00+00','Camping World Stadium, Orlando'),
-  ('K','COD','UZB','2026-06-19 15:00:00+00','Bank of America Stadium, Charlotte'),
-  ('K','COD','COL','2026-06-23 21:00:00+00','Bank of America Stadium, Charlotte'),
-  ('K','UZB','COL','2026-06-27 18:00:00+00','Bank of America Stadium, Charlotte'),
-  -- GROUP L
-  ('L','ENG','CRO','2026-06-20 21:00:00+00','AT&T Stadium, Dallas'),
-  ('L','ENG','GHA','2026-06-24 18:00:00+00','AT&T Stadium, Dallas'),
-  ('L','ENG','PAN','2026-06-27 15:00:00+00','AT&T Stadium, Dallas'),
-  ('L','CRO','GHA','2026-06-24 15:00:00+00','Levi''s Stadium, San Francisco'),
-  ('L','CRO','PAN','2026-06-27 21:00:00+00','Levi''s Stadium, San Francisco'),
-  ('L','GHA','PAN','2026-06-25 21:00:00+00','Levi''s Stadium, San Francisco')
+  -- ── GROUP A: Mexico, South Africa, South Korea, Czechia ──────────────────
+  -- MD1
+  ('A','MEX','RSA','2026-06-11 19:00:00+00','Estadio Azteca, Mexico City'),
+  ('A','KOR','CZE','2026-06-12 02:00:00+00','Estadio Akron, Guadalajara'),
+  -- MD2
+  ('A','CZE','RSA','2026-06-18 16:00:00+00','Mercedes-Benz Stadium, Atlanta'),
+  ('A','MEX','KOR','2026-06-19 03:00:00+00','Estadio Akron, Guadalajara'),
+  -- MD3 simultaneous (Jun 24 21:00 local Mexico = Jun 25 03:00 UTC)
+  ('A','CZE','MEX','2026-06-25 03:00:00+00','Estadio Azteca, Mexico City'),
+  ('A','RSA','KOR','2026-06-25 03:00:00+00','Estadio BBVA, Monterrey'),
+  -- ── GROUP B: Canada, Bosnia & Herzegovina, Qatar, Switzerland ─────────────
+  -- MD1
+  ('B','CAN','BIH','2026-06-12 19:00:00+00','BMO Field, Toronto'),
+  ('B','QAT','SUI','2026-06-13 19:00:00+00','Levi''s Stadium, Santa Clara'),
+  -- MD2
+  ('B','SUI','BIH','2026-06-18 19:00:00+00','SoFi Stadium, Los Angeles'),
+  ('B','CAN','QAT','2026-06-18 22:00:00+00','BC Place, Vancouver'),
+  -- MD3 simultaneous (Jun 24 12:00 PDT = 19:00 UTC)
+  ('B','SUI','CAN','2026-06-24 19:00:00+00','BC Place, Vancouver'),
+  ('B','BIH','QAT','2026-06-24 19:00:00+00','Lumen Field, Seattle'),
+  -- ── GROUP C: Brazil, Morocco, Haiti, Scotland ─────────────────────────────
+  -- MD1
+  ('C','BRA','MAR','2026-06-13 22:00:00+00','MetLife Stadium, New York'),
+  ('C','HAI','SCO','2026-06-14 01:00:00+00','Gillette Stadium, Boston'),
+  -- MD2
+  ('C','SCO','MAR','2026-06-19 22:00:00+00','Gillette Stadium, Boston'),
+  ('C','BRA','HAI','2026-06-20 01:00:00+00','Lincoln Financial Field, Philadelphia'),
+  -- MD3 simultaneous (Jun 24 18:00 EDT = 22:00 UTC)
+  ('C','SCO','BRA','2026-06-24 22:00:00+00','Hard Rock Stadium, Miami'),
+  ('C','MAR','HAI','2026-06-24 22:00:00+00','Mercedes-Benz Stadium, Atlanta'),
+  -- ── GROUP D: United States, Paraguay, Australia, Türkiye ─────────────────
+  -- MD1
+  ('D','USA','PAR','2026-06-13 01:00:00+00','SoFi Stadium, Los Angeles'),
+  ('D','AUS','TUR','2026-06-14 04:00:00+00','BC Place, Vancouver'),
+  -- MD2
+  ('D','USA','AUS','2026-06-19 19:00:00+00','Lumen Field, Seattle'),
+  ('D','TUR','PAR','2026-06-20 04:00:00+00','Levi''s Stadium, Santa Clara'),
+  -- MD3 simultaneous (Jun 25 22:00 EDT = Jun 26 02:00 UTC)
+  ('D','TUR','USA','2026-06-26 02:00:00+00','SoFi Stadium, Los Angeles'),
+  ('D','PAR','AUS','2026-06-26 02:00:00+00','Levi''s Stadium, Santa Clara'),
+  -- ── GROUP E: Germany, Curaçao, Côte d'Ivoire, Ecuador ────────────────────
+  -- MD1
+  ('E','GER','CUW','2026-06-14 17:00:00+00','NRG Stadium, Houston'),
+  ('E','CIV','ECU','2026-06-14 23:00:00+00','Lincoln Financial Field, Philadelphia'),
+  -- MD2
+  ('E','GER','CIV','2026-06-20 20:00:00+00','BMO Field, Toronto'),
+  ('E','ECU','CUW','2026-06-21 00:00:00+00','Arrowhead Stadium, Kansas City'),
+  -- MD3 simultaneous (Jun 25 16:00 EDT = 20:00 UTC)
+  ('E','CUW','CIV','2026-06-25 20:00:00+00','Lincoln Financial Field, Philadelphia'),
+  ('E','ECU','GER','2026-06-25 20:00:00+00','MetLife Stadium, New York'),
+  -- ── GROUP F: Netherlands, Japan, Sweden, Tunisia ──────────────────────────
+  -- MD1
+  ('F','NED','JPN','2026-06-14 20:00:00+00','AT&T Stadium, Dallas'),
+  ('F','SWE','TUN','2026-06-15 02:00:00+00','Estadio BBVA, Monterrey'),
+  -- MD2
+  ('F','NED','SWE','2026-06-20 17:00:00+00','NRG Stadium, Houston'),
+  ('F','TUN','JPN','2026-06-21 04:00:00+00','Estadio BBVA, Monterrey'),
+  -- MD3 simultaneous (Jun 25 19:00 EDT = 23:00 UTC)
+  ('F','JPN','SWE','2026-06-25 23:00:00+00','AT&T Stadium, Dallas'),
+  ('F','TUN','NED','2026-06-25 23:00:00+00','Arrowhead Stadium, Kansas City'),
+  -- ── GROUP G: Belgium, Egypt, Iran, New Zealand ───────────────────────────
+  -- MD1
+  ('G','BEL','EGY','2026-06-15 22:00:00+00','Lumen Field, Seattle'),
+  ('G','IRN','NZL','2026-06-16 04:00:00+00','SoFi Stadium, Los Angeles'),
+  -- MD2
+  ('G','BEL','IRN','2026-06-21 19:00:00+00','SoFi Stadium, Los Angeles'),
+  ('G','NZL','EGY','2026-06-22 01:00:00+00','BC Place, Vancouver'),
+  -- MD3 simultaneous (Jun 26 23:00 EDT = Jun 27 03:00 UTC)
+  ('G','EGY','IRN','2026-06-27 03:00:00+00','Lumen Field, Seattle'),
+  ('G','NZL','BEL','2026-06-27 03:00:00+00','BC Place, Vancouver'),
+  -- ── GROUP H: Spain, Cape Verde, Saudi Arabia, Uruguay ────────────────────
+  -- MD1
+  ('H','ESP','CPV','2026-06-15 16:00:00+00','Mercedes-Benz Stadium, Atlanta'),
+  ('H','KSA','URU','2026-06-15 22:00:00+00','Hard Rock Stadium, Miami'),
+  -- MD2
+  ('H','ESP','KSA','2026-06-21 16:00:00+00','Mercedes-Benz Stadium, Atlanta'),
+  ('H','URU','CPV','2026-06-21 22:00:00+00','Hard Rock Stadium, Miami'),
+  -- MD3 simultaneous (Jun 26 20:00 EDT = Jun 27 00:00 UTC)
+  ('H','CPV','KSA','2026-06-27 00:00:00+00','NRG Stadium, Houston'),
+  ('H','URU','ESP','2026-06-27 00:00:00+00','Estadio Akron, Guadalajara'),
+  -- ── GROUP I: France, Senegal, Iraq, Norway ───────────────────────────────
+  -- MD1
+  ('I','FRA','SEN','2026-06-16 19:00:00+00','MetLife Stadium, New York'),
+  ('I','IRQ','NOR','2026-06-16 22:00:00+00','Gillette Stadium, Boston'),
+  -- MD2
+  ('I','FRA','IRQ','2026-06-22 21:00:00+00','Lincoln Financial Field, Philadelphia'),
+  ('I','NOR','SEN','2026-06-23 00:00:00+00','MetLife Stadium, New York'),
+  -- MD3 simultaneous (Jun 26 19:00 EDT = 23:00 UTC)
+  ('I','FRA','NOR','2026-06-26 23:00:00+00','Allegiant Stadium, Las Vegas'),
+  ('I','SEN','IRQ','2026-06-26 23:00:00+00','Gillette Stadium, Boston'),
+  -- ── GROUP J: Argentina, Algeria, Austria, Jordan ─────────────────────────
+  -- MD1 (Jun 16 21:00 EDT = Jun 17 01:00 UTC)
+  ('J','ARG','ALG','2026-06-17 01:00:00+00','Arrowhead Stadium, Kansas City'),
+  ('J','AUT','JOR','2026-06-17 04:00:00+00','Levi''s Stadium, Santa Clara'),
+  -- MD2
+  ('J','ARG','AUT','2026-06-22 17:00:00+00','AT&T Stadium, Dallas'),
+  ('J','JOR','ALG','2026-06-23 03:00:00+00','Levi''s Stadium, Santa Clara'),
+  -- MD3 simultaneous (Jun 27 22:00 EDT = Jun 28 02:00 UTC)
+  ('J','JOR','ARG','2026-06-28 02:00:00+00','AT&T Stadium, Dallas'),
+  ('J','ALG','AUT','2026-06-28 02:00:00+00','Arrowhead Stadium, Kansas City'),
+  -- ── GROUP K: Portugal, DR Congo, Uzbekistan, Colombia ────────────────────
+  -- MD1
+  ('K','POR','COD','2026-06-17 17:00:00+00','NRG Stadium, Houston'),
+  ('K','UZB','COL','2026-06-18 02:00:00+00','Estadio Azteca, Mexico City'),
+  -- MD2
+  ('K','POR','UZB','2026-06-23 17:00:00+00','NRG Stadium, Houston'),
+  ('K','COL','COD','2026-06-24 02:00:00+00','Estadio Akron, Guadalajara'),
+  -- MD3 simultaneous (Jun 27 19:30 EDT = 23:30 UTC)
+  ('K','COL','POR','2026-06-27 23:30:00+00','Hard Rock Stadium, Miami'),
+  ('K','COD','UZB','2026-06-27 23:30:00+00','Mercedes-Benz Stadium, Atlanta'),
+  -- ── GROUP L: England, Croatia, Ghana, Panama ─────────────────────────────
+  -- MD1
+  ('L','ENG','CRO','2026-06-17 20:00:00+00','AT&T Stadium, Dallas'),
+  ('L','GHA','PAN','2026-06-17 23:00:00+00','BMO Field, Toronto'),
+  -- MD2
+  ('L','ENG','GHA','2026-06-23 20:00:00+00','Gillette Stadium, Boston'),
+  ('L','PAN','CRO','2026-06-23 23:00:00+00','BMO Field, Toronto'),
+  -- MD3 simultaneous (Jun 27 17:00 EDT = 21:00 UTC)
+  ('L','PAN','ENG','2026-06-27 21:00:00+00','MetLife Stadium, New York'),
+  ('L','CRO','GHA','2026-06-27 21:00:00+00','Lincoln Financial Field, Philadelphia')
 ) AS m(grp, home_code, away_code, kickoff, venue)
 JOIN t h ON h.fifa_code = m.home_code
 JOIN t a ON a.fifa_code = m.away_code;
