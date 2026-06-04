@@ -112,8 +112,12 @@ export default function ChatPage() {
     if (text.length > 500) return
 
     setSending(true)
-    await supabase.from('chat_messages').insert({ league_id: leagueId, user_id: userId, body: text })
-    setBody('')
+    const { error } = await supabase.from('chat_messages').insert({ league_id: leagueId, user_id: userId, body: text })
+    if (!error) {
+      setBody('')
+      // Reload immediately in case Realtime is delayed
+      await loadMessages(leagueId)
+    }
     setSending(false)
   }
 

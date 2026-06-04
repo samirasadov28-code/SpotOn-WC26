@@ -77,7 +77,8 @@ export default function HomePage() {
       if (error) throw error
       setFbStatus('sent')
       setFbName(''); setFbEmail(''); setFbMsg('')
-    } catch {
+    } catch (err) {
+      console.error('Feedback error:', err)
       setFbStatus('error')
     }
   }
