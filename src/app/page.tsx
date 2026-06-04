@@ -6,9 +6,10 @@ import { useState, useEffect } from 'react'
 import { ASADOV_STACK } from '@/lib/asadov-stack'
 import { STATIC_TEAMS, GROUPS_ORDER } from '@/lib/teams-data'
 
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0'
 const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA || 'dev'
 const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME
-  ? new Date(process.env.NEXT_PUBLIC_BUILD_TIME).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
+  ? new Date(process.env.NEXT_PUBLIC_BUILD_TIME).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
   : ''
 
 const STADIUMS = [
@@ -370,7 +371,13 @@ export default function HomePage() {
       {/* ── FOOTER / VERSION ── */}
       <footer className="bg-gray-50 border-t border-gray-200 py-4 px-4">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-400">
-          <span>SpotOn WC26 · build <code className="font-mono">{BUILD_SHA}</code>{BUILD_TIME && ` · ${BUILD_TIME}`}</span>
+          <span>
+            SpotOn WC26 ·{' '}
+            <code className="font-mono text-[#0B1F3A] font-bold">v{APP_VERSION}</code>
+            {' '}·{' '}
+            <code className="font-mono">{BUILD_SHA}</code>
+            {BUILD_TIME && <> · deployed {BUILD_TIME}</>}
+          </span>
           <div className="flex items-center gap-3">
             {updateAvailable && (
               <span className="text-green-600 font-semibold">Update available!</span>
