@@ -388,7 +388,8 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
     const wasAlreadySaved = prev?.homeScore !== '' && prev?.awayScore !== '' &&
       prev?.homeScore !== undefined && prev?.awayScore !== undefined
 
-    // Update state with new pred
+    // Update ref immediately so parallel saves see current state
+    koPredsRef.current = { ...koPredsRef.current, [slot]: pred }
     setKoPreds(p => ({ ...p, [slot]: pred }))
 
     setSavingSlots(s => new Set([...s, slot]))
