@@ -119,7 +119,6 @@ export default async function TeamPage({ params }: { params: { code: string } })
           </div>
         ) : (
           <div className="space-y-2">
-            <p className="text-sm text-gray-500 mb-3">Official squad data will appear here once the squad API is connected. Key players to watch:</p>
             {team.stars.map((star) => (
               <div key={star} className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
                 <div className="w-8 h-8 bg-yellow-400 text-[#0B1F3A] rounded-full flex items-center justify-center text-sm font-black shrink-0">⭐</div>
