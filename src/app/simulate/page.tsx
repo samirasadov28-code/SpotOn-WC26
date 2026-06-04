@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
+const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 
 interface TeamRow { id: string; name: string; flag_emoji: string; fifa_code: string }
 interface MatchRow {
@@ -37,13 +38,19 @@ export default function SimulatePage() {
   const [matches, setMatches] = useState<MatchRow[]>([])
   const [preds, setPreds] = useState<PredRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeGroup, setActiveGroup] = useState('A')
   // Hypothetical scores: matchId → {h, a}
   const [hypo, setHypo] = useState<Record<string, { h: string; a: string }>>({})
+  const isLocked = new Date() >= LOCK_AT
 
   useEffect(() => {
     const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const uid = user?.id ?? null
+    setCurrentUserId(uid)
+
     Promise.all([
       supabase.from('matches').select('*, home_team:teams!matches_home_team_id_fkey(id,name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(id,name,flag_emoji,fifa_code)').eq('stage', 'group').order('kickoff_at'),
       supabase.from('predictions_group').select('user_id, match_id, pred_home_score, pred_away_score'),
@@ -201,7 +208,12 @@ export default function SimulatePage() {
 
         {/* Right: live leaderboard */}
         <div className="lg:sticky lg:top-24">
-          <h2 className="text-lg font-bold text-[#0B1F3A] mb-3">Simulated Leaderboard</h2>
+          <h2 className="text-lg font-bold text-[#0B1F3A] mb-3">
+            {isLocked ? 'Simulated Leaderboard' : 'Your Simulated Score'}
+          </h2>
+          {!isLocked && (
+            <p className="text-xs text-gray-500 mb-3">Full leaderboard simulation unlocks after predictions close on Jun 11.</p>
+          )}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             {simLeaderboard.length === 0 ? (
               <p className="text-gray-400 text-sm text-center py-8">No predictions to score yet</p>
@@ -215,18 +227,17 @@ export default function SimulatePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {simLeaderboard.map((entry, idx) => {
-                    const rank = idx === 0 ? 1 : entry.pts < simLeaderboard[idx - 1].pts ? idx + 1 : simLeaderboard[idx - 1].pts === entry.pts ? (idx === 0 ? 1 : simLeaderboard.findIndex(e => e.pts === entry.pts) + 1) : idx + 1
-                    return (
-                      <tr key={entry.userId} className={`border-t border-gray-100 ${idx === 0 ? 'bg-yellow-50' : idx % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
+                  {simLeaderboard
+                    .filter(entry => isLocked || entry.userId === currentUserId)
+                    .map((entry, idx, arr) => (
+                      <tr key={entry.userId} className={`border-t border-gray-100 ${idx === 0 ? 'bg-yellow-50' : idx % 2 === 1 ? 'bg-gray-50/50' : ''} ${entry.userId === currentUserId ? 'font-semibold bg-blue-50' : ''}`}>
                         <td className="py-2.5 px-3 font-bold text-gray-500 text-xs">
                           {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                         </td>
-                        <td className="py-2.5 px-3 font-medium text-[#0B1F3A] truncate max-w-[120px]">{entry.name}</td>
+                        <td className="py-2.5 px-3 font-medium text-[#0B1F3A] truncate max-w-[120px]">{entry.name}{entry.userId === currentUserId ? ' (you)' : ''}</td>
                         <td className="py-2.5 px-3 text-right font-bold text-green-600">{entry.pts}</td>
                       </tr>
-                    )
-                  })}
+                    ))}
                 </tbody>
               </table>
             )}

@@ -24,13 +24,17 @@ export default function ScoreTicker() {
 
   async function fetchMatches() {
     const supabase = createClient()
-    const threeDaysAgo = new Date()
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(0, 0, 0, 0)
+    const dayAfter = new Date(tomorrow)
+    dayAfter.setDate(dayAfter.getDate() + 1)
 
     const { data } = await supabase
       .from('matches')
       .select('*, home_team:teams!matches_home_team_id_fkey(name,flag_emoji), away_team:teams!matches_away_team_id_fkey(name,flag_emoji)')
-      .gte('kickoff_at', threeDaysAgo.toISOString())
+      .gte('kickoff_at', tomorrow.toISOString())
+      .lt('kickoff_at', dayAfter.toISOString())
       .order('kickoff_at')
 
     if (data) setMatches(data as unknown as TickerMatch[])
@@ -60,22 +64,17 @@ export default function ScoreTicker() {
     m => m.actual_home_score === null && m.kickoff_at && new Date(m.kickoff_at) > new Date()
   )
 
-  const hasScored = scored.length > 0
-
-  const items: string[] = hasScored
-    ? scored.map(m => {
-        const hFlag = m.home_team?.flag_emoji ?? ''
-        const aFlag = m.away_team?.flag_emoji ?? ''
-        const hName = m.home_team?.name ?? '?'
-        const aName = m.away_team?.name ?? '?'
-        return `${hFlag} ${hName} ${m.actual_home_score}–${m.actual_away_score} ${aName} ${aFlag}`
-      })
-    : upcoming.map(m => {
-        const hName = m.home_team?.name ?? '?'
-        const aName = m.away_team?.name ?? '?'
-        const when = m.kickoff_at ? formatDate(m.kickoff_at) : ''
-        return `🔜 ${hName} vs ${aName} · ${when}`
-      })
+  const items: string[] = matches.map(m => {
+    const hFlag = m.home_team?.flag_emoji ?? ''
+    const aFlag = m.away_team?.flag_emoji ?? ''
+    const hName = m.home_team?.name ?? '?'
+    const aName = m.away_team?.name ?? '?'
+    const when = m.kickoff_at ? formatDate(m.kickoff_at) : ''
+    if (m.actual_home_score !== null && m.actual_away_score !== null) {
+      return `${hFlag} ${hName} ${m.actual_home_score}–${m.actual_away_score} ${aName} ${aFlag}`
+    }
+    return `🔜 ${hFlag} ${hName} vs ${aName} ${aFlag} · ${when}`
+  })
 
   if (items.length === 0) return null
 
@@ -91,7 +90,7 @@ export default function ScoreTicker() {
         .ticker-track {
           display: inline-block;
           white-space: nowrap;
-          animation: ticker 30s linear infinite;
+          animation: ticker 90s linear infinite;
         }
         .ticker-wrap:hover .ticker-track {
           animation-play-state: paused;
