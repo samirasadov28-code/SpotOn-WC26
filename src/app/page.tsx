@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { ASADOV_STACK } from '@/lib/asadov-stack'
 import { STATIC_TEAMS, GROUPS_ORDER } from '@/lib/teams-data'
+import { createClient } from '@/lib/supabase/client'
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0'
 const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA || 'dev'
@@ -64,10 +65,15 @@ export default function HomePage() {
     if (!fbMsg.trim()) return
     setFbStatus('sending')
     try {
-      const subject = encodeURIComponent(`SpotOn WC26 Feedback${fbName ? ` from ${fbName}` : ''}`)
-      const body = encodeURIComponent(`Name: ${fbName || 'Anonymous'}\nEmail: ${fbEmail || 'Not provided'}\n\n${fbMsg}`)
-      const mailto = `mailto:FinModeloop@gmail.com?subject=${subject}&body=${body}`
-      window.open(mailto, '_blank')
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      const { error } = await supabase.from('feedback').insert({
+        name: fbName.trim() || null,
+        email: fbEmail.trim() || null,
+        message: fbMsg.trim(),
+        user_id: user?.id ?? null,
+      })
+      if (error) throw error
       setFbStatus('sent')
       setFbName(''); setFbEmail(''); setFbMsg('')
     } catch {
