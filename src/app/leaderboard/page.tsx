@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
+import Link from 'next/link'
 
 const GROUP_MATCHES_TOTAL = 72
 
@@ -18,14 +19,59 @@ interface LeaderboardEntry {
   updatedAt: Date | null
 }
 
+interface ScoreBreakdown {
+  groupExact: number    // 3-pt hits
+  groupGD: number       // 2-pt hits
+  groupOutcome: number  // 1-pt hits
+  groupTotal: number
+  advTotal: number
+  koExact: number
+  koGD: number
+  koOutcome: number
+  koTotal: number
+}
+
+function calcBreakdown(
+  groupPreds: { pred_home: number; pred_away: number; actual_home: number; actual_away: number }[],
+  koPreds: { pred_home: number; pred_away: number; actual_home: number; actual_away: number }[],
+  advTotal: number
+): ScoreBreakdown {
+  let groupExact = 0, groupGD = 0, groupOutcome = 0
+  for (const p of groupPreds) {
+    if (p.pred_home === p.actual_home && p.pred_away === p.actual_away) { groupExact++; continue }
+    const predGD = p.pred_home - p.pred_away, actualGD = p.actual_home - p.actual_away
+    if (predGD === actualGD) { groupGD++; continue }
+    const predOutcome = Math.sign(predGD), actualOutcome = Math.sign(actualGD)
+    if (predOutcome === actualOutcome) groupOutcome++
+  }
+  let koExact = 0, koGD = 0, koOutcome = 0
+  for (const p of koPreds) {
+    if (p.pred_home === p.actual_home && p.pred_away === p.actual_away) { koExact++; continue }
+    const predGD = p.pred_home - p.pred_away, actualGD = p.actual_home - p.actual_away
+    if (predGD === actualGD) { koGD++; continue }
+    const predOutcome = Math.sign(predGD), actualOutcome = Math.sign(actualGD)
+    if (predOutcome === actualOutcome) koOutcome++
+  }
+  return {
+    groupExact, groupGD, groupOutcome,
+    groupTotal: groupExact * 3 + groupGD * 2 + groupOutcome,
+    advTotal,
+    koExact, koGD, koOutcome,
+    koTotal: koExact * 3 + koGD * 2 + koOutcome,
+  }
+}
+
 export default function LeaderboardPage() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [breakdowns, setBreakdowns] = useState<Record<string, ScoreBreakdown>>({})
+  const [loadingBreakdown, setLoadingBreakdown] = useState<string | null>(null)
   const supabase = createClient()
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const [userRes, scoreRes, predRes, authRes] = await Promise.all([
       supabase.from('users').select('id, display_name'),
       supabase.from('scores').select('*'),
@@ -56,10 +102,8 @@ export default function LeaderboardPage() {
       }
     })
 
-    // Sort by total pts desc, then name asc
     built.sort((a, b) => b.totalPts - a.totalPts || a.displayName.localeCompare(b.displayName))
 
-    // Assign ranks (shared for ties)
     const ranked: LeaderboardEntry[] = []
     let rank = 1
     for (let i = 0; i < built.length; i++) {
@@ -70,7 +114,7 @@ export default function LeaderboardPage() {
     setEntries(ranked)
     setLastUpdated(new Date())
     setLoading(false)
-  }
+  }, [supabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData()
@@ -81,29 +125,69 @@ export default function LeaderboardPage() {
     return () => { supabase.removeChannel(channel) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const loadBreakdown = async (userId: string, advTotal: number) => {
+    if (breakdowns[userId]) return
+    setLoadingBreakdown(userId)
+    const [gpRes, matchRes, kpRes, koMatchRes] = await Promise.all([
+      (supabase as any).from('predictions_group').select('match_id, pred_home_score, pred_away_score').eq('user_id', userId),
+      (supabase as any).from('matches').select('id, actual_home_score, actual_away_score').eq('stage', 'group').not('actual_home_score', 'is', null),
+      (supabase as any).from('predictions_knockout').select('bracket_slot, pred_home_score, pred_away_score').eq('user_id', userId),
+      (supabase as any).from('matches').select('id, bracket_slot, actual_home_score, actual_away_score').eq('stage', 'knockout').not('actual_home_score', 'is', null),
+    ])
+
+    const actualGroupMap = new Map((matchRes.data ?? []).map((m: any) => [m.id, m]))
+    const groupPreds = (gpRes.data ?? []).filter((p: any) => actualGroupMap.has(p.match_id)).map((p: any) => {
+      const m = actualGroupMap.get(p.match_id)
+      return { pred_home: p.pred_home_score, pred_away: p.pred_away_score, actual_home: m.actual_home_score, actual_away: m.actual_away_score }
+    })
+
+    const actualKoMap = new Map((koMatchRes.data ?? []).map((m: any) => [m.bracket_slot, m]))
+    const koPreds = (kpRes.data ?? []).filter((p: any) => actualKoMap.has(p.bracket_slot)).map((p: any) => {
+      const m = actualKoMap.get(p.bracket_slot)
+      return { pred_home: p.pred_home_score, pred_away: p.pred_away_score, actual_home: m.actual_home_score, actual_away: m.actual_away_score }
+    })
+
+    const bd = calcBreakdown(groupPreds, koPreds, advTotal)
+    setBreakdowns(prev => ({ ...prev, [userId]: bd }))
+    setLoadingBreakdown(null)
+  }
+
+  const handleRowClick = async (entry: LeaderboardEntry) => {
+    const isOpen = expandedId === entry.userId
+    setExpandedId(isOpen ? null : entry.userId)
+    if (!isOpen) await loadBreakdown(entry.userId, entry.advancementPts)
+  }
+
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-gray-500">Loading leaderboard…</div>
-      </div>
-    )
+    return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading leaderboard…</div>
   }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-[#0B1F3A]">Leaderboard</h1>
-        {lastUpdated && (
-          <div className="text-xs text-gray-400">
-            Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
-          </div>
-        )}
+        {lastUpdated && <div className="text-xs text-gray-400">Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}</div>}
+      </div>
+
+      {/* League link */}
+      <div className="mb-5">
+        <Link href="/league" className="inline-flex items-center gap-2 text-sm text-[#0B1F3A] border border-[#0B1F3A]/30 rounded-lg px-3 py-1.5 hover:bg-[#0B1F3A] hover:text-white transition-colors">
+          🏅 View your private league leaderboards →
+        </Link>
+      </div>
+
+      {/* Scoring legend */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-xs text-amber-900 flex flex-wrap gap-x-5 gap-y-1.5">
+        <span className="font-bold text-amber-800">How points work:</span>
+        <span>⚽ <strong>Group Pts</strong> — 3 exact score · 2 correct GD · 1 correct outcome</span>
+        <span>🏅 <strong>Advancement</strong> — bonus pts for each team you correctly advance past group stage</span>
+        <span>🏆 <strong>Playoff Pts</strong> — same 1/2/3 scoring for R32→Final matches</span>
+        <span className="text-amber-700 italic">Click any row for full breakdown ↓</span>
       </div>
 
       {entries.length === 0 ? (
-        <div className="text-center text-gray-500 py-16">
-          No players yet. Be the first to join!
-        </div>
+        <div className="text-center text-gray-500 py-16">No players yet. Be the first to join!</div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
@@ -111,10 +195,10 @@ export default function LeaderboardPage() {
               <tr className="bg-[#0B1F3A] text-white">
                 <th className="py-3 px-3 text-left w-10">#</th>
                 <th className="py-3 px-3 text-left">Player</th>
-                <th className="py-3 px-3 text-center" title="Predictions submitted">Preds</th>
-                <th className="py-3 px-3 text-right hidden sm:table-cell">Group</th>
-                <th className="py-3 px-3 text-right hidden sm:table-cell">Adv.</th>
-                <th className="py-3 px-3 text-right hidden sm:table-cell">KO</th>
+                <th className="py-3 px-3 text-center" title="Group predictions submitted">Preds</th>
+                <th className="py-3 px-3 text-right hidden sm:table-cell" title="Points from group stage match results (1/2/3 pts each)">Group ⚽</th>
+                <th className="py-3 px-3 text-right hidden sm:table-cell" title="Bonus points for correctly predicting group stage advancement">Advance 🏅</th>
+                <th className="py-3 px-3 text-right hidden sm:table-cell" title="Points from playoff round match results (1/2/3 pts each)">Playoff 🏆</th>
                 <th className="py-3 px-3 text-right font-bold">Total</th>
               </tr>
             </thead>
@@ -123,40 +207,90 @@ export default function LeaderboardPage() {
                 const isMe = entry.userId === currentUserId
                 const isComplete = entry.predictionCount >= GROUP_MATCHES_TOTAL
                 const pctDone = Math.min(100, Math.round((entry.predictionCount / GROUP_MATCHES_TOTAL) * 100))
+                const isExpanded = expandedId === entry.userId
+                const bd = breakdowns[entry.userId]
+
                 return (
-                  <tr
-                    key={entry.userId}
-                    className={`border-t border-gray-100 ${
-                      isMe ? 'bg-blue-50 font-semibold' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'
-                    }`}
-                  >
-                    <td className="py-3 px-3 font-bold text-gray-500 text-base">
-                      {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : entry.rank}
-                    </td>
-                    <td className="py-3 px-3 text-[#0B1F3A] max-w-[120px] sm:max-w-none">
-                      <div className="truncate">{entry.displayName}</div>
-                      {isMe && <div className="text-xs text-blue-500 font-normal">(you)</div>}
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      {isComplete ? (
-                        <span className="inline-flex items-center gap-1 text-green-600 font-semibold text-xs">✅</span>
-                      ) : entry.predictionCount === 0 ? (
-                        <span className="text-gray-300 text-xs">—</span>
-                      ) : (
-                        <span className="text-orange-500 text-xs font-medium">{pctDone}%</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.groupPts}</td>
-                    <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.advancementPts}</td>
-                    <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.knockoutPts}</td>
-                    <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
-                  </tr>
+                  <>
+                    <tr
+                      key={entry.userId}
+                      onClick={() => handleRowClick(entry)}
+                      className={`border-t border-gray-100 cursor-pointer transition-colors hover:bg-blue-50/50 ${
+                        isMe ? 'bg-blue-50 font-semibold' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'
+                      } ${isExpanded ? 'border-b-0' : ''}`}
+                    >
+                      <td className="py-3 px-3 font-bold text-gray-500 text-base">
+                        {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : entry.rank}
+                      </td>
+                      <td className="py-3 px-3 text-[#0B1F3A] max-w-[120px] sm:max-w-none">
+                        <div className="truncate flex items-center gap-1.5">
+                          {entry.displayName}
+                          <span className="text-gray-300 text-xs">▾</span>
+                        </div>
+                        {isMe && <div className="text-xs text-blue-500 font-normal">(you)</div>}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {isComplete
+                          ? <span className="text-green-600 font-semibold text-xs">✅</span>
+                          : entry.predictionCount === 0
+                          ? <span className="text-gray-300 text-xs">—</span>
+                          : <span className="text-orange-500 text-xs font-medium">{pctDone}%</span>}
+                      </td>
+                      <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.groupPts}</td>
+                      <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.advancementPts}</td>
+                      <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.knockoutPts}</td>
+                      <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
+                    </tr>
+
+                    {/* Expanded breakdown row */}
+                    {isExpanded && (
+                      <tr key={`${entry.userId}-breakdown`} className={`border-t-0 ${isMe ? 'bg-blue-50' : entry.rank === 1 ? 'bg-yellow-50' : ''}`}>
+                        <td colSpan={7} className="px-4 pb-4 pt-1">
+                          {loadingBreakdown === entry.userId ? (
+                            <div className="text-xs text-gray-400 py-2">Loading breakdown…</div>
+                          ) : bd ? (
+                            <div className="grid sm:grid-cols-3 gap-3 mt-1">
+                              {/* Group stage */}
+                              <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                                <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">⚽ Group Stage <span className="text-gray-400 font-normal ml-auto">{bd.groupTotal} pts</span></div>
+                                <div className="space-y-1 text-xs text-gray-600">
+                                  <div className="flex justify-between"><span>🎯 Exact score <span className="text-gray-400">(×3)</span></span><span className="font-semibold text-green-600">{bd.groupExact} × 3 = {bd.groupExact * 3}</span></div>
+                                  <div className="flex justify-between"><span>📐 Correct GD <span className="text-gray-400">(×2)</span></span><span className="font-semibold text-blue-600">{bd.groupGD} × 2 = {bd.groupGD * 2}</span></div>
+                                  <div className="flex justify-between"><span>✅ Correct outcome <span className="text-gray-400">(×1)</span></span><span className="font-semibold text-gray-600">{bd.groupOutcome} × 1 = {bd.groupOutcome}</span></div>
+                                </div>
+                              </div>
+                              {/* Advancement */}
+                              <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                                <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">🏅 Group Advancement <span className="text-gray-400 font-normal ml-auto">{bd.advTotal} pts</span></div>
+                                <p className="text-xs text-gray-500 leading-relaxed">Bonus points awarded for each team you correctly predicted to advance from the group stage. Points scale per round — see Rules for full table.</p>
+                              </div>
+                              {/* Knockout */}
+                              <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                                <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">🏆 Playoff Matches <span className="text-gray-400 font-normal ml-auto">{bd.koTotal} pts</span></div>
+                                {bd.koExact + bd.koGD + bd.koOutcome === 0 ? (
+                                  <p className="text-xs text-gray-400 italic">No playoff matches played yet.</p>
+                                ) : (
+                                  <div className="space-y-1 text-xs text-gray-600">
+                                    <div className="flex justify-between"><span>🎯 Exact score <span className="text-gray-400">(×3)</span></span><span className="font-semibold text-green-600">{bd.koExact} × 3 = {bd.koExact * 3}</span></div>
+                                    <div className="flex justify-between"><span>📐 Correct GD <span className="text-gray-400">(×2)</span></span><span className="font-semibold text-blue-600">{bd.koGD} × 2 = {bd.koGD * 2}</span></div>
+                                    <div className="flex justify-between"><span>✅ Correct outcome <span className="text-gray-400">(×1)</span></span><span className="font-semibold text-gray-600">{bd.koOutcome} × 1 = {bd.koOutcome}</span></div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-gray-400 py-2">No scored predictions yet.</div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 )
               })}
             </tbody>
           </table>
           <p className="text-xs text-gray-400 px-4 py-2 border-t border-gray-100">
-            ✅ = all {GROUP_MATCHES_TOTAL} group predictions submitted · Tap a row to see breakdown
+            ✅ = all {GROUP_MATCHES_TOTAL} group predictions submitted · Click any row to see detailed breakdown
           </p>
         </div>
       )}
