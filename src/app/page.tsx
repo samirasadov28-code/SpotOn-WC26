@@ -4,16 +4,17 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { ASADOV_STACK } from '@/lib/asadov-stack'
+import { STATIC_TEAMS, GROUPS_ORDER } from '@/lib/teams-data'
 
 const APP_VERSION = '0.0.1'
 
 const STADIUMS = [
-  { name: 'Estadio Azteca', city: 'Mexico City', country: 'Mexico', flag: '🇲🇽', capacity: '87,000', note: 'Opening Match' },
-  { name: 'MetLife Stadium', city: 'New York / NJ', country: 'USA', flag: '🇺🇸', capacity: '82,500', note: 'The Final' },
-  { name: 'AT&T Stadium', city: 'Dallas', country: 'USA', flag: '🇺🇸', capacity: '80,000', note: 'Most Matches (9)' },
-  { name: 'SoFi Stadium', city: 'Los Angeles', country: 'USA', flag: '🇺🇸', capacity: '70,240', note: 'Western Hub' },
-  { name: 'Hard Rock Stadium', city: 'Miami', country: 'USA', flag: '🇺🇸', capacity: '65,000', note: 'Eastern Hub' },
-  { name: 'BC Place', city: 'Vancouver', country: 'Canada', flag: '🇨🇦', capacity: '54,500', note: 'Canadian Host' },
+  { name: 'Estadio Azteca', city: 'Mexico City', country: 'Mexico', iso2: 'mx', capacity: '87,500', note: 'Opening Match', slug: 'azteca' },
+  { name: 'MetLife Stadium', city: 'New York / NJ', country: 'USA', iso2: 'us', capacity: '82,500', note: 'The Final', slug: 'metlife' },
+  { name: 'AT&T Stadium', city: 'Dallas', country: 'USA', iso2: 'us', capacity: '80,000', note: 'Most Matches (9)', slug: 'att' },
+  { name: 'SoFi Stadium', city: 'Los Angeles', country: 'USA', iso2: 'us', capacity: '70,240', note: 'Western Hub', slug: 'sofi' },
+  { name: 'Hard Rock Stadium', city: 'Miami', country: 'USA', iso2: 'us', capacity: '65,000', note: 'Eastern Hub', slug: 'hardrock' },
+  { name: 'BC Place', city: 'Vancouver', country: 'Canada', iso2: 'ca', capacity: '54,500', note: 'Canadian Host', slug: 'bcplace' },
 ]
 
 const KEY_DATES = [
@@ -25,37 +26,16 @@ const KEY_DATES = [
 ]
 
 const HOW_IT_WORKS = [
-  {
-    emoji: '🎯',
-    title: 'Predict',
-    desc: 'Enter exact scores for all 72 group matches. Your predictions automatically build your knockout bracket.',
-  },
-  {
-    emoji: '⚡',
-    title: 'Compete',
-    desc: 'Earn points for exact scores, goal differences, outcomes, and bracket advancement — live as results come in.',
-  },
-  {
-    emoji: '🏆',
-    title: 'Win',
-    desc: 'Climb the live leaderboard and claim the prize from Samir as the tournament unfolds.',
-  },
+  { emoji: '🎯', title: 'Predict', desc: 'Enter exact scores for all 72 group matches. Your predictions automatically build your knockout bracket.' },
+  { emoji: '⚡', title: 'Compete', desc: 'Earn points for exact scores, goal differences, outcomes, and bracket advancement — live as results come in.' },
+  { emoji: '🏆', title: 'Win', desc: 'Climb the live leaderboard and claim the prize from Samir as the tournament unfolds.' },
 ]
 
-const GROUPS = [
-  { letter: 'A', teams: ['Mexico 🇲🇽', 'S. Africa 🇿🇦', 'S. Korea 🇰🇷', 'Czechia 🇨🇿'] },
-  { letter: 'B', teams: ['Canada 🇨🇦', 'Bosnia 🇧🇦', 'Qatar 🇶🇦', 'Switzerland 🇨🇭'] },
-  { letter: 'C', teams: ['Brazil 🇧🇷', 'Morocco 🇲🇦', 'Haiti 🇭🇹', 'Scotland 🏴󠁧󠁢󠁳󠁣󠁴󠁿'] },
-  { letter: 'D', teams: ['USA 🇺🇸', 'Paraguay 🇵🇾', 'Australia 🇦🇺', 'Türkiye 🇹🇷'] },
-  { letter: 'E', teams: ['Germany 🇩🇪', 'Curaçao 🇨🇼', 'Ivory Coast 🇨🇮', 'Ecuador 🇪🇨'] },
-  { letter: 'F', teams: ['Netherlands 🇳🇱', 'Japan 🇯🇵', 'Sweden 🇸🇪', 'Tunisia 🇹🇳'] },
-  { letter: 'G', teams: ['Belgium 🇧🇪', 'Egypt 🇪🇬', 'Iran 🇮🇷', 'New Zealand 🇳🇿'] },
-  { letter: 'H', teams: ['Spain 🇪🇸', 'Cape Verde 🇨🇻', 'Saudi Arabia 🇸🇦', 'Uruguay 🇺🇾'] },
-  { letter: 'I', teams: ['France 🇫🇷', 'Senegal 🇸🇳', 'Iraq 🇮🇶', 'Norway 🇳🇴'] },
-  { letter: 'J', teams: ['Argentina 🇦🇷', 'Algeria 🇩🇿', 'Austria 🇦🇹', 'Jordan 🇯🇴'] },
-  { letter: 'K', teams: ['Portugal 🇵🇹', 'DR Congo 🇨🇩', 'Uzbekistan 🇺🇿', 'Colombia 🇨🇴'] },
-  { letter: 'L', teams: ['England 🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'Croatia 🇭🇷', 'Ghana 🇬🇭', 'Panama 🇵🇦'] },
-]
+// Group data derived from static teams
+const GROUPS = GROUPS_ORDER.map(letter => ({
+  letter,
+  teams: STATIC_TEAMS.filter(t => t.groupLetter === letter),
+}))
 
 export default function HomePage() {
   const [updateAvailable, setUpdateAvailable] = useState(false)
@@ -269,25 +249,39 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <p className="text-[#DC2626] font-bold text-sm uppercase tracking-widest mb-2">48 Teams · 12 Groups</p>
-            <h2 className="text-2xl sm:text-3xl font-black text-[#0B1F3A]">
-              The Field
-            </h2>
+            <h2 className="text-2xl sm:text-3xl font-black text-[#0B1F3A]">The Field</h2>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {GROUPS.map((g) => (
-              <div key={g.letter} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+              <Link
+                key={g.letter}
+                href={`/teams#group-${g.letter}`}
+                className="group bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md hover:border-[#0B1F3A]/30 transition-all hover:-translate-y-0.5"
+              >
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-7 h-7 bg-[#0B1F3A] text-white rounded-lg flex items-center justify-center font-black text-sm">
                     {g.letter}
                   </div>
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Group {g.letter}</span>
                 </div>
-                <ul className="space-y-1">
+                <ul className="space-y-1.5">
                   {g.teams.map((t) => (
-                    <li key={t} className="text-sm text-gray-700 truncate">{t}</li>
+                    <li key={t.fifaCode} className="flex items-center gap-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`https://flagcdn.com/w40/${t.iso2}.png`}
+                        alt={t.name}
+                        width={20}
+                        height={14}
+                        className="rounded-sm object-cover flex-shrink-0"
+                        style={{ width: 20, height: 14 }}
+                      />
+                      <span className="text-sm text-gray-700 truncate">{t.shortName}</span>
+                    </li>
                   ))}
                 </ul>
-              </div>
+                <p className="text-[10px] text-[#0B1F3A] font-semibold mt-3 group-hover:underline">View group →</p>
+              </Link>
             ))}
           </div>
           <div className="text-center mt-8">
