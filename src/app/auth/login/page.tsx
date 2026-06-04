@@ -24,20 +24,37 @@ export default function LoginPage() {
     const supabase = createClient()
 
     if (mode === 'signup') {
-      const { error: err } = await supabase.auth.signUp({ email, password })
-      setLoading(false)
+      const { data, error: err } = await supabase.auth.signUp({ email, password })
       if (err) {
+        setLoading(false)
         setError(err.message)
-      } else {
-        setSuccess('Account created! You can now sign in.')
+        return
+      }
+      // If session is returned immediately, email confirmation is off — go straight in
+      if (data.session) {
+        router.push('/')
+        router.refresh()
+        return
+      }
+      // Otherwise try signing in anyway (works when "Confirm email" is disabled in Supabase)
+      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
+      setLoading(false)
+      if (signInErr) {
+        setSuccess('Account created! Check your email to confirm it, then sign in.')
         setMode('signin')
+      } else {
+        router.push('/')
+        router.refresh()
       }
     } else {
       const { error: err } = await supabase.auth.signInWithPassword({ email, password })
       setLoading(false)
       if (err) {
-        if (err.message.toLowerCase().includes('invalid login')) {
-          setError('Wrong email or password.')
+        const msg = err.message.toLowerCase()
+        if (msg.includes('invalid login') || msg.includes('invalid credentials')) {
+          setError('Wrong email or password. If you haven\'t signed up yet, click "Sign up" below.')
+        } else if (msg.includes('email not confirmed')) {
+          setError('Please confirm your email first — check your inbox (including spam).')
         } else {
           setError(err.message)
         }
