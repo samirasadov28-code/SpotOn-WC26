@@ -3,6 +3,9 @@ import { Inter } from 'next/font/google'
 import Script from 'next/script'
 import './globals.css'
 import Navbar from '@/components/nav/Navbar'
+import ScoreTicker from '@/components/ScoreTicker'
+import { ToastProvider } from '@/components/ToastProvider'
+import MatchResultWatcher from '@/components/MatchResultWatcher'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -34,8 +37,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         `}</Script>
       </head>
       <body className={`${inter.className} bg-white text-gray-900 min-h-screen`}>
-        <Navbar />
-        <main className="pb-16 md:pb-0">{children}</main>
+        <ToastProvider>
+          <Navbar />
+          <ScoreTicker />
+          <MatchResultWatcher />
+          <main className="pb-16 md:pb-0">{children}</main>
+        </ToastProvider>
       </body>
     </html>
   )
