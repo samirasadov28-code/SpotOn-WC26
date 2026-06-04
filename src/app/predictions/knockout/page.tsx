@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
@@ -24,44 +24,48 @@ interface TeamStat {
   gf: number; ga: number; pts: number; gd: number
 }
 
-// R32 match definitions — avoids same-group matchups in R32
+// R32 match definitions — official FIFA WC 2026 bracket
 const R32_DEFS = [
-  { slot: 1,  homePos: '1A', awayPos: '2B' },
-  { slot: 2,  homePos: '1B', awayPos: '2A' },
-  { slot: 3,  homePos: '1C', awayPos: '2D' },
-  { slot: 4,  homePos: '1D', awayPos: '2C' },
-  { slot: 5,  homePos: '1E', awayPos: '2F' },
-  { slot: 6,  homePos: '1F', awayPos: '2E' },
-  { slot: 7,  homePos: '1G', awayPos: '2H' },
-  { slot: 8,  homePos: '1H', awayPos: '2G' },
-  { slot: 9,  homePos: '1I', awayPos: '2J' },
-  { slot: 10, homePos: '1J', awayPos: '2I' },
-  { slot: 11, homePos: '1K', awayPos: '2L' },
-  { slot: 12, homePos: '1L', awayPos: '2K' },
-  { slot: 13, homePos: '3rd1', awayPos: '3rd2' },
-  { slot: 14, homePos: '3rd3', awayPos: '3rd4' },
-  { slot: 15, homePos: '3rd5', awayPos: '3rd6' },
-  { slot: 16, homePos: '3rd7', awayPos: '3rd8' },
+  { slot: 1,  homePos: '2A',   awayPos: '2B' },   // M73: 2A vs 2B
+  { slot: 2,  homePos: '1E',   awayPos: '3rd1' },  // M74: 1E vs best 3rd (A/B/C/D/F)
+  { slot: 3,  homePos: '1F',   awayPos: '2C' },    // M75: 1F vs 2C
+  { slot: 4,  homePos: '1C',   awayPos: '2F' },    // M76: 1C vs 2F
+  { slot: 5,  homePos: '1I',   awayPos: '3rd2' },  // M77: 1I vs best 3rd (C/D/F/G/H)
+  { slot: 6,  homePos: '2E',   awayPos: '2I' },    // M78: 2E vs 2I
+  { slot: 7,  homePos: '1A',   awayPos: '3rd3' },  // M79: 1A vs best 3rd (C/E/F/H/I)
+  { slot: 8,  homePos: '1L',   awayPos: '3rd4' },  // M80: 1L vs best 3rd (E/H/I/J/K)
+  { slot: 9,  homePos: '1D',   awayPos: '3rd5' },  // M81: 1D vs best 3rd (B/E/F/I/J)
+  { slot: 10, homePos: '1G',   awayPos: '3rd6' },  // M82: 1G vs best 3rd (A/E/H/I/J)
+  { slot: 11, homePos: '2K',   awayPos: '2L' },    // M83: 2K vs 2L
+  { slot: 12, homePos: '1H',   awayPos: '2J' },    // M84: 1H vs 2J
+  { slot: 13, homePos: '1B',   awayPos: '3rd7' },  // M85: 1B vs best 3rd (E/F/G/I/J)
+  { slot: 14, homePos: '1J',   awayPos: '2H' },    // M86: 1J vs 2H
+  { slot: 15, homePos: '1K',   awayPos: '3rd8' },  // M87: 1K vs best 3rd (D/E/I/J/L)
+  { slot: 16, homePos: '2D',   awayPos: '2G' },    // M88: 2D vs 2G
 ] as const
 
-// Round-of-16 through Final progression
+// Round-of-16 through Final progression — official FIFA WC 2026 bracket
 const LATER_DEFS = [
-  { slot: 17, homeParent: 1,  awayParent: 2,  stage: 'r16' as const },
-  { slot: 18, homeParent: 3,  awayParent: 4,  stage: 'r16' as const },
-  { slot: 19, homeParent: 5,  awayParent: 6,  stage: 'r16' as const },
-  { slot: 20, homeParent: 7,  awayParent: 8,  stage: 'r16' as const },
-  { slot: 21, homeParent: 9,  awayParent: 10, stage: 'r16' as const },
-  { slot: 22, homeParent: 11, awayParent: 12, stage: 'r16' as const },
-  { slot: 23, homeParent: 13, awayParent: 14, stage: 'r16' as const },
-  { slot: 24, homeParent: 15, awayParent: 16, stage: 'r16' as const },
-  { slot: 25, homeParent: 17, awayParent: 18, stage: 'qf' as const },
-  { slot: 26, homeParent: 19, awayParent: 20, stage: 'qf' as const },
-  { slot: 27, homeParent: 21, awayParent: 22, stage: 'qf' as const },
-  { slot: 28, homeParent: 23, awayParent: 24, stage: 'qf' as const },
-  { slot: 29, homeParent: 25, awayParent: 26, stage: 'sf' as const },
-  { slot: 30, homeParent: 27, awayParent: 28, stage: 'sf' as const },
-  { slot: 31, homeParent: 29, awayParent: 30, stage: 'third' as const }, // loser of each SF
-  { slot: 32, homeParent: 29, awayParent: 30, stage: 'final' as const },
+  // R16
+  { slot: 17, homeParent: 2,  awayParent: 5,  stage: 'r16' as const }, // M89: W74 vs W77
+  { slot: 18, homeParent: 1,  awayParent: 3,  stage: 'r16' as const }, // M90: W73 vs W75
+  { slot: 19, homeParent: 4,  awayParent: 6,  stage: 'r16' as const }, // M91: W76 vs W78
+  { slot: 20, homeParent: 7,  awayParent: 8,  stage: 'r16' as const }, // M92: W79 vs W80
+  { slot: 21, homeParent: 11, awayParent: 12, stage: 'r16' as const }, // M93: W83 vs W84
+  { slot: 22, homeParent: 9,  awayParent: 10, stage: 'r16' as const }, // M94: W81 vs W82
+  { slot: 23, homeParent: 14, awayParent: 16, stage: 'r16' as const }, // M95: W86 vs W88
+  { slot: 24, homeParent: 13, awayParent: 15, stage: 'r16' as const }, // M96: W85 vs W87
+  // QF
+  { slot: 25, homeParent: 17, awayParent: 18, stage: 'qf' as const }, // M97: W89 vs W90
+  { slot: 26, homeParent: 21, awayParent: 22, stage: 'qf' as const }, // M98: W93 vs W94
+  { slot: 27, homeParent: 19, awayParent: 20, stage: 'qf' as const }, // M99: W91 vs W92
+  { slot: 28, homeParent: 23, awayParent: 24, stage: 'qf' as const }, // M100: W95 vs W96
+  // SF
+  { slot: 29, homeParent: 25, awayParent: 26, stage: 'sf' as const }, // M101: W97 vs W98
+  { slot: 30, homeParent: 27, awayParent: 28, stage: 'sf' as const }, // M102: W99 vs W100
+  // 3rd Place & Final
+  { slot: 31, homeParent: 29, awayParent: 30, stage: 'third' as const }, // M104: L101 vs L102
+  { slot: 32, homeParent: 29, awayParent: 30, stage: 'final' as const }, // M103: W101 vs W102
 ]
 
 const STAGE_LABELS: Record<string, string> = {
@@ -259,6 +263,7 @@ export default function KnockoutPredictionsPage() {
   const [view, setView] = useState<ViewMode>('list')
   const [savingSlots, setSavingSlots] = useState<Set<number>>(new Set())
   const [errorSlots, setErrorSlots] = useState<Set<number>>(new Set())
+  const [showWinner, setShowWinner] = useState(false)
   const isLocked = new Date() >= LOCK_AT
   const supabase = createClient()
 
@@ -304,6 +309,19 @@ export default function KnockoutPredictionsPage() {
     () => calcQualified(groupMatches, allTeams, groupPreds),
     [groupMatches, allTeams, groupPreds]
   )
+
+  const predictedWinner = useMemo(
+    () => getWinnerOfSlot(32, koPreds, qualified),
+    [koPreds, qualified]
+  )
+
+  const prevWinnerRef = React.useRef<Team | null>(null)
+  useEffect(() => {
+    if (predictedWinner !== null && prevWinnerRef.current === null) {
+      setShowWinner(true)
+    }
+    prevWinnerRef.current = predictedWinner
+  }, [predictedWinner])
 
   const handleBlur = useCallback(async (slot: number) => {
     if (!userId || isLocked) return
@@ -385,7 +403,14 @@ export default function KnockoutPredictionsPage() {
               : '32 teams qualified — bracket fully set from your group predictions'}
           </p>
         </div>
-        {isLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
+        <div className="flex items-center gap-3 flex-wrap">
+          {isLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
+          {predictedWinner && (
+            <button onClick={() => setShowWinner(true)} className="bg-amber-400 text-[#0B1F3A] font-black px-4 py-2 rounded-xl text-sm hover:bg-amber-300 transition-colors">
+              🏆 Your Winner
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Info banner if group predictions incomplete */}
@@ -409,9 +434,27 @@ export default function KnockoutPredictionsPage() {
       </div>
 
       {view === 'list' ? (
-        <ListView slotProps={slotProps} />
+        <ListView slotProps={slotProps} koPreds={koPreds} onShowWinner={() => setShowWinner(true)} />
       ) : (
         <BracketView slotProps={slotProps} />
+      )}
+
+      {/* Winner modal */}
+      {showWinner && predictedWinner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowWinner(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full flex flex-col items-center gap-4 text-center" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 120, lineHeight: 1 }}>🏆</div>
+            <h2 className="text-2xl font-black text-[#0B1F3A]">Your World Cup Winner</h2>
+            {predictedWinner.fifa_code && (
+              <img src={flagUrl(predictedWinner.fifa_code, 200)} alt="" className="w-32 h-auto rounded-lg shadow-md" />
+            )}
+            <p className="text-3xl font-black text-[#0B1F3A]">{predictedWinner.name}</p>
+            <p className="text-gray-500 text-sm">Congratulations on completing your bracket!</p>
+            <button onClick={() => setShowWinner(false)} className="mt-2 bg-[#0B1F3A] text-white font-bold px-6 py-2.5 rounded-xl hover:bg-[#162d52] transition-colors">
+              Close ✕
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -419,7 +462,14 @@ export default function KnockoutPredictionsPage() {
 
 // ── List View ─────────────────────────────────────────────────────────────────
 
-function ListView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCardProps, 'label' | 'compact'> }) {
+function ListView({ slotProps, koPreds, onShowWinner }: { slotProps: (slot: number) => Omit<MatchCardProps, 'label' | 'compact'>; koPreds: KOPredMap; onShowWinner: () => void }) {
+  const bracketComplete = Array.from({ length: 32 }, (_, i) => i + 1).every(slot => {
+    const pred = koPreds[slot]
+    if (!pred || pred.homeScore === '' || pred.awayScore === '') return false
+    const h = parseInt(pred.homeScore), a = parseInt(pred.awayScore)
+    return !isNaN(h) && !isNaN(a) && h !== a
+  })
+
   const stages = [
     { key: 'r32', label: 'Round of 32', slots: R32_DEFS.map(d => d.slot) },
     { key: 'r16', label: 'Round of 16', slots: [17,18,19,20,21,22,23,24] },
@@ -455,6 +505,17 @@ function ListView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCardPr
           </div>
         </div>
       ))}
+
+      {bracketComplete && (
+        <div className="mt-10 flex flex-col items-center gap-4 p-8 bg-gradient-to-b from-white to-amber-50 rounded-2xl border border-amber-200">
+          <div className="text-6xl">🏆</div>
+          <h3 className="text-xl font-black text-[#0B1F3A]">Bracket Complete!</h3>
+          <p className="text-gray-600 text-sm text-center">You&apos;ve predicted all the way to the Final.</p>
+          <button onClick={onShowWinner} className="bg-[#0B1F3A] text-white font-black px-8 py-3 rounded-2xl hover:bg-[#162d52] transition-colors">
+            🏆 See Your Winner
+          </button>
+        </div>
+      )}
     </div>
   )
 }

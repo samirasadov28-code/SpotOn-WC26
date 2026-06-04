@@ -8,6 +8,34 @@ import type { Team, Match } from '@/lib/supabase/types'
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
 
+// Official R32 path per group position
+const BRACKET_PATHS: Record<string, { r32Opp: string; r32OppShort: string; r16Desc: string }> = {
+  '1A': { r32Opp: 'Best 3rd (C/E/F/H/I)', r32OppShort: '3rd C/E/F/H/I', r16Desc: 'W(1L vs 3rd E/H/I/J/K)' },
+  '1B': { r32Opp: 'Best 3rd (E/F/G/I/J)', r32OppShort: '3rd E/F/G/I/J', r16Desc: 'W(1K vs 3rd D/E/I/J/L)' },
+  '1C': { r32Opp: 'Runner-up Grp F',      r32OppShort: '2nd F',           r16Desc: 'W(2E vs 2I)' },
+  '1D': { r32Opp: 'Best 3rd (B/E/F/I/J)', r32OppShort: '3rd B/E/F/I/J', r16Desc: 'W(1G vs 3rd A/E/H/I/J)' },
+  '1E': { r32Opp: 'Best 3rd (A/B/C/D/F)', r32OppShort: '3rd A/B/C/D/F', r16Desc: 'W(1I vs 3rd C/D/F/G/H)' },
+  '1F': { r32Opp: 'Runner-up Grp C',      r32OppShort: '2nd C',           r16Desc: 'W(2A vs 2B)' },
+  '1G': { r32Opp: 'Best 3rd (A/E/H/I/J)', r32OppShort: '3rd A/E/H/I/J', r16Desc: 'W(1D vs 3rd B/E/F/I/J)' },
+  '1H': { r32Opp: 'Runner-up Grp J',      r32OppShort: '2nd J',           r16Desc: 'W(2K vs 2L)' },
+  '1I': { r32Opp: 'Best 3rd (C/D/F/G/H)', r32OppShort: '3rd C/D/F/G/H', r16Desc: 'W(1E vs 3rd A/B/C/D/F)' },
+  '1J': { r32Opp: 'Runner-up Grp H',      r32OppShort: '2nd H',           r16Desc: 'W(2D vs 2G)' },
+  '1K': { r32Opp: 'Best 3rd (D/E/I/J/L)', r32OppShort: '3rd D/E/I/J/L', r16Desc: 'W(1B vs 3rd E/F/G/I/J)' },
+  '1L': { r32Opp: 'Best 3rd (E/H/I/J/K)', r32OppShort: '3rd E/H/I/J/K', r16Desc: 'W(1A vs 3rd C/E/F/H/I)' },
+  '2A': { r32Opp: 'Runner-up Grp B',      r32OppShort: '2nd B',           r16Desc: 'W(1F vs 2nd C)' },
+  '2B': { r32Opp: 'Runner-up Grp A',      r32OppShort: '2nd A',           r16Desc: 'W(1F vs 2nd C)' },
+  '2C': { r32Opp: 'Winner Grp F',         r32OppShort: '1st F',           r16Desc: 'W(2A vs 2B)' },
+  '2D': { r32Opp: 'Runner-up Grp G',      r32OppShort: '2nd G',           r16Desc: 'W(1J vs 2nd H)' },
+  '2E': { r32Opp: 'Runner-up Grp I',      r32OppShort: '2nd I',           r16Desc: 'W(1C vs 2nd F)' },
+  '2F': { r32Opp: 'Winner Grp C',         r32OppShort: '1st C',           r16Desc: 'W(2E vs 2I)' },
+  '2G': { r32Opp: 'Runner-up Grp D',      r32OppShort: '2nd D',           r16Desc: 'W(1J vs 2nd H)' },
+  '2H': { r32Opp: 'Winner Grp J',         r32OppShort: '1st J',           r16Desc: 'W(2D vs 2G)' },
+  '2I': { r32Opp: 'Runner-up Grp E',      r32OppShort: '2nd E',           r16Desc: 'W(1C vs 2nd F)' },
+  '2J': { r32Opp: 'Winner Grp H',         r32OppShort: '1st H',           r16Desc: 'W(2K vs 2L)' },
+  '2K': { r32Opp: 'Runner-up Grp L',      r32OppShort: '2nd L',           r16Desc: 'W(1H vs 2nd J)' },
+  '2L': { r32Opp: 'Runner-up Grp K',      r32OppShort: '2nd K',           r16Desc: 'W(1H vs 2nd J)' },
+}
+
 interface MatchWithTeams extends Match {
   home_team: Team | null
   away_team: Team | null
@@ -258,6 +286,38 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
               </div>
             )
           })}
+
+          {/* Knockout path preview */}
+          {standings.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-2">
+              <div className="bg-[#0B1F3A] text-white px-4 py-2.5 text-sm font-bold flex items-center gap-2">
+                🏆 Knockout Path Preview
+                <span className="text-white/60 font-normal text-xs">based on your predictions</span>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {standings.slice(0, 3).map((s, i) => {
+                  const posKey = `${i + 1}${activeGroup}` // '1A', '2A', '3A'
+                  const path = i < 2 ? BRACKET_PATHS[posKey] : null
+                  const teamCode = (s.team as any).fifa_code
+                  return (
+                    <div key={s.team.id} className="flex items-center gap-3 px-4 py-3">
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${i === 0 ? 'bg-yellow-400 text-[#0B1F3A]' : i === 1 ? 'bg-gray-300 text-[#0B1F3A]' : 'bg-amber-100 text-amber-700'}`}>{i + 1}</span>
+                      {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
+                      <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-sm hover:underline flex-shrink-0">{s.team.name}</a>
+                      {path ? (
+                        <div className="ml-auto text-right min-w-0">
+                          <div className="text-xs text-gray-500">R32: <span className="font-medium text-[#0B1F3A]">{path.r32OppShort}</span></div>
+                          <div className="text-xs text-gray-400">R16: {path.r16Desc}</div>
+                        </div>
+                      ) : (
+                        <div className="ml-auto text-xs text-gray-400 italic">Top 8 3rd → qualifies</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT: live standings */}
@@ -337,6 +397,14 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
           )}
         </div>
       </div>
+
+      {savedCount >= 72 && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pb-6 pt-3 bg-gradient-to-t from-white/95 to-transparent pointer-events-none">
+          <a href="/predictions?tab=knockout" className="pointer-events-auto bg-[#0B1F3A] text-white font-black px-8 py-4 rounded-2xl shadow-2xl hover:bg-[#162d52] transition-all hover:scale-105 flex items-center gap-3 text-base">
+            🏆 Group Stage Complete — Predict the Playoff Bracket →
+          </a>
+        </div>
+      )}
     </div>
   )
 }
