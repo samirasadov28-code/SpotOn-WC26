@@ -122,11 +122,14 @@ export default function ChatPage() {
   }
 
   const handleDelete = async (msgId: string) => {
-    const { error } = await supabase
+    const { error, data } = await supabase
       .from('chat_messages')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', msgId)
-    if (!error && leagueId) await loadMessages(leagueId)
+      .select()
+    if (error) { console.error('Delete error:', error); alert('Delete failed: ' + error.message); return }
+    if (!data || data.length === 0) { alert('Delete failed: no rows updated (RLS may be blocking)'); return }
+    if (leagueId) await loadMessages(leagueId)
   }
 
   if (loading) {
