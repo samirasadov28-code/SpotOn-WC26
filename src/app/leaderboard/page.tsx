@@ -80,10 +80,11 @@ export default function LeaderboardPage() {
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
-    const [userRes, scoreRes, predRes, authRes] = await Promise.all([
+    const [userRes, scoreRes, predRes, koPredRes, authRes] = await Promise.all([
       supabase.from('users').select('id, display_name'),
       supabase.from('scores').select('*'),
       supabase.from('predictions_group').select('user_id'),
+      supabase.from('predictions_knockout').select('user_id'),
       supabase.auth.getUser(),
     ])
 
@@ -109,11 +110,23 @@ export default function LeaderboardPage() {
       predCounts.set(p.user_id, (predCounts.get(p.user_id) ?? 0) + 1)
     }
 
+    // Include any user who has predictions but no users row (upsert may have failed at signup)
+    const knownUserIds = new Set(users.map(u => u.id))
+    const allPredUserIds = new Set([
+      ...(predRes.data ?? []).map((p: any) => p.user_id),
+      ...(koPredRes.data ?? []).map((p: any) => p.user_id),
+    ])
+    for (const id of allPredUserIds) {
+      if (!knownUserIds.has(id)) {
+        users.push({ id, display_name: null })
+      }
+    }
+
     const built: Omit<LeaderboardEntry, 'rank'>[] = users.map((u) => {
       const s = scores.get(u.id)
       return {
         userId: u.id,
-        displayName: u.display_name ?? u.id.slice(0, 8),
+        displayName: u.display_name ?? `User ${u.id.slice(0, 6)}`,
         groupPts: s?.group_pts ?? 0,
         advancementPts: s?.advancement_pts ?? 0,
         knockoutPts: s?.knockout_match_pts ?? 0,

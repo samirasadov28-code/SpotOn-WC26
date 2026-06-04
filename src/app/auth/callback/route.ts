@@ -16,13 +16,10 @@ export async function GET(request: NextRequest) {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {
-        // Upsert user record
+        // Upsert user record — ignoreDuplicates:false so email is always kept current
         await supabase.from('users').upsert(
-          {
-            id: user.id,
-            email: user.email ?? '',
-          },
-          { onConflict: 'id', ignoreDuplicates: true }
+          { id: user.id, email: user.email ?? '' },
+          { onConflict: 'id', ignoreDuplicates: false }
         )
 
         // Check for display name
