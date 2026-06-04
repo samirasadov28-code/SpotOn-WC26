@@ -106,8 +106,41 @@ function getR32OppPosKey(posKey: string): string | null {
     '2A': '2B',   '2B': '2A',  '2C': '1F',  '2D': '2G',
     '2E': '2I',   '2F': '1C',  '2G': '2D',  '2H': '1J',
     '2I': '2E',   '2J': '1H',  '2K': '2L',  '2L': '2K',
+    // 3rd-place slots face 1st-place teams
+    '3rd1': '1E', '3rd2': '1I', '3rd3': '1A', '3rd4': '1L',
+    '3rd5': '1D', '3rd6': '1G', '3rd7': '1B', '3rd8': '1K',
   }
   return R32_OPP_KEYS[posKey] ?? null
+}
+
+// R32 slot → [homePosKey, awayPosKey]
+const R32_SLOT_DEFS: Record<number, [string, string]> = {
+  1: ['2A','2B'],  2: ['1E','3rd1'], 3: ['1F','2C'],   4: ['1C','2F'],
+  5: ['1I','3rd2'],6: ['2E','2I'],   7: ['1A','3rd3'],  8: ['1L','3rd4'],
+  9: ['1D','3rd5'],10:['1G','3rd6'], 11:['2K','2L'],   12:['1H','2J'],
+  13:['1B','3rd7'],14:['1J','2H'],  15:['1K','3rd8'],  16:['2D','2G'],
+}
+
+// R16 slot → [r32SlotA, r32SlotB]
+const R16_SLOT_DEFS: Record<number, [number, number]> = {
+  17:[2,5], 18:[1,3], 19:[4,6], 20:[7,8],
+  21:[11,12], 22:[9,10], 23:[14,16], 24:[13,15],
+}
+
+// For a given posKey, return R16 info: the two pos-keys from the OTHER R32 match in their R16
+function getR16OtherKeys(posKey: string): [string, string] | null {
+  // Find the R32 slot this posKey is in
+  let myR32Slot: number | null = null
+  for (const [slot, [h, a]] of Object.entries(R32_SLOT_DEFS)) {
+    if (h === posKey || a === posKey) { myR32Slot = parseInt(slot); break }
+  }
+  if (!myR32Slot) return null
+  // Find the R16 slot and the other R32 slot
+  for (const [, [slotA, slotB]] of Object.entries(R16_SLOT_DEFS)) {
+    if (slotA === myR32Slot) return R32_SLOT_DEFS[slotB] ?? null
+    if (slotB === myR32Slot) return R32_SLOT_DEFS[slotA] ?? null
+  }
+  return null
 }
 
 export default function GroupPredictionsPage({ onCountChange }: { onCountChange?: (n: number) => void }) {
@@ -340,37 +373,83 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
               </div>
               <div className="divide-y divide-gray-50">
                 {standings.slice(0, 3).map((s, i) => {
-                  const posKey = `${i + 1}${activeGroup}` // '1A', '2A', '3A'
-                  const path = i < 2 ? BRACKET_PATHS[posKey] : null
                   const teamCode = (s.team as any).fifa_code
+
+                  // For 3rd place: find their rank in best3rds
+                  let thirdRank: number | null = null
+                  let thirdPosKey: string | null = null
+                  if (i === 2) {
+                    const idx = best3rds.findIndex(r => r.team.id === s.team.id)
+                    if (idx >= 0 && idx < 8) {
+                      thirdRank = idx + 1
+                      thirdPosKey = `3rd${thirdRank}`
+                    }
+                  }
+
+                  const posKey = i < 2 ? `${i + 1}${activeGroup}` : thirdPosKey
+                  const r32OppKey = posKey ? getR32OppPosKey(posKey) : null
+                  const r32OppTeam = r32OppKey ? qualifiedTeams.get(r32OppKey) : null
+                  const r16OtherKeys = posKey ? getR16OtherKeys(posKey) : null
+                  const r16TeamA = r16OtherKeys ? qualifiedTeams.get(r16OtherKeys[0]) : null
+                  const r16TeamB = r16OtherKeys ? qualifiedTeams.get(r16OtherKeys[1]) : null
+
+                  const TeamChip = ({ posK, team }: { posK: string; team: Team | undefined }) => {
+                    if (team) {
+                      const code = (team as any).fifa_code
+                      return (
+                        <span className="inline-flex items-center gap-0.5 font-medium text-[#0B1F3A]">
+                          {code && <img src={flagUrl(code, 40)} alt="" className="w-3.5 h-auto rounded-sm" />}
+                          {team.name}
+                        </span>
+                      )
+                    }
+                    return <span className="text-gray-400">{posK}</span>
+                  }
+
                   return (
-                    <div key={s.team.id} className="flex items-center gap-3 px-4 py-3">
-                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${i === 0 ? 'bg-yellow-400 text-[#0B1F3A]' : i === 1 ? 'bg-gray-300 text-[#0B1F3A]' : 'bg-amber-100 text-amber-700'}`}>{i + 1}</span>
-                      {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
-                      <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-sm hover:underline flex-shrink-0">{s.team.name}</a>
-                      {path ? (
-                        <div className="ml-auto text-right min-w-0 max-w-[120px]">
-                          <div className="text-xs text-gray-500 truncate">
-                            R32: {(() => {
-                              const oppKey = getR32OppPosKey(posKey)
-                              const oppTeam = oppKey ? qualifiedTeams.get(oppKey) : null
-                              if (oppTeam) {
-                                const oppCode = (oppTeam as any).fifa_code
-                                return (
-                                  <span className="font-medium text-[#0B1F3A] inline-flex items-center gap-1">
-                                    {oppCode && <img src={flagUrl(oppCode, 40)} alt="" className="w-4 h-auto rounded-sm inline" />}
-                                    {oppTeam.name}
-                                  </span>
-                                )
-                              }
-                              return <span className="font-medium text-[#0B1F3A]">{path.r32OppShort}</span>
-                            })()}
+                    <div key={s.team.id} className="px-4 py-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${i === 0 ? 'bg-yellow-400 text-[#0B1F3A]' : i === 1 ? 'bg-gray-300 text-[#0B1F3A]' : thirdRank ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-500'}`}>{i + 1}</span>
+                        {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />}
+                        <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-xs hover:underline">{s.team.name}</a>
+                        {i === 2 && (
+                          <span className="ml-auto text-[10px] font-semibold">
+                            {thirdRank
+                              ? <span className="text-amber-600">#{thirdRank} best 3rd ✓</span>
+                              : <span className="text-red-400">Out of top 8</span>}
+                          </span>
+                        )}
+                      </div>
+
+                      {(i < 2 || thirdRank) && posKey ? (
+                        <div className="ml-7 flex flex-col gap-1">
+                          {/* R32 */}
+                          <div className="text-[11px] text-gray-500 flex items-center gap-1 flex-wrap">
+                            <span className="bg-[#0B1F3A] text-white text-[9px] font-black px-1.5 py-0.5 rounded">R32</span>
+                            <span>vs</span>
+                            {r32OppTeam
+                              ? <TeamChip posK={r32OppKey!} team={r32OppTeam} />
+                              : <span className="text-gray-400 italic">{BRACKET_PATHS[posKey]?.r32OppShort ?? r32OppKey}</span>
+                            }
                           </div>
-                          <div className="text-xs text-gray-400 truncate">R16: {path.r16Desc}</div>
+                          {/* R16 */}
+                          <div className="text-[11px] text-gray-500 flex items-center gap-1 flex-wrap">
+                            <span className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded">R16</span>
+                            <span>vs winner of</span>
+                            {r16OtherKeys ? (
+                              <span className="inline-flex items-center gap-1 flex-wrap">
+                                <TeamChip posK={r16OtherKeys[0]} team={r16TeamA ?? undefined} />
+                                <span className="text-gray-400">vs</span>
+                                <TeamChip posK={r16OtherKeys[1]} team={r16TeamB ?? undefined} />
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 italic">{BRACKET_PATHS[posKey]?.r16Desc ?? '—'}</span>
+                            )}
+                          </div>
                         </div>
-                      ) : (
-                        <div className="ml-auto text-xs text-gray-400 italic">Top 8 3rd → qualifies</div>
-                      )}
+                      ) : i === 2 && !thirdRank ? (
+                        <div className="ml-7 text-[11px] text-red-400 italic">Doesn&apos;t qualify based on current predictions</div>
+                      ) : null}
                     </div>
                   )
                 })}
