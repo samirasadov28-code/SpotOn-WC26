@@ -10,6 +10,7 @@ import { formatDistanceToNow, isBefore } from 'date-fns'
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 
 const NAV_LINKS = [
+  { href: '/today', label: 'Today' },
   { href: '/predictions', label: 'Predictions' },
   { href: '/results', label: 'Results' },
   { href: '/simulate', label: 'Simulate' },
