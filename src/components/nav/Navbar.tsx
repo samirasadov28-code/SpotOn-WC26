@@ -35,7 +35,8 @@ export default function Navbar() {
           .select('display_name')
           .eq('id', user.id)
           .single()
-        setDisplayName((data as any)?.display_name ?? user.email ?? null)
+        const name = (data as any)?.display_name
+        setDisplayName(name || user.email?.split('@')[0] || 'Player')
       }
     }
     getUser()

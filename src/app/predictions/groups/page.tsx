@@ -118,6 +118,26 @@ export default function GroupPredictionsPage() {
     )
   }
 
+  if (!userId) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
+        <div className="text-4xl">🔒</div>
+        <h2 className="text-xl font-bold text-[#0B1F3A]">Sign in to make predictions</h2>
+        <a href="/auth/login" className="bg-[#0B1F3A] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-900 transition-colors">Sign in</a>
+      </div>
+    )
+  }
+
+  if (matches.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-center px-4">
+        <div className="text-4xl">🏗️</div>
+        <h2 className="text-xl font-bold text-[#0B1F3A]">Database not set up yet</h2>
+        <p className="text-gray-500 max-w-sm text-sm">The match schedule hasn&apos;t been loaded into Supabase yet. Run the migrations in <code className="bg-gray-100 px-1 rounded">supabase/migrations/</code> to get started.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">

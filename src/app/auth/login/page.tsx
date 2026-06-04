@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -28,22 +29,27 @@ export default function LoginPage() {
         setError(err.message)
         return
       }
-      // If session is returned immediately, email confirmation is off — go straight in
+
+      const upsertUser = async (userId: string) => {
+        await supabase.from('users').upsert(
+          { id: userId, email, display_name: displayName.trim() || null },
+          { onConflict: 'id' }
+        )
+      }
+
       if (data.session) {
-        await supabase.from('users').upsert({ id: data.session.user.id, email }, { onConflict: 'id', ignoreDuplicates: true })
+        await upsertUser(data.session.user.id)
         window.location.href = '/predictions/groups'
         return
       }
-      // Otherwise try signing in anyway (works when "Confirm email" is disabled in Supabase)
+
       const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
       setLoading(false)
       if (signInErr) {
         setSuccess('Account created! Check your email to confirm it, then sign in.')
         setMode('signin')
       } else {
-        if (signInData.session) {
-          await supabase.from('users').upsert({ id: signInData.session.user.id, email }, { onConflict: 'id', ignoreDuplicates: true })
-        }
+        if (signInData.session) await upsertUser(signInData.session.user.id)
         window.location.href = '/predictions/groups'
       }
     } else {
@@ -63,6 +69,8 @@ export default function LoginPage() {
       }
     }
   }
+
+  const switchMode = (m: Mode) => { setMode(m); setError(null); setSuccess(null) }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -84,6 +92,24 @@ export default function LoginPage() {
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {mode === 'signup' && (
+            <div>
+              <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-1">
+                Your name <span className="text-gray-400 font-normal">(shown on leaderboard)</span>
+              </label>
+              <input
+                id="displayName"
+                type="text"
+                maxLength={30}
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="e.g. Samir"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
+              />
+            </div>
+          )}
+
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
               Email address
@@ -131,13 +157,13 @@ export default function LoginPage() {
         <p className="text-center text-sm text-gray-500 mt-5">
           {mode === 'signin' ? (
             <>No account?{' '}
-              <button onClick={() => { setMode('signup'); setError(null); setSuccess(null) }} className="text-[#0B1F3A] font-semibold hover:underline">
+              <button onClick={() => switchMode('signup')} className="text-[#0B1F3A] font-semibold hover:underline">
                 Sign up
               </button>
             </>
           ) : (
             <>Already have one?{' '}
-              <button onClick={() => { setMode('signin'); setError(null); setSuccess(null) }} className="text-[#0B1F3A] font-semibold hover:underline">
+              <button onClick={() => switchMode('signin')} className="text-[#0B1F3A] font-semibold hover:underline">
                 Sign in
               </button>
             </>
