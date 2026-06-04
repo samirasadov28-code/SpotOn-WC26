@@ -224,9 +224,10 @@ export default function HomePage() {
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {STADIUMS.map((s) => (
-              <div
+              <Link
                 key={s.name}
-                className="group relative bg-[#0B1F3A] rounded-2xl p-6 overflow-hidden hover:scale-[1.02] transition-transform cursor-default"
+                href={`/stadiums/${s.slug}`}
+                className="group relative bg-[#0B1F3A] rounded-2xl p-6 overflow-hidden hover:scale-[1.02] transition-transform"
               >
                 {/* pitch lines decoration */}
                 <div className="absolute right-0 top-0 bottom-0 w-24 opacity-10">
@@ -239,15 +240,21 @@ export default function HomePage() {
                       {s.note}
                     </span>
                   )}
-                  <div className="text-3xl mb-2">{s.flag}</div>
-                  <h3 className="text-white font-black text-lg leading-tight">{s.name}</h3>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`https://flagcdn.com/w40/${s.iso2}.png`} alt={s.country} className="w-8 h-auto mb-2 rounded-sm opacity-80" />
+                  <h3 className="text-white font-black text-lg leading-tight group-hover:text-green-300 transition-colors">{s.name}</h3>
                   <p className="text-white/50 text-sm mt-1">{s.city} · {s.country}</p>
                   <p className="text-white/30 text-xs mt-2">Capacity: {s.capacity}</p>
+                  <p className="text-white/40 text-xs mt-3 font-semibold group-hover:text-white/60 transition-colors">View details →</p>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
-          <p className="text-center text-gray-400 text-sm mt-6">+ 10 more stadiums across the USA, Canada & Mexico</p>
+          <div className="text-center mt-6">
+            <Link href="/stadiums" className="inline-block text-sm font-bold text-[#0B1F3A] border border-[#0B1F3A] px-5 py-2 rounded-full hover:bg-[#0B1F3A] hover:text-white transition-colors">
+              View all 16 stadiums →
+            </Link>
+          </div>
         </div>
       </section>
 

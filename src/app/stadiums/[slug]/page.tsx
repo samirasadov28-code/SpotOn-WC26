@@ -26,8 +26,8 @@ export default function StadiumPage({ params }: { params: { slug: string } }) {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <Link href="/teams#stadiums" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#0B1F3A] mb-6 transition-colors">
-        ← Back to stadiums
+      <Link href="/stadiums" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#0B1F3A] mb-6 transition-colors">
+        ← All stadiums
       </Link>
 
       {/* Hero */}

@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { href: '/predictions/knockout', label: 'My Bracket' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/teams', label: 'Teams' },
+  { href: '/stadiums', label: 'Stadiums' },
   { href: '/rules', label: 'Rules' },
   { href: '/chat', label: 'Chat' },
 ]
