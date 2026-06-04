@@ -10,8 +10,8 @@ import { formatDistanceToNow, isBefore } from 'date-fns'
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 
 const NAV_LINKS = [
-  { href: '/predictions/groups', label: 'Predictions' },
-  { href: '/predictions/knockout', label: 'My Bracket' },
+  { href: '/predictions', label: 'Predictions' },
+  { href: '/results', label: 'Results' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/teams', label: 'Teams' },
   { href: '/stadiums', label: 'Stadiums' },
