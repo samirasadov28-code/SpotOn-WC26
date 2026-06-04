@@ -279,7 +279,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onChange, onBlur, ha
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function KnockoutPredictionsPage() {
+export default function KnockoutPredictionsPage({ onCountChange }: { onCountChange?: (n: number) => void }) {
   const [groupMatches, setGroupMatches] = useState<MatchWithTeams[]>([])
   const [allTeams, setAllTeams] = useState<Team[]>([])
   const [groupPreds, setGroupPreds] = useState<GroupPredMap>({})
@@ -289,6 +289,7 @@ export default function KnockoutPredictionsPage() {
   const [view, setView] = useState<ViewMode>('list')
   const [savingSlots, setSavingSlots] = useState<Set<number>>(new Set())
   const [errorSlots, setErrorSlots] = useState<Set<number>>(new Set())
+  const [savedSlotCount, setSavedSlotCount] = useState(0)
   const [showWinner, setShowWinner] = useState(false)
   const isLocked = new Date() >= LOCK_AT
   const supabase = createClient()
@@ -319,13 +320,17 @@ export default function KnockoutPredictionsPage() {
       setGroupPreds(gpMap)
 
       const kpMap: KOPredMap = {}
+      let count = 0
       for (const p of kpRes.data ?? []) {
         kpMap[p.bracket_slot] = {
           homeScore: p.pred_home_score !== null ? String(p.pred_home_score) : '',
           awayScore: p.pred_away_score !== null ? String(p.pred_away_score) : '',
         }
+        if (p.pred_home_score !== null && p.pred_away_score !== null) count++
       }
       setKoPreds(kpMap)
+      setSavedSlotCount(count)
+      onCountChange?.(count)
       setLoading(false)
     }
     init()
@@ -369,12 +374,16 @@ export default function KnockoutPredictionsPage() {
     }
 
     setErrorSlots(s => { const n = new Set(s); n.delete(slot); return n })
+    const isNew = !(koPreds[slot]?.homeScore !== '' && koPreds[slot]?.awayScore !== '')
     setSavingSlots(s => new Set([...s, slot]))
     await supabase.from('predictions_knockout').upsert(
       { user_id: userId, bracket_slot: slot, pred_home_score: h, pred_away_score: a, updated_at: new Date().toISOString() },
       { onConflict: 'user_id,bracket_slot' }
     )
     setSavingSlots(s => { const n = new Set(s); n.delete(slot); return n })
+    if (isNew) {
+      setSavedSlotCount(c => { const next = c + 1; onCountChange?.(next); return next })
+    }
   }, [userId, isLocked, koPreds, supabase])
 
   const setPred = useCallback((slot: number, p: { homeScore: string; awayScore: string }) => {

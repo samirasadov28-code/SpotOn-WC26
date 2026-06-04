@@ -10,34 +10,35 @@ type Tab = 'groups' | 'bracket'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const GROUP_TOTAL = 72
+const KO_TOTAL = 32
 
 function PredictionsInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const isLocked = new Date() >= LOCK_AT
 
-  // Start on bracket if ?tab=bracket, otherwise determine after loading saved count
   const explicitTab = searchParams.get('tab') as Tab | null
   const [tab, setTabState] = useState<Tab>(explicitTab ?? 'groups')
   const [groupsSaved, setGroupsSaved] = useState(0)
+  const [koSaved, setKoSaved] = useState(0)
   const [initialised, setInitialised] = useState(!!explicitTab)
 
-  // On first load (no explicit tab param): check how many group predictions are saved
+  // On first load: check saved counts for both stages to set correct default tab and badges
   useEffect(() => {
-    if (explicitTab) return
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) { setInitialised(true); return }
-      supabase
-        .from('predictions_group')
-        .select('match_id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .then(({ count }) => {
-          const saved = count ?? 0
-          setGroupsSaved(saved)
-          if (saved >= GROUP_TOTAL) setTabState('bracket')
-          setInitialised(true)
-        })
+      Promise.all([
+        supabase.from('predictions_group').select('match_id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('predictions_knockout').select('bracket_slot', { count: 'exact', head: true }).eq('user_id', user.id),
+      ]).then(([gRes, kRes]) => {
+        const gSaved = gRes.count ?? 0
+        const kSaved = kRes.count ?? 0
+        setGroupsSaved(gSaved)
+        setKoSaved(kSaved)
+        if (!explicitTab && gSaved >= GROUP_TOTAL) setTabState('bracket')
+        setInitialised(true)
+      })
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -47,6 +48,7 @@ function PredictionsInner() {
   }
 
   const groupsDone = groupsSaved >= GROUP_TOTAL
+  const koDone = koSaved >= KO_TOTAL
 
   if (!initialised) return null
 
@@ -68,6 +70,9 @@ function PredictionsInner() {
               >
                 {t === 'groups' ? '⚽ Group Stage' : '🏆 Playoff Bracket'}
                 {t === 'groups' && groupsDone && (
+                  <span className="text-[10px] bg-green-500 text-white rounded-full px-1.5 py-0.5 font-bold leading-none">✓</span>
+                )}
+                {t === 'bracket' && koDone && (
                   <span className="text-[10px] bg-green-500 text-white rounded-full px-1.5 py-0.5 font-bold leading-none">✓</span>
                 )}
               </button>
@@ -101,7 +106,7 @@ function PredictionsInner() {
         </div>
       )}
 
-      {tab === 'groups' ? <GroupPredictionsPage onCountChange={setGroupsSaved} /> : <KnockoutPredictionsPage />}
+      {tab === 'groups' ? <GroupPredictionsPage onCountChange={setGroupsSaved} /> : <KnockoutPredictionsPage onCountChange={setKoSaved} />}
     </div>
   )
 }

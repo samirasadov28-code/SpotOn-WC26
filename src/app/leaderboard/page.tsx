@@ -3,9 +3,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
-import Link from 'next/link'
 
 const GROUP_MATCHES_TOTAL = 72
+
+interface UserLeague {
+  id: string
+  name: string
+  join_code: string
+}
 
 interface LeaderboardEntry {
   rank: number
@@ -69,6 +74,9 @@ export default function LeaderboardPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [breakdowns, setBreakdowns] = useState<Record<string, ScoreBreakdown>>({})
   const [loadingBreakdown, setLoadingBreakdown] = useState<string | null>(null)
+  const [userLeagues, setUserLeagues] = useState<UserLeague[]>([])
+  const [selectedLeagueId, setSelectedLeagueId] = useState<string>('global')
+  const [leagueMembers, setLeagueMembers] = useState<Set<string>>(new Set())
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
@@ -79,14 +87,27 @@ export default function LeaderboardPage() {
       supabase.auth.getUser(),
     ])
 
+    const uid = authRes.data.user?.id ?? null
+    setCurrentUserId(uid)
+
+    // Load user's leagues
+    if (uid) {
+      const { data: memberships } = await (supabase as any)
+        .from('league_members').select('league_id').eq('user_id', uid)
+      if (memberships?.length) {
+        const ids = memberships.map((m: any) => m.league_id)
+        const { data: leagues } = await (supabase as any)
+          .from('leagues').select('id, name, join_code').in('id', ids)
+        setUserLeagues(leagues ?? [])
+      }
+    }
+
     const users: { id: string; display_name: string | null }[] = userRes.data ?? []
     const scores = new Map((scoreRes.data ?? []).map((s: any) => [s.user_id, s]))
     const predCounts = new Map<string, number>()
     for (const p of (predRes.data ?? []) as { user_id: string }[]) {
       predCounts.set(p.user_id, (predCounts.get(p.user_id) ?? 0) + 1)
     }
-
-    setCurrentUserId(authRes.data.user?.id ?? null)
 
     const built: Omit<LeaderboardEntry, 'rank'>[] = users.map((u) => {
       const s = scores.get(u.id)
@@ -158,6 +179,25 @@ export default function LeaderboardPage() {
     if (!isOpen) await loadBreakdown(entry.userId, entry.advancementPts)
   }
 
+  const handleLeagueChange = async (leagueId: string) => {
+    setSelectedLeagueId(leagueId)
+    setExpandedId(null)
+    if (leagueId === 'global') { setLeagueMembers(new Set()); return }
+    const { data } = await (supabase as any)
+      .from('league_members').select('user_id').eq('league_id', leagueId)
+    setLeagueMembers(new Set((data ?? []).map((r: any) => r.user_id)))
+  }
+
+  const visibleEntries = selectedLeagueId === 'global'
+    ? entries
+    : entries.filter(e => leagueMembers.has(e.userId)).map((e, i, arr) => {
+        // Re-rank within the league
+        let rank = 1
+        if (i > 0 && e.totalPts < arr[i - 1].totalPts) rank = i + 1
+        else if (i > 0) rank = arr[i - 1].rank ?? i + 1
+        return { ...e, rank: i === 0 ? 1 : (e.totalPts < arr[i-1].totalPts ? i + 1 : (arr[i-1] as any).rank) }
+      })
+
   if (loading) {
     return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading leaderboard…</div>
   }
@@ -165,16 +205,29 @@ export default function LeaderboardPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-[#0B1F3A]">Leaderboard</h1>
         {lastUpdated && <div className="text-xs text-gray-400">Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}</div>}
       </div>
 
-      {/* League link */}
-      <div className="mb-5">
-        <Link href="/league" className="inline-flex items-center gap-2 text-sm text-[#0B1F3A] border border-[#0B1F3A]/30 rounded-lg px-3 py-1.5 hover:bg-[#0B1F3A] hover:text-white transition-colors">
-          🏅 View your private league leaderboards →
-        </Link>
+      {/* League selector */}
+      <div className="flex items-center gap-3 mb-5">
+        <label className="text-sm font-semibold text-gray-600 shrink-0">View:</label>
+        <select
+          value={selectedLeagueId}
+          onChange={e => handleLeagueChange(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] bg-white"
+        >
+          <option value="global">🌍 Global (all players)</option>
+          {userLeagues.map(l => (
+            <option key={l.id} value={l.id}>🏅 {l.name}</option>
+          ))}
+        </select>
+        {userLeagues.length === 0 && (
+          <a href="/league" className="text-xs text-[#0B1F3A] underline underline-offset-2 hover:opacity-70">
+            Create or join a league →
+          </a>
+        )}
       </div>
 
       {/* Scoring legend */}
@@ -186,8 +239,10 @@ export default function LeaderboardPage() {
         <span className="text-amber-700 italic">Click any row for full breakdown ↓</span>
       </div>
 
-      {entries.length === 0 ? (
-        <div className="text-center text-gray-500 py-16">No players yet. Be the first to join!</div>
+      {visibleEntries.length === 0 ? (
+        <div className="text-center text-gray-500 py-16">
+          {selectedLeagueId === 'global' ? 'No players yet. Be the first to join!' : 'No members in this league yet.'}
+        </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
@@ -203,7 +258,7 @@ export default function LeaderboardPage() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry, idx) => {
+              {visibleEntries.map((entry, idx) => {
                 const isMe = entry.userId === currentUserId
                 const isComplete = entry.predictionCount >= GROUP_MATCHES_TOTAL
                 const pctDone = Math.min(100, Math.round((entry.predictionCount / GROUP_MATCHES_TOTAL) * 100))
