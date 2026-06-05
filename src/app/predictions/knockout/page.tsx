@@ -637,6 +637,7 @@ function ListView({ slotProps, koPreds, onShowWinner }: { slotProps: (slot: numb
 // ── Bracket View ──────────────────────────────────────────────────────────────
 
 function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCardProps, 'label' | 'compact'> }) {
+  const { t } = useTranslation()
   const leftR32  = [2, 5, 1, 3, 11, 12, 9, 10]
   const leftR16  = [17, 18, 21, 22]
   const leftQF   = [25, 26]
@@ -680,10 +681,10 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
 
         {/* Center: Final + 3rd */}
         <div className="flex flex-col justify-center gap-3 flex-1 min-w-[120px] mx-0.5 animate-fade-slide opacity-0" style={{ animationDelay: '320ms' }}>
-          <div className="text-[10px] font-bold text-center text-[#0B1F3A] uppercase tracking-widest pb-1 border-b border-[#0B1F3A]/20">Final</div>
-          <MatchCard compact label="🏆 Final" {...slotProps(32)} />
-          <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100 mt-2">3rd Place</div>
-          <MatchCard compact label="3rd Place" {...slotProps(31)} />
+          <div className="text-[10px] font-bold text-center text-[#0B1F3A] uppercase tracking-widest pb-1 border-b border-[#0B1F3A]/20">{t('ko_final')}</div>
+          <MatchCard compact label={`🏆 ${t('ko_final')}`} {...slotProps(32)} />
+          <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100 mt-2">{t('ko_third')}</div>
+          <MatchCard compact label={t('ko_third')} {...slotProps(31)} />
         </div>
 
         {/* Right half — SF → QF → R16 → R32 */}

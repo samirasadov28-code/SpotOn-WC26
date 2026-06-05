@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000
@@ -136,6 +137,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
 
+  const { t } = useTranslation()
   const supabase = createClient()
 
   const handleClearAll = useCallback(async () => {
