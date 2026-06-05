@@ -106,13 +106,13 @@ export default function ScoreTicker() {
     <>
       <style>{`
         @keyframes ticker {
-          0%   { transform: translateX(100%); }
+          0%   { transform: translateX(100vw); }
           100% { transform: translateX(-100%); }
         }
         .ticker-track {
           display: inline-block;
           white-space: nowrap;
-          animation: ticker 22s linear infinite;
+          animation: ticker 15s linear infinite;
         }
         .ticker-wrap:hover .ticker-track {
           animation-play-state: paused;
