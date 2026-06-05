@@ -112,7 +112,7 @@ export default function ScoreTicker() {
         .ticker-track {
           display: inline-block;
           white-space: nowrap;
-          animation: ticker 15s linear infinite;
+          animation: ticker 20s linear infinite;
         }
         .ticker-wrap:hover .ticker-track {
           animation-play-state: paused;
