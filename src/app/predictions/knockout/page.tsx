@@ -610,7 +610,7 @@ function ListView({ slotProps, koPreds, onShowWinner }: { slotProps: (slot: numb
         <div key={stage.key}>
           <h2 className="text-base font-bold text-[#0B1F3A] mb-3 flex items-center gap-2">
             {stage.label}
-            <span className="text-xs font-normal text-gray-400">no draws allowed</span>
+            <span className="text-xs font-normal text-gray-400">{t('ko_no_draws')}</span>
           </h2>
           <div className={`grid gap-3 ${stage.slots.length > 4 ? 'sm:grid-cols-2' : stage.slots.length > 2 ? 'sm:grid-cols-2' : ''}`}>
             {stage.slots.map(slot => (
@@ -623,7 +623,7 @@ function ListView({ slotProps, koPreds, onShowWinner }: { slotProps: (slot: numb
       {bracketComplete && (
         <div className="mt-10 flex flex-col items-center gap-4 p-8 bg-gradient-to-b from-white to-amber-50 rounded-2xl border border-amber-200">
           <div className="text-6xl">🏆</div>
-          <h3 className="text-xl font-black text-[#0B1F3A]">Bracket Complete!</h3>
+          <h3 className="text-xl font-black text-[#0B1F3A]">{t('ko_complete')}</h3>
           <p className="text-gray-600 text-sm text-center">You&apos;ve predicted all the way to the Final.</p>
           <button onClick={onShowWinner} className="bg-[#0B1F3A] text-white font-black px-8 py-3 rounded-2xl hover:bg-[#162d52] transition-colors">
             🏆 See Your Winner
