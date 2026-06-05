@@ -3,12 +3,14 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 export default function OnboardingPage() {
   const [displayName, setDisplayName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const { t } = useTranslation()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -22,7 +24,7 @@ export default function OnboardingPage() {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      setError('Not signed in. Please try again.')
+      setError(t('onb_not_signed_in'))
       setLoading(false)
       return
     }
@@ -48,10 +50,10 @@ export default function OnboardingPage() {
         <div className="text-center mb-6">
           <div className="text-4xl mb-2">👋</div>
           <h1 className="text-2xl font-bold text-navy dark:text-white">
-            Welcome to SpotOn WC26!
+            {t('onb_welcome')}
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Choose a display name for the leaderboard
+            {t('onb_choose')}
           </p>
         </div>
 
@@ -61,7 +63,7 @@ export default function OnboardingPage() {
               htmlFor="name"
               className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
             >
-              Display name
+              {t('onb_display_name')}
             </label>
             <input
               id="name"

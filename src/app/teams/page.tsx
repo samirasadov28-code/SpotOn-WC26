@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { STATIC_TEAMS, GROUPS_ORDER } from '@/lib/teams-data'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const KEY_DATES = [
   { label: 'Prediction lock', date: 'June 11 · 9:00 AM ET', highlight: true },
@@ -39,6 +40,7 @@ type TeamsTab = 'teams' | 'stadiums'
 
 export default function TeamsPage() {
   const [activeTab, setActiveTab] = useState<TeamsTab>('teams')
+  const { t } = useTranslation()
 
   const byGroup = GROUPS_ORDER.map(g => ({
     letter: g,
@@ -53,13 +55,13 @@ export default function TeamsPage() {
           onClick={() => setActiveTab('teams')}
           className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'teams' ? 'bg-[#0B1F3A] text-white' : 'text-gray-600 hover:text-[#0B1F3A]'}`}
         >
-          Teams & Groups
+          {t('teams_tab')}
         </button>
         <button
           onClick={() => setActiveTab('stadiums')}
           className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'stadiums' ? 'bg-[#0B1F3A] text-white' : 'text-gray-600 hover:text-[#0B1F3A]'}`}
         >
-          Stadiums
+          {t('teams_stadiums')}
         </button>
       </div>
 
