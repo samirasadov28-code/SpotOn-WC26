@@ -100,7 +100,7 @@ export default function LeaderboardPage() {
   const [leagueActionLoading, setLeagueActionLoading] = useState(false)
   const [leagueError, setLeagueError] = useState<string | null>(null)
   const [inviteLeague, setInviteLeague] = useState<UserLeague | null>(null)
-  const [copiedInvite, setCopiedInvite] = useState(false)
+  const [copiedLeagueId, setCopiedLeagueId] = useState<string | null>(null)
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
@@ -310,8 +310,8 @@ export default function LeaderboardPage() {
     const origin = window.location.origin
     const msg = `Join my SpotOn WC26 league "${league.name}"!\nSign up: ${origin}/auth/login?league=${league.join_code}\nOr enter code: ${league.join_code}`
     await navigator.clipboard.writeText(msg)
-    setCopiedInvite(true)
-    setTimeout(() => setCopiedInvite(false), 2000)
+    setCopiedLeagueId(league.id)
+    setTimeout(() => setCopiedLeagueId(null), 2000)
   }
 
   const visibleEntries = selectedLeagueId === 'global'
@@ -386,8 +386,8 @@ export default function LeaderboardPage() {
                     <span className="font-semibold text-sm text-[#0B1F3A]">{l.name}</span>
                     <span className="text-xs text-gray-400 font-mono ml-2">· {l.join_code}</span>
                   </div>
-                  <button onClick={() => handleCopyInvite(l)} className="text-xs text-green-700 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors">
-                    {copiedInvite && inviteLeague?.id === l.id ? '✅ Copied!' : 'Copy Invite'}
+                  <button onClick={() => handleCopyInvite(l)} className={`text-xs px-2 py-1 rounded-lg font-medium transition-all ${copiedLeagueId === l.id ? 'bg-green-600 text-white border border-green-600' : 'text-green-700 border border-green-200 hover:bg-green-50'}`}>
+                    {copiedLeagueId === l.id ? '✅ Copied!' : 'Copy Invite'}
                   </button>
                 </div>
               ))}
@@ -402,7 +402,7 @@ export default function LeaderboardPage() {
           <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
             <h2 className="text-lg font-bold text-[#0B1F3A] mb-2">League created! 🎉</h2>
             <p className="text-sm text-gray-500 mb-4">Share this code with friends: <span className="font-mono font-bold text-green-700">{inviteLeague.join_code}</span></p>
-            <button onClick={() => { handleCopyInvite(inviteLeague); }} className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm mb-2 hover:bg-green-500 transition-colors">{copiedInvite ? '✅ Copied!' : 'Copy Invite Message'}</button>
+            <button onClick={() => { handleCopyInvite(inviteLeague); }} className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm mb-2 hover:bg-green-500 transition-colors">{copiedLeagueId === inviteLeague?.id ? '✅ Copied!' : 'Copy Invite Message'}</button>
             <button onClick={() => setInviteLeague(null)} className="w-full border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm hover:bg-gray-50 transition-colors">Close</button>
           </div>
         </div>
