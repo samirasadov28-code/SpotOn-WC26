@@ -5,6 +5,7 @@ import './globals.css'
 import Navbar from '@/components/nav/Navbar'
 import ScoreTicker from '@/components/ScoreTicker'
 import { ToastProvider } from '@/components/ToastProvider'
+import { LanguageProvider } from '@/lib/i18n/LanguageContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -36,11 +37,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         `}</Script>
       </head>
       <body className={`${inter.className} bg-white text-gray-900 min-h-screen`}>
-        <ToastProvider>
-          <Navbar />
-          <ScoreTicker />
-          <main className="pb-16 md:pb-0">{children}</main>
-        </ToastProvider>
+        <LanguageProvider>
+          <ToastProvider>
+            <Navbar />
+            <ScoreTicker />
+            <main className="pb-16 md:pb-0">{children}</main>
+          </ToastProvider>
+        </LanguageProvider>
       </body>
     </html>
   )
