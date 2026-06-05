@@ -2274,7 +2274,7 @@ export const translations: Translations = {
     home_matches: 'Partite della Fase a Gironi',
     home_stadiums: 'Stadi',
     home_prize_title: 'Premi da Annunciare',
-    home_prize_sub: 'Premi entusiasmanti in arrivo — dettagli rivelati dopo il calcio d'inizio.',
+    home_prize_sub: "Premi entusiasmanti in arrivo — dettagli rivelati dopo il calcio d'inizio.",
     home_timeline_title: 'Calendario del Torneo',
     home_how_title: 'Come Funziona',
     home_how_predict_title: 'Pronostica',
