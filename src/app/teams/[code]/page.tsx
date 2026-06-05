@@ -2,6 +2,7 @@ import { STATIC_TEAMS } from '@/lib/teams-data'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import TeamProfileTranslated from '@/components/TeamProfileTranslated'
 
 const CONF_COLORS: Record<string, string> = {
   UEFA: 'bg-blue-100 text-blue-800',
@@ -63,17 +64,7 @@ export default async function TeamPage({ params }: { params: { code: string } })
         </div>
       </div>
 
-      {/* World Cup History — rich paragraph */}
-      <div className="bg-[#0B1F3A] text-white rounded-2xl p-6 mb-6">
-        <h2 className="text-lg font-black mb-3 flex items-center gap-2">🌍 World Cup Story</h2>
-        <p className="text-white/80 leading-relaxed text-sm sm:text-base">{team.history}</p>
-      </div>
-
-      {/* Quick blurb / 2026 context */}
-      <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 mb-8">
-        <h2 className="text-base font-black text-[#0B1F3A] mb-2">📌 2026 Context</h2>
-        <p className="text-gray-700 leading-relaxed text-sm">{team.blurb}</p>
-      </div>
+      <TeamProfileTranslated fifaCode={team.fifaCode} blurb={team.blurb} history={team.history} />
 
       {/* Stars */}
       {team.stars.length > 0 && (
