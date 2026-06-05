@@ -415,8 +415,8 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
           {standings.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-2">
               <div className="bg-[#0B1F3A] text-white px-4 py-2.5 text-sm font-bold flex items-center gap-2">
-                🏆 Knockout Path Preview
-                <span className="text-white/60 font-normal text-xs">based on your predictions</span>
+                {t('grp_ko_preview')}
+                <span className="text-white/60 font-normal text-xs">{t('grp_based_on')}</span>
               </div>
               <div className="divide-y divide-gray-50">
                 {standings.slice(0, 3).map((s, i) => {
@@ -454,27 +454,27 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                         {qualifies && (
                           <div className="ml-7 space-y-1">
                             <div className="text-xs text-gray-500 flex items-center gap-1.5">
-                              <span className="text-gray-400 w-7">R32:</span>
+                              <span className="text-gray-400 w-7">{t('grp_r32')}</span>
                               {r32OppCode && <img src={flagUrl(r32OppCode, 40)} alt="" className="w-4 h-auto rounded-sm" />}
                               <span className="font-medium text-[#0B1F3A]">{r32Opp ? r32Opp.name : (oppPosKey ?? '?')}</span>
                             </div>
                             <div className="text-xs text-gray-400 flex items-center gap-1.5 flex-wrap">
-                              <span className="w-7">R16:</span>
+                              <span className="w-7">{t('grp_r16')}</span>
                               {r16Teams.length >= 2 ? (
                                 <>
-                                  <span>vs winner of</span>
+                                  <span>{t('grp_vs_winner')}</span>
                                   {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
                                   <span className="font-medium text-gray-600">{r16Teams[0].name}</span>
-                                  <span>or</span>
+                                  <span>{t('grp_or')}</span>
                                   {(r16Teams[1] as any).fifa_code && <img src={flagUrl((r16Teams[1] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
                                   <span className="font-medium text-gray-600">{r16Teams[1].name}</span>
                                 </>
                               ) : r16Teams.length === 1 ? (
                                 <>
-                                  <span>vs winner of</span>
+                                  <span>{t('grp_vs_winner')}</span>
                                   {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
                                   <span className="font-medium text-gray-600">{r16Teams[0].name}</span>
-                                  <span className="text-gray-300">or TBD</span>
+                                  <span className="text-gray-300">{t('grp_or')} TBD</span>
                                 </>
                               ) : (
                                 <span>{r16PosList.join(' / ') || '?'}</span>
@@ -510,27 +510,27 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                       </div>
                       <div className="ml-7 space-y-1">
                         <div className="text-xs text-gray-500 flex items-center gap-1.5">
-                          <span className="text-gray-400 w-7">R32:</span>
+                          <span className="text-gray-400 w-7">{t('grp_r32')}</span>
                           {r32OppCode && <img src={flagUrl(r32OppCode, 40)} alt="" className="w-4 h-auto rounded-sm" />}
                           <span className="font-medium text-[#0B1F3A]">{r32OppLabel}</span>
                         </div>
                         <div className="text-xs text-gray-400 flex items-center gap-1.5 flex-wrap">
-                          <span className="w-7">R16:</span>
+                          <span className="w-7">{t('grp_r16')}</span>
                           {r16Teams.length >= 2 ? (
                             <>
-                              <span>vs winner of</span>
+                              <span>{t('grp_vs_winner')}</span>
                               {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
                               <span className="font-medium text-gray-600">{r16Teams[0].name}</span>
-                              <span>or</span>
+                              <span>{t('grp_or')}</span>
                               {(r16Teams[1] as any).fifa_code && <img src={flagUrl((r16Teams[1] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
                               <span className="font-medium text-gray-600">{r16Teams[1].name}</span>
                             </>
                           ) : r16Teams.length === 1 ? (
                             <>
-                              <span>vs winner of</span>
+                              <span>{t('grp_vs_winner')}</span>
                               {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
                               <span className="font-medium text-gray-600">{r16Teams[0].name}</span>
-                              <span className="text-gray-300">or TBD</span>
+                              <span className="text-gray-300">{t('grp_or')} TBD</span>
                             </>
                           ) : (
                             <span>{r16PosList.join(' / ') || '?'}</span>
@@ -548,17 +548,17 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
         {/* RIGHT: live standings */}
         <div className="lg:sticky lg:top-24 flex flex-col gap-4">
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="bg-[#0B1F3A] text-white px-4 py-2.5 text-sm font-bold">Group {activeGroup} Standings</div>
+            <div className="bg-[#0B1F3A] text-white px-4 py-2.5 text-sm font-bold">{t('grp_standings', { g: activeGroup })}</div>
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-gray-100 text-gray-400">
-                  <th className="px-3 py-2 text-left">Team</th>
-                  <th className="px-2 py-2 text-center">P</th>
-                  <th className="px-2 py-2 text-center">W</th>
-                  <th className="px-2 py-2 text-center">D</th>
-                  <th className="px-2 py-2 text-center">L</th>
-                  <th className="px-2 py-2 text-center">GD</th>
-                  <th className="px-2 py-2 text-center font-bold text-[#0B1F3A]">Pts</th>
+                  <th className="px-3 py-2 text-left">{t('grp_team')}</th>
+                  <th className="px-2 py-2 text-center">{t('grp_p')}</th>
+                  <th className="px-2 py-2 text-center">{t('grp_w')}</th>
+                  <th className="px-2 py-2 text-center">{t('grp_d')}</th>
+                  <th className="px-2 py-2 text-center">{t('grp_l')}</th>
+                  <th className="px-2 py-2 text-center">{t('grp_gd')}</th>
+                  <th className="px-2 py-2 text-center font-bold text-[#0B1F3A]">{t('grp_pts')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -582,22 +582,22 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
               </tbody>
             </table>
             <div className="px-3 py-1.5 border-t border-gray-100 flex gap-3 text-[10px] text-gray-400">
-              <span><span className="inline-block w-2 h-2 bg-green-200 rounded-sm mr-1" />Advance</span>
-              <span><span className="inline-block w-2 h-2 bg-yellow-200 rounded-sm mr-1" />Best 3rd?</span>
+              <span><span className="inline-block w-2 h-2 bg-green-200 rounded-sm mr-1" />{t('grp_advance')}</span>
+              <span><span className="inline-block w-2 h-2 bg-yellow-200 rounded-sm mr-1" />{t('grp_best3rd')}</span>
             </div>
           </div>
 
           {/* Best 3rd places */}
           {best3rds.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-[#0B1F3A] text-white px-4 py-2.5 text-sm font-bold">Best 3rd Places <span className="text-white/60 font-normal text-xs">(top 8 qualify)</span></div>
+              <div className="bg-[#0B1F3A] text-white px-4 py-2.5 text-sm font-bold">{t('grp_best3rd_title')}</div>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-100 text-gray-400">
-                    <th className="px-3 py-2 text-left">Team</th>
-                    <th className="px-2 py-2 text-center">Grp</th>
-                    <th className="px-2 py-2 text-center">GD</th>
-                    <th className="px-2 py-2 text-center font-bold text-[#0B1F3A]">Pts</th>
+                    <th className="px-3 py-2 text-left">{t('grp_team')}</th>
+                    <th className="px-2 py-2 text-center">{t('grp_grp')}</th>
+                    <th className="px-2 py-2 text-center">{t('grp_gd')}</th>
+                    <th className="px-2 py-2 text-center font-bold text-[#0B1F3A]">{t('grp_pts')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -617,7 +617,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   ))}
                 </tbody>
               </table>
-              <p className="text-[10px] text-gray-400 px-3 py-1.5 border-t border-gray-100">Based on your predictions so far</p>
+              <p className="text-[10px] text-gray-400 px-3 py-1.5 border-t border-gray-100">{t('grp_based_so_far')}</p>
             </div>
           )}
         </div>
@@ -627,7 +627,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
         <div className="mt-8 flex justify-center">
           <a href="/predictions?tab=knockout"
             className="bg-[#0B1F3A] text-white font-black px-8 py-4 rounded-2xl shadow-xl hover:bg-[#162d52] transition-all hover:scale-105 flex items-center gap-3 text-base animate-pulse">
-            🏆 Group Stage Complete — Predict the Playoff Bracket →
+            {t('grp_complete_cta')}
           </a>
         </div>
       )}
