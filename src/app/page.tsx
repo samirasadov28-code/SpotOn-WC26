@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react'
 import { ASADOV_STACK } from '@/lib/asadov-stack'
 import { STATIC_TEAMS, GROUPS_ORDER } from '@/lib/teams-data'
 import { GROUP_STADIUMS } from '@/lib/schedule-data'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0'
 const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA || 'dev'
@@ -30,11 +31,7 @@ const KEY_DATES = [
   { date: 'Jul 19', label: 'THE FINAL', sub: 'MetLife Stadium, New York', highlight: true },
 ]
 
-const HOW_IT_WORKS = [
-  { emoji: '🎯', title: 'Predict', desc: 'Enter exact scores for all 72 group matches. Your predictions automatically build your knockout bracket.' },
-  { emoji: '⚡', title: 'Compete', desc: 'Earn points for exact scores, goal differences, outcomes, and bracket advancement — live as results come in.' },
-  { emoji: '🏆', title: 'Win', desc: 'Climb the live leaderboard and claim the prize as the tournament unfolds. Prizes to be announced.' },
-]
+const HOW_IT_WORKS_EMOJI = ['🎯', '⚡', '🏆']
 
 // Group data derived from static teams
 const GROUPS = GROUPS_ORDER.map(letter => ({
@@ -43,6 +40,7 @@ const GROUPS = GROUPS_ORDER.map(letter => ({
 }))
 
 export default function HomePage() {
+  const { t } = useTranslation()
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [fbOpen, setFbOpen] = useState(false)
@@ -149,7 +147,7 @@ export default function HomePage() {
           </h1>
 
           <p className="text-lg sm:text-xl text-white/70 max-w-xl mx-auto mb-10">
-            The ultimate World Cup 2026 prediction game. Pick every score, build your bracket, and battle your friends on the live leaderboard.
+            {t('home_hero_subtitle')}
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
@@ -157,22 +155,22 @@ export default function HomePage() {
               href="/auth/login"
               className="bg-brand-green hover:bg-green-400 text-white font-black py-4 px-10 rounded-2xl text-lg transition-all shadow-lg shadow-green-900/40 hover:scale-105 active:scale-95"
             >
-              Join Free — Enter Predictions
+              {t('home_join_cta')}
             </Link>
             <Link
               href="/rules"
               className="border border-white/25 hover:bg-white/10 text-white font-semibold py-4 px-8 rounded-2xl text-base transition-all"
             >
-              How Scoring Works →
+              {t('home_scoring_cta')}
             </Link>
           </div>
 
           {/* Stats strip */}
           <div className="grid grid-cols-3 gap-4 max-w-lg mx-auto">
             {[
-              { n: '48', label: 'Nations' },
-              { n: '72', label: 'Group Matches' },
-              { n: '16', label: 'Stadiums' },
+              { n: '48', label: t('home_nations') },
+              { n: '72', label: t('home_matches') },
+              { n: '16', label: t('home_stadiums') },
             ].map((s) => (
               <div key={s.label} className="bg-white/8 border border-white/12 rounded-xl py-3">
                 <div className="text-2xl font-black text-brand-green">{s.n}</div>
@@ -189,10 +187,10 @@ export default function HomePage() {
           <span className="text-4xl">🏆</span>
           <div>
             <p className="text-[#0B1F3A] font-black text-xl sm:text-2xl leading-tight">
-              Prizes to Be Announced
+              {t('home_prize_title')}
             </p>
             <p className="text-[#0B1F3A]/70 text-sm font-medium mt-0.5">
-              Exciting prizes are coming — details will be revealed after kickoff. Stay tuned!
+              {t('home_prize_sub')}
             </p>
           </div>
           <span className="text-4xl">🎁</span>
@@ -203,7 +201,7 @@ export default function HomePage() {
       <section className="py-14 px-4 bg-[#0B1F3A]">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl sm:text-3xl font-black text-white text-center mb-10">
-            Tournament Timeline
+            {t('home_timeline_title')}
           </h2>
           <div className="flex flex-col sm:flex-row gap-0 relative">
             <div className="hidden sm:block absolute top-6 left-0 right-0 h-0.5 bg-white/10" />
@@ -229,10 +227,14 @@ export default function HomePage() {
       <section className="py-16 px-4 bg-gray-50">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl sm:text-3xl font-black text-center text-[#0B1F3A] mb-12">
-            How It Works
+            {t('home_how_title')}
           </h2>
           <div className="grid sm:grid-cols-3 gap-6">
-            {HOW_IT_WORKS.map((item, i) => (
+            {([
+              { emoji: HOW_IT_WORKS_EMOJI[0], title: t('home_how_predict_title'), desc: t('home_how_predict_desc') },
+              { emoji: HOW_IT_WORKS_EMOJI[1], title: t('home_how_compete_title'), desc: t('home_how_compete_desc') },
+              { emoji: HOW_IT_WORKS_EMOJI[2], title: t('home_how_win_title'),     desc: t('home_how_win_desc') },
+            ]).map((item, i) => (
               <div key={i} className="bg-white rounded-2xl p-7 shadow-sm border border-gray-100 text-center hover:shadow-md transition-shadow">
                 <div className="text-5xl mb-4">{item.emoji}</div>
                 <h3 className="text-xl font-black text-[#0B1F3A] mb-2">{item.title}</h3>
