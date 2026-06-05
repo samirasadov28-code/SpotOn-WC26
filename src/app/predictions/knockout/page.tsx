@@ -478,7 +478,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
           <h1 className="text-2xl font-bold text-[#0B1F3A]">{t('ko_title')}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {qualifiedCount < 32
-              ? `${qualifiedCount}/32 teams determined from your group predictions`
+              ? t('ko_teams_tbd')
               : '32 teams qualified — bracket fully set from your group predictions'}
           </p>
         </div>
@@ -545,7 +545,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
               ))}
               {/* Bouncing trophy */}
               <div className="text-7xl mb-3 animate-bounce">🏆</div>
-              <p className="text-[#0B1F3A] font-black text-sm uppercase tracking-widest">Your World Cup Winner</p>
+              <p className="text-[#0B1F3A] font-black text-sm uppercase tracking-widest">{t('ko_winner_title')}</p>
             </div>
             {/* Team section */}
             <div className="px-6 py-8 text-center">
