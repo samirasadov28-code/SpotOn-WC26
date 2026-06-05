@@ -576,6 +576,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
 // ── List View ─────────────────────────────────────────────────────────────────
 
 function ListView({ slotProps, koPreds, onShowWinner }: { slotProps: (slot: number) => Omit<MatchCardProps, 'label' | 'compact'>; koPreds: KOPredMap; onShowWinner: () => void }) {
+  const { t } = useTranslation()
   const bracketComplete = Array.from({ length: 32 }, (_, i) => i + 1).every(slot => {
     const pred = koPreds[slot]
     if (!pred || pred.homeScore === '' || pred.awayScore === '') return false
@@ -584,12 +585,12 @@ function ListView({ slotProps, koPreds, onShowWinner }: { slotProps: (slot: numb
   })
 
   const stages = [
-    { key: 'r32', label: 'Round of 32', slots: R32_DEFS.map(d => d.slot) },
-    { key: 'r16', label: 'Round of 16', slots: [17,18,19,20,21,22,23,24] },
-    { key: 'qf',  label: 'Quarterfinals', slots: [25,26,27,28] },
-    { key: 'sf',  label: 'Semifinals', slots: [29,30] },
-    { key: 'third', label: '3rd Place', slots: [31] },
-    { key: 'final', label: 'Final', slots: [32] },
+    { key: 'r32', label: t('ko_r32'), slots: R32_DEFS.map(d => d.slot) },
+    { key: 'r16', label: t('ko_r16'), slots: [17,18,19,20,21,22,23,24] },
+    { key: 'qf',  label: t('ko_qf'), slots: [25,26,27,28] },
+    { key: 'sf',  label: t('ko_sf'), slots: [29,30] },
+    { key: 'third', label: t('ko_third'), slots: [31] },
+    { key: 'final', label: t('ko_final'), slots: [32] },
   ]
 
   const slotLabel = (slot: number): string => {
