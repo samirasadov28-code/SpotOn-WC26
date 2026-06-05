@@ -315,7 +315,7 @@ export default function StatsPage() {
 
         {/* vs Average */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-3">vs Average</h2>
+          <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-3">{t('stats_vs_avg')}</h2>
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <span className="text-xs text-gray-500">Your pts</span>

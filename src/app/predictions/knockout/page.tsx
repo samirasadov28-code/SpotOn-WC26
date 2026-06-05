@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
@@ -167,6 +168,7 @@ interface MatchCardProps {
 }
 
 function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, isSaving, isSaved, isLocked, compact, isLastFilled }: MatchCardProps) {
+  const { t } = useTranslation()
   const [localPred, setLocalPred] = useState(pred)
   const isFocusedRef = useRef(false)
 
@@ -222,7 +224,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
             </div>
           ))}
         </div>
-        {showError && <p className="text-red-500 text-[10px] mt-1">{drawError ? 'No draws' : 'Both scores needed'}</p>}
+        {showError && <p className="text-red-500 text-[10px] mt-1">{drawError ? t('ko_no_draws') : t('ko_both_scores')}</p>}
       </div>
     )
   }
@@ -270,7 +272,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
       </div>
       {showError && (
         <p className="text-red-500 text-xs mt-1.5 text-center">
-          {drawError ? 'No draws allowed — pick a winner' : 'Enter both scores'}
+          {drawError ? t('ko_no_draws') : t('ko_both_scores')}
         </p>
       )}
     </div>
@@ -280,6 +282,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function KnockoutPredictionsPage({ onCountChange }: { onCountChange?: (n: number) => void }) {
+  const { t } = useTranslation()
   const [groupMatches, setGroupMatches] = useState<MatchWithTeams[]>([])
   const [allTeams, setAllTeams] = useState<Team[]>([])
   const [groupPreds, setGroupPreds] = useState<GroupPredMap>({})
@@ -452,14 +455,14 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
   }, [koPreds, qualified, errorSlots, savingSlots, isLocked, handleSave, lastFilledSlot])
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading bracket…</div>
+    <div className="flex items-center justify-center min-h-[60vh] text-gray-500">{t('ko_loading')}</div>
   )
 
   if (!userId) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
       <div className="text-4xl">🔒</div>
-      <h2 className="text-xl font-bold text-[#0B1F3A]">Sign in to make predictions</h2>
-      <a href="/auth/login" className="bg-[#0B1F3A] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-900 transition-colors">Sign in</a>
+      <h2 className="text-xl font-bold text-[#0B1F3A]">{t('ko_sign_in')}</h2>
+      <a href="/auth/login" className="bg-[#0B1F3A] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-900 transition-colors">{t('ko_sign_in')}</a>
     </div>
   )
 
@@ -472,7 +475,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
       {/* Header */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#0B1F3A]">Playoff Bracket</h1>
+          <h1 className="text-2xl font-bold text-[#0B1F3A]">{t('ko_title')}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {qualifiedCount < 32
               ? `${qualifiedCount}/32 teams determined from your group predictions`
@@ -484,21 +487,21 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
           {!isLocked && savedSlotCount > 0 && (
             confirmClear ? (
               <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
-                <span className="text-xs text-red-700 font-medium">Clear all {savedSlotCount} bracket predictions?</span>
+                <span className="text-xs text-red-700 font-medium">{t('ko_clear_confirm')}</span>
                 <button onClick={handleClearAll} disabled={clearing} className="text-xs bg-red-600 text-white px-2 py-1 rounded font-semibold hover:bg-red-700 disabled:opacity-50">
-                  {clearing ? 'Clearing…' : 'Yes, clear'}
+                  {clearing ? t('ko_clearing') : t('ko_yes_clear')}
                 </button>
-                <button onClick={() => setConfirmClear(false)} className="text-xs text-gray-500 hover:text-gray-700 px-1">Cancel</button>
+                <button onClick={() => setConfirmClear(false)} className="text-xs text-gray-500 hover:text-gray-700 px-1">{t('ko_cancel')}</button>
               </div>
             ) : (
               <button onClick={() => setConfirmClear(true)} className="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors font-medium">
-                🗑 Clear bracket
+                {t('ko_clear_bracket')}
               </button>
             )
           )}
           {predictedWinner && (
             <button onClick={() => setShowWinner(true)} className="bg-amber-400 text-[#0B1F3A] font-black px-4 py-2 rounded-xl text-sm hover:bg-amber-300 transition-colors">
-              🏆 Your Winner
+              {t('ko_your_winner_btn')}
             </button>
           )}
         </div>
@@ -507,8 +510,8 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
       {/* Info banner if group predictions incomplete */}
       {!groupsDone && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-5 text-sm text-amber-800">
-          <strong>Tip:</strong> Complete your Group Stage predictions to auto-fill the bracket teams.{' '}
-          <a href="/predictions?tab=groups" className="font-bold underline">Go to Group Stage →</a>
+          <strong>Tip:</strong> {t('ko_tip_group')}{' '}
+          <a href="/predictions?tab=groups" className="font-bold underline">{t('ko_go_group')}</a>
         </div>
       )}
 
@@ -519,7 +522,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
               view === v ? 'bg-[#0B1F3A] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}>
-            {v === 'list' ? '☰ List' : '🏆 Bracket'}
+            {v === 'list' ? t('ko_list_view') : t('ko_bracket_view')}
           </button>
         ))}
       </div>

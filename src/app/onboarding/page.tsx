@@ -72,7 +72,7 @@ export default function OnboardingPage() {
               maxLength={30}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g. AlexFC"
+              placeholder={t('onb_placeholder')}
               className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-green"
             />
           </div>
@@ -84,7 +84,7 @@ export default function OnboardingPage() {
             disabled={loading || !displayName.trim()}
             className="bg-navy hover:bg-blue-900 text-white font-bold py-2.5 rounded-lg transition-colors disabled:opacity-50"
           >
-            {loading ? 'Saving…' : "Let's go!"}
+            {loading ? t('onb_saving') : t('onb_cta')}
           </button>
         </form>
       </div>

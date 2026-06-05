@@ -206,15 +206,15 @@ function LoginForm() {
 
       <p className="text-center text-sm text-gray-500 mt-5">
         {mode === 'signin' ? (
-          <>No account?{' '}
+          <>{t('auth_no_account')}{' '}
             <button onClick={() => switchMode('signup')} className="text-[#0B1F3A] font-semibold hover:underline">
-              Sign up
+              {t('auth_sign_up')}
             </button>
           </>
         ) : (
-          <>Already have one?{' '}
+          <>{t('auth_have_account')}{' '}
             <button onClick={() => switchMode('signin')} className="text-[#0B1F3A] font-semibold hover:underline">
-              Sign in
+              {t('auth_sign_in_btn')}
             </button>
           </>
         )}
