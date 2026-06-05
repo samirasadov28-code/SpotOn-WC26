@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import SimulatePage from '../simulate/page'
@@ -56,6 +57,7 @@ function calcGroupStandings(matches: MatchRow[], teams: Team[]): TeamStat[] {
 }
 
 export default function ResultsPage() {
+  const { t } = useTranslation()
   const [matches, setMatches] = useState<MatchRow[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
@@ -97,13 +99,13 @@ export default function ResultsPage() {
       .map((r, i) => ({ ...r!, qualifies: i < 8 }))
   }, [groupStandingsMap])
 
-  if (loading) return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading results…</div>
+  if (loading) return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">{t('loading')}</div>
 
   if (matches.length === 0) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-center px-4">
       <div className="text-4xl">🏗️</div>
-      <h2 className="text-xl font-bold text-[#0B1F3A]">No match data yet</h2>
-      <p className="text-gray-500 text-sm max-w-sm">Results will appear here once matches are played and the database is seeded.</p>
+      <h2 className="text-xl font-bold text-[#0B1F3A]">{t('res_no_data')}</h2>
+      <p className="text-gray-500 text-sm max-w-sm">{t('res_no_data_desc')}</p>
     </div>
   )
 
@@ -116,25 +118,25 @@ export default function ResultsPage() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="mb-6 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#0B1F3A]">Match Results</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{played} of {total} matches played</p>
+          <h1 className="text-2xl font-bold text-[#0B1F3A]">{t('res_match_results')}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t('res_of_matches', { played: String(played), total: String(total) })}</p>
         </div>
         <div className="w-40">
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div className="h-full bg-green-500 transition-all" style={{ width: `${total > 0 ? Math.round((played / total) * 100) : 0}%` }} />
           </div>
-          <p className="text-xs text-gray-400 mt-1 text-right">{total > 0 ? Math.round((played / total) * 100) : 0}% complete</p>
+          <p className="text-xs text-gray-400 mt-1 text-right">{t('res_pct', { pct: String(total > 0 ? Math.round((played / total) * 100) : 0) })}</p>
         </div>
       </div>
 
       {/* Page tabs */}
       <div className="flex gap-4 border-b border-gray-200 mb-6">
-        {(['results', 'standings', 'bracket', 'simulate'] as PageTab[]).map(t => (
-          <button key={t} onClick={() => setTab(t)}
+        {(['results', 'standings', 'bracket', 'simulate'] as PageTab[]).map(tabKey => (
+          <button key={tabKey} onClick={() => setTab(tabKey)}
             className={`pb-3 text-sm font-semibold border-b-2 transition-colors capitalize ${
-              tab === t ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'
+              tab === tabKey ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            {t === 'results' ? 'Match Results' : t === 'standings' ? 'Group Standings' : t === 'bracket' ? 'Bracket' : 'Simulate'}
+            {tabKey === 'results' ? t('res_match_results') : tabKey === 'standings' ? t('res_group_standings') : tabKey === 'bracket' ? t('res_bracket') : t('res_simulate')}
           </button>
         ))}
       </div>
@@ -196,17 +198,18 @@ function MatchResultsTabs({
   activeKoStage: string
   setActiveKoStage: (s: string) => void
 }) {
+  const { t } = useTranslation()
   const [section, setSection] = useState<'group' | 'knockout'>('group')
 
   return (
     <>
       <div className="flex gap-4 border-b border-gray-200 mb-5">
-        {(['group', 'knockout'] as const).map(t => (
-          <button key={t} onClick={() => setSection(t)}
+        {(['group', 'knockout'] as const).map(sec => (
+          <button key={sec} onClick={() => setSection(sec)}
             className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${
-              section === t ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'
+              section === sec ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            {t === 'group' ? 'Group Stage' : 'Knockout Stage'}
+            {sec === 'group' ? t('res_group_stage') : t('res_knockout_stage')}
           </button>
         ))}
       </div>
@@ -220,7 +223,7 @@ function MatchResultsTabs({
                   activeGroup === g ? 'bg-[#0B1F3A] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}>
                 <span className="sm:hidden">{g}</span>
-                <span className="hidden sm:inline">Group {g}</span>
+                <span className="hidden sm:inline">{t('group', { g })}</span>
               </button>
             ))}
           </div>
@@ -248,7 +251,8 @@ function MatchResultsTabs({
 }
 
 function MatchList({ matches }: { matches: MatchRow[] }) {
-  if (matches.length === 0) return <p className="text-gray-400 text-sm text-center py-10">No matches in this selection yet.</p>
+  const { t } = useTranslation()
+  if (matches.length === 0) return <p className="text-gray-400 text-sm text-center py-10">{t('res_no_selection')}</p>
   return (
     <div className="flex flex-col gap-3">
       {matches.map(m => {
@@ -274,7 +278,7 @@ function MatchList({ matches }: { matches: MatchRow[] }) {
                 <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{m.away_team?.name ?? '?'}</span>
               </div>
             </div>
-            {!played && <div className="text-center mt-2"><span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Not played yet</span></div>}
+            {!played && <div className="text-center mt-2"><span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{t('res_not_played')}</span></div>}
           </div>
         )
       })}
@@ -442,6 +446,7 @@ function BracketMatchCard({ match }: { match: MatchRow | undefined }) {
 }
 
 function BracketTab({ matches }: { matches: MatchRow[] }) {
+  const { t } = useTranslation()
   const bySlot = new Map<number, MatchRow>()
   for (const m of matches) {
     if (m.bracket_slot !== null) bySlot.set(m.bracket_slot, m)
@@ -452,7 +457,7 @@ function BracketTab({ matches }: { matches: MatchRow[] }) {
   if (!hasKO) return (
     <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
       <div className="text-4xl">🏆</div>
-      <p className="text-gray-500 text-sm">Knockout bracket will appear once the group stage concludes.</p>
+      <p className="text-gray-500 text-sm">{t('res_no_bracket')}</p>
     </div>
   )
 

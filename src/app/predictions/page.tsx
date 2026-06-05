@@ -3,6 +3,7 @@
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Suspense, useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 import GroupPredictionsPage from './groups/page'
 import KnockoutPredictionsPage from './knockout/page'
 import StatsPage from '../stats/page'
@@ -16,6 +17,7 @@ const KO_TOTAL = 32
 function PredictionsInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { t } = useTranslation()
   const isLocked = new Date() >= LOCK_AT
 
   const explicitTab = searchParams.get('tab') as Tab | null
@@ -59,21 +61,21 @@ function PredictionsInner() {
       <div className="border-b border-gray-200 bg-white sticky top-16 z-10">
         <div className="max-w-6xl mx-auto px-4 flex items-center justify-between">
           <div className="flex">
-            {(['groups', 'bracket', 'stats'] as Tab[]).map((t) => (
+            {(['groups', 'bracket', 'stats'] as Tab[]).map((tabKey) => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
+                key={tabKey}
+                onClick={() => setTab(tabKey)}
                 className={`px-5 py-3.5 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-                  tab === t
+                  tab === tabKey
                     ? 'border-[#0B1F3A] text-[#0B1F3A]'
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
-                {t === 'groups' ? '⚽ Group Stage' : t === 'bracket' ? '🏆 Playoff Bracket' : '📊 My Stats'}
-                {t === 'groups' && groupsDone && (
+                {tabKey === 'groups' ? t('pred_group_stage') : tabKey === 'bracket' ? t('pred_playoff_bracket') : t('pred_my_stats')}
+                {tabKey === 'groups' && groupsDone && (
                   <span className="text-[10px] bg-green-500 text-white rounded-full px-1.5 py-0.5 font-bold leading-none">✓</span>
                 )}
-                {t === 'bracket' && koDone && (
+                {tabKey === 'bracket' && koDone && (
                   <span className="text-[10px] bg-green-500 text-white rounded-full px-1.5 py-0.5 font-bold leading-none">✓</span>
                 )}
               </button>
@@ -86,7 +88,7 @@ function PredictionsInner() {
               <span>{groupsSaved}</span>
               <span className="text-gray-400 font-normal">/</span>
               <span className="text-gray-400 font-normal">{GROUP_TOTAL}</span>
-              <span className="text-gray-400 font-normal text-xs hidden sm:inline">saved</span>
+              <span className="text-gray-400 font-normal text-xs hidden sm:inline">{t('pred_saved')}</span>
             </div>
           )}
         </div>
@@ -96,13 +98,10 @@ function PredictionsInner() {
       {!isLocked && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2">
           <p className="text-xs text-amber-800 text-center max-w-2xl mx-auto">
-            ⏰ <strong>Predictions lock Jun 11 at 13:00 UTC</strong> — complete both{' '}
-            <button onClick={() => setTab('groups')} className={`font-bold underline underline-offset-2 ${tab === 'groups' ? 'text-amber-900' : 'text-amber-700 hover:text-amber-900'}`}>
-              Group Stage
-            </button>{' '}and{' '}
-            <button onClick={() => setTab('bracket')} className={`font-bold underline underline-offset-2 ${tab === 'bracket' ? 'text-amber-900' : 'text-amber-700 hover:text-amber-900'}`}>
-              Playoff Bracket
-            </button>{' '}before the deadline.
+            ⏰ <strong>{t('pred_lock_banner')}</strong> — {t('pred_complete_note', {
+              a: t('pred_group_stage'),
+              b: t('pred_playoff_bracket'),
+            })}
           </p>
         </div>
       )}

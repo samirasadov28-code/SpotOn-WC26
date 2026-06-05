@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const GROUP_MATCHES_TOTAL = 72
 
@@ -84,6 +85,7 @@ function calcBreakdown(
 }
 
 export default function LeaderboardPage() {
+  const { t } = useTranslation()
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [loading, setLoading] = useState(true)
@@ -298,7 +300,7 @@ export default function LeaderboardPage() {
     if (!currentUserId) return
     setLeagueActionLoading(true); setLeagueError(null)
     const { data: league, error } = await (supabase as any).from('leagues').select('*').eq('join_code', joinCode.trim().toUpperCase()).single()
-    if (error || !league) { setLeagueError('League not found. Check the code.'); setLeagueActionLoading(false); return }
+    if (error || !league) { setLeagueError(t('lb_not_found')); setLeagueActionLoading(false); return }
     await (supabase as any).from('league_members').upsert({ league_id: league.id, user_id: currentUserId }, { onConflict: 'league_id,user_id' })
     setJoinCode('')
     setLeagueActionLoading(false)
@@ -325,26 +327,26 @@ export default function LeaderboardPage() {
       })
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading leaderboard…</div>
+    return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">{t('lb_loading')}</div>
   }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-[#0B1F3A]">Leaderboard</h1>
-        {lastUpdated && <div className="text-xs text-gray-400">Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}</div>}
+        <h1 className="text-2xl font-bold text-[#0B1F3A]">{t('leaderboard_title')}</h1>
+        {lastUpdated && <div className="text-xs text-gray-400">{t('lb_updated', { time: formatDistanceToNow(lastUpdated, { addSuffix: true }) })}</div>}
       </div>
 
       {/* League selector */}
       <div className="flex items-center gap-3 mb-5">
-        <label className="text-sm font-semibold text-gray-600 shrink-0">View:</label>
+        <label className="text-sm font-semibold text-gray-600 shrink-0">{t('lb_view')}</label>
         <select
           value={selectedLeagueId}
           onChange={e => handleLeagueChange(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] bg-white"
         >
-          <option value="global">🌍 Global (all players)</option>
+          <option value="global">{t('lb_global')}</option>
           {userLeagues.map(l => (
             <option key={l.id} value={l.id}>🏅 {l.name}</option>
           ))}
@@ -353,7 +355,7 @@ export default function LeaderboardPage() {
           onClick={() => setShowLeaguePanel(o => !o)}
           className="ml-auto text-xs bg-[#0B1F3A] text-white px-3 py-1.5 rounded-lg hover:bg-blue-900 transition-colors shrink-0"
         >
-          {showLeaguePanel ? 'Close' : '+ Manage Leagues'}
+          {showLeaguePanel ? t('lb_close') : t('lb_manage')}
         </button>
       </div>
 
@@ -362,24 +364,24 @@ export default function LeaderboardPage() {
         <div className="mb-5 bg-gray-50 border border-gray-200 rounded-xl p-4">
           <div className="grid sm:grid-cols-2 gap-4 mb-4">
             <div>
-              <p className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">Create a league</p>
+              <p className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">{t('lb_create_title')}</p>
               <form onSubmit={handleCreateLeague} className="flex gap-2">
-                <input type="text" required maxLength={50} placeholder="League name" value={newLeagueName} onChange={e => setNewLeagueName(e.target.value)} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]" />
-                <button type="submit" disabled={leagueActionLoading} className="bg-[#0B1F3A] text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-blue-900 disabled:opacity-50 transition-colors">Create</button>
+                <input type="text" required maxLength={50} placeholder={t('leaderboard_league_name')} value={newLeagueName} onChange={e => setNewLeagueName(e.target.value)} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]" />
+                <button type="submit" disabled={leagueActionLoading} className="bg-[#0B1F3A] text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-blue-900 disabled:opacity-50 transition-colors">{t('leaderboard_create_btn')}</button>
               </form>
             </div>
             <div>
-              <p className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">Join a league</p>
+              <p className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">{t('lb_join_title')}</p>
               <form onSubmit={handleJoinLeague} className="flex gap-2">
-                <input type="text" required maxLength={8} placeholder="6-letter code" value={joinCode} onChange={e => setJoinCode(e.target.value)} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]" />
-                <button type="submit" disabled={leagueActionLoading} className="bg-green-600 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-green-500 disabled:opacity-50 transition-colors">Join</button>
+                <input type="text" required maxLength={8} placeholder={t('lb_6letter')} value={joinCode} onChange={e => setJoinCode(e.target.value)} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]" />
+                <button type="submit" disabled={leagueActionLoading} className="bg-green-600 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-green-500 disabled:opacity-50 transition-colors">{t('leaderboard_join_btn')}</button>
               </form>
             </div>
           </div>
           {leagueError && <p className="text-red-600 text-sm mb-3">{leagueError}</p>}
           {userLeagues.length > 0 && (
             <div className="flex flex-col gap-2">
-              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Your leagues</p>
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">{t('lb_your_leagues')}</p>
               {userLeagues.map(l => (
                 <div key={l.id} className="flex items-center justify-between bg-white rounded-lg border border-gray-100 px-3 py-2">
                   <div>
@@ -387,7 +389,7 @@ export default function LeaderboardPage() {
                     <span className="text-xs text-gray-400 font-mono ml-2">· {l.join_code}</span>
                   </div>
                   <button onClick={() => handleCopyInvite(l)} className={`text-xs px-2 py-1 rounded-lg font-medium transition-all ${copiedLeagueId === l.id ? 'bg-green-600 text-white border border-green-600' : 'text-green-700 border border-green-200 hover:bg-green-50'}`}>
-                    {copiedLeagueId === l.id ? '✅ Copied!' : 'Copy Invite'}
+                    {copiedLeagueId === l.id ? t('leaderboard_copied') : t('leaderboard_copy_invite')}
                   </button>
                 </div>
               ))}
@@ -400,26 +402,26 @@ export default function LeaderboardPage() {
       {inviteLeague && !showLeaguePanel && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
-            <h2 className="text-lg font-bold text-[#0B1F3A] mb-2">League created! 🎉</h2>
-            <p className="text-sm text-gray-500 mb-4">Share this code with friends: <span className="font-mono font-bold text-green-700">{inviteLeague.join_code}</span></p>
-            <button onClick={() => { handleCopyInvite(inviteLeague); }} className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm mb-2 hover:bg-green-500 transition-colors">{copiedLeagueId === inviteLeague?.id ? '✅ Copied!' : 'Copy Invite Message'}</button>
-            <button onClick={() => setInviteLeague(null)} className="w-full border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm hover:bg-gray-50 transition-colors">Close</button>
+            <h2 className="text-lg font-bold text-[#0B1F3A] mb-2">{t('lb_league_created')}</h2>
+            <p className="text-sm text-gray-500 mb-4">{t('lb_share_code')} <span className="font-mono font-bold text-green-700">{inviteLeague.join_code}</span></p>
+            <button onClick={() => { handleCopyInvite(inviteLeague); }} className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm mb-2 hover:bg-green-500 transition-colors">{copiedLeagueId === inviteLeague?.id ? t('leaderboard_copied') : t('lb_copy_msg')}</button>
+            <button onClick={() => setInviteLeague(null)} className="w-full border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm hover:bg-gray-50 transition-colors">{t('lb_close')}</button>
           </div>
         </div>
       )}
 
       {/* Scoring legend */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-xs text-amber-900 flex flex-wrap gap-x-5 gap-y-1.5">
-        <span className="font-bold text-amber-800">How points work:</span>
-        <span>⚽ <strong>Group Pts</strong> — 3 exact score · 2 correct GD · 1 correct outcome</span>
-        <span>🏅 <strong>Advancement</strong> — bonus pts for each team you correctly advance past group stage</span>
-        <span>🏆 <strong>Playoff Pts</strong> — same 1/2/3 scoring for R32→Final matches</span>
-        <span className="text-amber-700 italic">Click any row for full breakdown ↓</span>
+        <span className="font-bold text-amber-800">{t('lb_how_points')}</span>
+        <span>⚽ <strong>{t('lb_group_col')}</strong> — {t('lb_group_pts_desc')}</span>
+        <span>🏅 <strong>{t('lb_advancement')}</strong> — {t('lb_adv_short')}</span>
+        <span>🏆 <strong>{t('lb_playoff_col')}</strong> — {t('lb_playoff_short')}</span>
+        <span className="text-amber-700 italic">{t('lb_click_breakdown')}</span>
       </div>
 
       {visibleEntries.length === 0 ? (
         <div className="text-center text-gray-500 py-16">
-          {selectedLeagueId === 'global' ? 'No players yet. Be the first to join!' : 'No members in this league yet.'}
+          {selectedLeagueId === 'global' ? t('lb_no_players') : t('lb_no_members')}
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
@@ -427,12 +429,12 @@ export default function LeaderboardPage() {
             <thead>
               <tr className="bg-[#0B1F3A] text-white">
                 <th className="py-3 px-3 text-left w-10">#</th>
-                <th className="py-3 px-3 text-left">Player</th>
-                <th className="py-3 px-3 text-center" title="Group predictions submitted">Preds</th>
-                <th className="py-3 px-3 text-right hidden sm:table-cell" title="Points from group stage match results (1/2/3 pts each)">Group ⚽</th>
-                <th className="py-3 px-3 text-right hidden sm:table-cell" title="Bonus points for correctly predicting group stage advancement">Advance 🏅</th>
-                <th className="py-3 px-3 text-right hidden sm:table-cell" title="Points from playoff round match results (1/2/3 pts each)">Playoff 🏆</th>
-                <th className="py-3 px-3 text-right font-bold">Total</th>
+                <th className="py-3 px-3 text-left">{t('leaderboard_player')}</th>
+                <th className="py-3 px-3 text-center" title="Group predictions submitted">{t('lb_preds')}</th>
+                <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_group_col')}</th>
+                <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_advance_col')}</th>
+                <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_playoff_col')}</th>
+                <th className="py-3 px-3 text-right font-bold">{t('lb_total')}</th>
               </tr>
             </thead>
             <tbody>
@@ -460,7 +462,7 @@ export default function LeaderboardPage() {
                           {entry.displayName}
                           <span className="text-gray-300 text-xs">▾</span>
                         </div>
-                        {isMe && <div className="text-xs text-blue-500 font-normal">(you)</div>}
+                        {isMe && <div className="text-xs text-blue-500 font-normal">{t('you')}</div>}
                       </td>
                       <td className="py-3 px-3 text-center">
                         {isComplete
@@ -486,28 +488,28 @@ export default function LeaderboardPage() {
                               <div className="grid sm:grid-cols-3 gap-3 mt-1">
                                 {/* Group stage */}
                                 <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">⚽ Group Stage <span className="text-gray-400 font-normal ml-auto">{bd.groupTotal} pts</span></div>
+                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">{t('lb_group_pts')} <span className="text-gray-400 font-normal ml-auto">{bd.groupTotal} {t('pts')}</span></div>
                                   <div className="space-y-1 text-xs text-gray-600">
-                                    <div className="flex justify-between"><span>🎯 Exact score <span className="text-gray-400">(×3)</span></span><span className="font-semibold text-green-600">{bd.groupExact} × 3 = {bd.groupExact * 3}</span></div>
-                                    <div className="flex justify-between"><span>📐 Correct GD <span className="text-gray-400">(×2)</span></span><span className="font-semibold text-blue-600">{bd.groupGD} × 2 = {bd.groupGD * 2}</span></div>
-                                    <div className="flex justify-between"><span>✅ Correct outcome <span className="text-gray-400">(×1)</span></span><span className="font-semibold text-gray-600">{bd.groupOutcome} × 1 = {bd.groupOutcome}</span></div>
+                                    <div className="flex justify-between"><span>{t('lb_exact_x3')}</span><span className="font-semibold text-green-600">{bd.groupExact} × 3 = {bd.groupExact * 3}</span></div>
+                                    <div className="flex justify-between"><span>{t('lb_gd_x2')}</span><span className="font-semibold text-blue-600">{bd.groupGD} × 2 = {bd.groupGD * 2}</span></div>
+                                    <div className="flex justify-between"><span>{t('lb_outcome_x1')}</span><span className="font-semibold text-gray-600">{bd.groupOutcome} × 1 = {bd.groupOutcome}</span></div>
                                   </div>
                                 </div>
                                 {/* Advancement */}
                                 <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">🏅 Group Advancement <span className="text-gray-400 font-normal ml-auto">{bd.advTotal} pts</span></div>
-                                  <p className="text-xs text-gray-500 leading-relaxed">Bonus points awarded for each team you correctly predicted to advance from the group stage. Points scale per round — see Rules for full table.</p>
+                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">{t('lb_advancement')} <span className="text-gray-400 font-normal ml-auto">{bd.advTotal} {t('pts')}</span></div>
+                                  <p className="text-xs text-gray-500 leading-relaxed">{t('lb_adv_desc')}</p>
                                 </div>
                                 {/* Knockout */}
                                 <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">🏆 Playoff Matches <span className="text-gray-400 font-normal ml-auto">{bd.koTotal} pts</span></div>
+                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">{t('lb_playoff_pts')} <span className="text-gray-400 font-normal ml-auto">{bd.koTotal} {t('pts')}</span></div>
                                   {bd.koExact + bd.koGD + bd.koOutcome === 0 ? (
-                                    <p className="text-xs text-gray-400 italic">No playoff matches played yet.</p>
+                                    <p className="text-xs text-gray-400 italic">{t('lb_no_playoff')}</p>
                                   ) : (
                                     <div className="space-y-1 text-xs text-gray-600">
-                                      <div className="flex justify-between"><span>🎯 Exact score <span className="text-gray-400">(×3)</span></span><span className="font-semibold text-green-600">{bd.koExact} × 3 = {bd.koExact * 3}</span></div>
-                                      <div className="flex justify-between"><span>📐 Correct GD <span className="text-gray-400">(×2)</span></span><span className="font-semibold text-blue-600">{bd.koGD} × 2 = {bd.koGD * 2}</span></div>
-                                      <div className="flex justify-between"><span>✅ Correct outcome <span className="text-gray-400">(×1)</span></span><span className="font-semibold text-gray-600">{bd.koOutcome} × 1 = {bd.koOutcome}</span></div>
+                                      <div className="flex justify-between"><span>{t('lb_exact_x3')}</span><span className="font-semibold text-green-600">{bd.koExact} × 3 = {bd.koExact * 3}</span></div>
+                                      <div className="flex justify-between"><span>{t('lb_gd_x2')}</span><span className="font-semibold text-blue-600">{bd.koGD} × 2 = {bd.koGD * 2}</span></div>
+                                      <div className="flex justify-between"><span>{t('lb_outcome_x1')}</span><span className="font-semibold text-gray-600">{bd.koOutcome} × 1 = {bd.koOutcome}</span></div>
                                     </div>
                                   )}
                                 </div>
@@ -517,25 +519,25 @@ export default function LeaderboardPage() {
                               {!isMe && currentUserId && bd.h2h && (
                                 <div className="mt-3 bg-white rounded-xl border border-[#0B1F3A]/20 p-3 shadow-sm">
                                   <div className="text-xs font-bold text-[#0B1F3A] mb-3 flex items-center gap-1">
-                                    ⚔️ vs You
-                                    <span className="text-gray-400 font-normal ml-auto text-[11px]">on scored matches</span>
+                                    {t('lb_vs_you')}
+                                    <span className="text-gray-400 font-normal ml-auto text-[11px]">{t('lb_on_scored')}</span>
                                   </div>
                                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                                     <div className="rounded-lg bg-green-50 border border-green-100 p-2 text-center">
                                       <div className="text-lg font-bold text-green-600">{bd.h2h.bothRight}</div>
-                                      <div className="text-[10px] text-green-700 font-medium">Both correct</div>
+                                      <div className="text-[10px] text-green-700 font-medium">{t('lb_both_correct')}</div>
                                     </div>
                                     <div className="rounded-lg bg-red-50 border border-red-100 p-2 text-center">
                                       <div className="text-lg font-bold text-red-500">{bd.h2h.rivalOnly}</div>
-                                      <div className="text-[10px] text-red-600 font-medium">Rival only ✓</div>
+                                      <div className="text-[10px] text-red-600 font-medium">{t('lb_rival_only')}</div>
                                     </div>
                                     <div className="rounded-lg bg-blue-50 border border-blue-100 p-2 text-center">
                                       <div className="text-lg font-bold text-blue-500">{bd.h2h.youOnly}</div>
-                                      <div className="text-[10px] text-blue-600 font-medium">You only ✓</div>
+                                      <div className="text-[10px] text-blue-600 font-medium">{t('lb_you_only')}</div>
                                     </div>
                                     <div className="rounded-lg bg-gray-50 border border-gray-100 p-2 text-center">
                                       <div className="text-lg font-bold text-gray-400">{bd.h2h.neither}</div>
-                                      <div className="text-[10px] text-gray-500 font-medium">Neither</div>
+                                      <div className="text-[10px] text-gray-500 font-medium">{t('lb_neither')}</div>
                                     </div>
                                   </div>
                                   <div className={`text-xs font-semibold text-center py-1 px-3 rounded-full inline-block ${
@@ -546,16 +548,16 @@ export default function LeaderboardPage() {
                                       : 'bg-gray-50 text-gray-500'
                                   }`}>
                                     {bd.h2h.rivalPtsLead === 0
-                                      ? 'Tied on scored matches'
+                                      ? t('lb_tied')
                                       : bd.h2h.rivalPtsLead > 0
-                                      ? `Rival leads by ${bd.h2h.rivalPtsLead} pts on scored matches`
-                                      : `You lead by ${Math.abs(bd.h2h.rivalPtsLead)} pts on scored matches`}
+                                      ? t('lb_rival_leads', { pts: String(bd.h2h.rivalPtsLead) })
+                                      : t('lb_you_lead', { pts: String(Math.abs(bd.h2h.rivalPtsLead)) })}
                                   </div>
                                 </div>
                               )}
                             </>
                           ) : (
-                            <div className="text-xs text-gray-400 py-2">No scored predictions yet.</div>
+                            <div className="text-xs text-gray-400 py-2">{t('lb_no_scored')}</div>
                           )}
                         </td>
                       </tr>
@@ -566,7 +568,7 @@ export default function LeaderboardPage() {
             </tbody>
           </table>
           <p className="text-xs text-gray-400 px-4 py-2 border-t border-gray-100">
-            ✅ = all {GROUP_MATCHES_TOTAL} group predictions submitted · Click any row to see detailed breakdown
+            {t('lb_footer', { n: String(GROUP_MATCHES_TOTAL) })}
           </p>
         </div>
       )}

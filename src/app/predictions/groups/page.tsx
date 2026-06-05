@@ -133,8 +133,24 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [errorIds, setErrorIds] = useState<Set<string>>(new Set())
   const [dbError, setDbError] = useState<string | null>(null)
   const isGloballyLocked = new Date() >= LOCK_AT
+  const [clearing, setClearing] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
 
   const supabase = createClient()
+
+  const handleClearAll = useCallback(async () => {
+    if (!userId || isGloballyLocked) return
+    setClearing(true)
+    setConfirmClear(false)
+    await supabase.from('predictions_group').delete().eq('user_id', userId)
+    setPreds({})
+    predsRef.current = {}
+    setSavedIds(new Set())
+    savedIdsRef.current = new Set()
+    setSavedCount(0)
+    onCountChange?.(0)
+    setClearing(false)
+  }, [userId, isGloballyLocked, supabase, onCountChange])
 
   // Refs mirror state so handleBlur always reads current values (avoids stale closure)
   const predsRef = useRef<PredMap>({})
@@ -279,7 +295,24 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-[#0B1F3A]">Group Stage Predictions</h1>
-        {isGloballyLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
+        <div className="flex items-center gap-2">
+          {isGloballyLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
+          {!isGloballyLocked && savedCount > 0 && (
+            confirmClear ? (
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
+                <span className="text-xs text-red-700 font-medium">Clear all {savedCount} predictions?</span>
+                <button onClick={handleClearAll} disabled={clearing} className="text-xs bg-red-600 text-white px-2 py-1 rounded font-semibold hover:bg-red-700 disabled:opacity-50">
+                  {clearing ? 'Clearing…' : 'Yes, clear'}
+                </button>
+                <button onClick={() => setConfirmClear(false)} className="text-xs text-gray-500 hover:text-gray-700 px-1">Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmClear(true)} className="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors font-medium">
+                🗑 Clear all predictions
+              </button>
+            )
+          )}
+        </div>
       </div>
 
       {isGloballyLocked && <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-red-700 font-semibold text-center">🔒 Predictions are locked. The tournament has started!</div>}
