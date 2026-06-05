@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow, isBefore } from 'date-fns'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 
@@ -31,8 +32,10 @@ export default function Navbar() {
   const [displayName, setDisplayName] = useState<string | null>(null)
   const [timeToLock, setTimeToLock] = useState<string | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [langOpen, setLangOpen] = useState(false)
   const pathname = usePathname()
   const supabase = createClient()
+  const { lang, setLang, t, languages } = useTranslation()
 
   useEffect(() => {
     const getUser = async () => {
@@ -97,14 +100,40 @@ export default function Navbar() {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Language selector */}
+              <div className="relative hidden md:block">
+                <button
+                  onClick={() => setLangOpen(o => !o)}
+                  className="text-sm text-white/70 hover:text-white px-2 py-1 rounded transition-colors"
+                >
+                  {languages.find(l => l.code === lang)?.name ?? 'English'}
+                </button>
+                {langOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setLangOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-50 bg-[#0B1F3A] border border-white/10 rounded-lg shadow-lg py-1 min-w-[160px] max-h-80 overflow-y-auto">
+                      {languages.map(l => (
+                        <button
+                          key={l.code}
+                          onClick={() => { setLang(l.code); setLangOpen(false) }}
+                          className={`w-full text-left px-4 py-2 text-sm transition-colors ${lang === l.code ? 'text-green-400' : 'text-white/80 hover:text-white hover:bg-white/5'}`}
+                        >
+                          {l.name}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
               {displayName ? (
                 <div className="hidden md:flex items-center gap-2">
                   <span className="text-sm text-white/70">{displayName}</span>
-                  <button onClick={handleSignOut} className="text-sm text-red-400 hover:text-red-300">Sign out</button>
+                  <button onClick={handleSignOut} className="text-sm text-red-400 hover:text-red-300">{t('nav_signout')}</button>
                 </div>
               ) : (
                 <Link href="/auth/login" className="hidden md:block text-sm bg-green-600 hover:bg-green-500 px-3 py-1.5 rounded font-medium transition-colors">
-                  Sign in
+                  {t('nav_signin')}
                 </Link>
               )}
             </div>
@@ -150,16 +179,33 @@ export default function Navbar() {
               </Link>
             ))}
             <div className="border-t border-white/10 mt-2 pt-3">
-              {displayName ? (
-                <div className="flex items-center justify-between px-4">
-                  <span className="text-sm text-white/60">{displayName}</span>
-                  <button onClick={handleSignOut} className="text-sm text-red-400 hover:text-red-300">Sign out</button>
+              {/* Mobile language selector */}
+              <div className="px-4 pb-2">
+                <p className="text-xs text-white/40 mb-1">Language</p>
+                <div className="grid grid-cols-3 gap-1">
+                  {languages.map(l => (
+                    <button
+                      key={l.code}
+                      onClick={() => { setLang(l.code); setMoreOpen(false) }}
+                      className={`text-xs py-1.5 px-2 rounded transition-colors text-left ${lang === l.code ? 'text-green-400 bg-white/5' : 'text-white/60 hover:text-white'}`}
+                    >
+                      {l.name}
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                <Link href="/auth/login" onClick={() => setMoreOpen(false)} className="block py-3 px-4 text-sm font-medium text-green-400 hover:text-green-300">
-                  Sign in
-                </Link>
-              )}
+              </div>
+              <div className="border-t border-white/10 mt-2 pt-3">
+                {displayName ? (
+                  <div className="flex items-center justify-between px-4">
+                    <span className="text-sm text-white/60">{displayName}</span>
+                    <button onClick={handleSignOut} className="text-sm text-red-400 hover:text-red-300">{t('nav_signout')}</button>
+                  </div>
+                ) : (
+                  <Link href="/auth/login" onClick={() => setMoreOpen(false)} className="block py-3 px-4 text-sm font-medium text-green-400 hover:text-green-300">
+                    {t('nav_signin')}
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         </>
