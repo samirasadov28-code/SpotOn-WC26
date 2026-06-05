@@ -94,6 +94,13 @@ export default function LeaderboardPage() {
   const [userLeagues, setUserLeagues] = useState<UserLeague[]>([])
   const [selectedLeagueId, setSelectedLeagueId] = useState<string>('global')
   const [leagueMembers, setLeagueMembers] = useState<Set<string>>(new Set())
+  const [showLeaguePanel, setShowLeaguePanel] = useState(false)
+  const [newLeagueName, setNewLeagueName] = useState('')
+  const [joinCode, setJoinCode] = useState('')
+  const [leagueActionLoading, setLeagueActionLoading] = useState(false)
+  const [leagueError, setLeagueError] = useState<string | null>(null)
+  const [inviteLeague, setInviteLeague] = useState<UserLeague | null>(null)
+  const [copiedInvite, setCopiedInvite] = useState(false)
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
@@ -272,6 +279,41 @@ export default function LeaderboardPage() {
     setLeagueMembers(new Set((data ?? []).map((r: any) => r.user_id)))
   }
 
+  const handleCreateLeague = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentUserId) return
+    setLeagueActionLoading(true); setLeagueError(null)
+    const code = Math.random().toString(36).slice(2, 8).toUpperCase()
+    const { data: league, error } = await (supabase as any).from('leagues').insert({ name: newLeagueName.trim(), join_code: code, created_by: currentUserId }).select().single()
+    if (error) { setLeagueError(error.message); setLeagueActionLoading(false); return }
+    await (supabase as any).from('league_members').insert({ league_id: league.id, user_id: currentUserId })
+    setNewLeagueName('')
+    setLeagueActionLoading(false)
+    setInviteLeague({ id: league.id, name: league.name, join_code: league.join_code })
+    await loadData()
+  }
+
+  const handleJoinLeague = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentUserId) return
+    setLeagueActionLoading(true); setLeagueError(null)
+    const { data: league, error } = await (supabase as any).from('leagues').select('*').eq('join_code', joinCode.trim().toUpperCase()).single()
+    if (error || !league) { setLeagueError('League not found. Check the code.'); setLeagueActionLoading(false); return }
+    await (supabase as any).from('league_members').upsert({ league_id: league.id, user_id: currentUserId }, { onConflict: 'league_id,user_id' })
+    setJoinCode('')
+    setLeagueActionLoading(false)
+    await loadData()
+    handleLeagueChange(league.id)
+  }
+
+  const handleCopyInvite = async (league: UserLeague) => {
+    const origin = window.location.origin
+    const msg = `Join my SpotOn WC26 league "${league.name}"!\nSign up: ${origin}/auth/login?league=${league.join_code}\nOr enter code: ${league.join_code}`
+    await navigator.clipboard.writeText(msg)
+    setCopiedInvite(true)
+    setTimeout(() => setCopiedInvite(false), 2000)
+  }
+
   const visibleEntries = selectedLeagueId === 'global'
     ? entries
     : entries.filter(e => leagueMembers.has(e.userId)).map((e, i, arr) => {
@@ -307,12 +349,64 @@ export default function LeaderboardPage() {
             <option key={l.id} value={l.id}>🏅 {l.name}</option>
           ))}
         </select>
-        {userLeagues.length === 0 && (
-          <a href="/league" className="text-xs text-[#0B1F3A] underline underline-offset-2 hover:opacity-70">
-            Create or join a league →
-          </a>
-        )}
+        <button
+          onClick={() => setShowLeaguePanel(o => !o)}
+          className="ml-auto text-xs bg-[#0B1F3A] text-white px-3 py-1.5 rounded-lg hover:bg-blue-900 transition-colors shrink-0"
+        >
+          {showLeaguePanel ? 'Close' : '+ Manage Leagues'}
+        </button>
       </div>
+
+      {/* League management panel */}
+      {showLeaguePanel && (
+        <div className="mb-5 bg-gray-50 border border-gray-200 rounded-xl p-4">
+          <div className="grid sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <p className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">Create a league</p>
+              <form onSubmit={handleCreateLeague} className="flex gap-2">
+                <input type="text" required maxLength={50} placeholder="League name" value={newLeagueName} onChange={e => setNewLeagueName(e.target.value)} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]" />
+                <button type="submit" disabled={leagueActionLoading} className="bg-[#0B1F3A] text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-blue-900 disabled:opacity-50 transition-colors">Create</button>
+              </form>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">Join a league</p>
+              <form onSubmit={handleJoinLeague} className="flex gap-2">
+                <input type="text" required maxLength={8} placeholder="6-letter code" value={joinCode} onChange={e => setJoinCode(e.target.value)} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]" />
+                <button type="submit" disabled={leagueActionLoading} className="bg-green-600 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-green-500 disabled:opacity-50 transition-colors">Join</button>
+              </form>
+            </div>
+          </div>
+          {leagueError && <p className="text-red-600 text-sm mb-3">{leagueError}</p>}
+          {userLeagues.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Your leagues</p>
+              {userLeagues.map(l => (
+                <div key={l.id} className="flex items-center justify-between bg-white rounded-lg border border-gray-100 px-3 py-2">
+                  <div>
+                    <span className="font-semibold text-sm text-[#0B1F3A]">{l.name}</span>
+                    <span className="text-xs text-gray-400 font-mono ml-2">· {l.join_code}</span>
+                  </div>
+                  <button onClick={() => handleCopyInvite(l)} className="text-xs text-green-700 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors">
+                    {copiedInvite && inviteLeague?.id === l.id ? '✅ Copied!' : 'Copy Invite'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Invite popup after create */}
+      {inviteLeague && !showLeaguePanel && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+            <h2 className="text-lg font-bold text-[#0B1F3A] mb-2">League created! 🎉</h2>
+            <p className="text-sm text-gray-500 mb-4">Share this code with friends: <span className="font-mono font-bold text-green-700">{inviteLeague.join_code}</span></p>
+            <button onClick={() => { handleCopyInvite(inviteLeague); }} className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm mb-2 hover:bg-green-500 transition-colors">{copiedInvite ? '✅ Copied!' : 'Copy Invite Message'}</button>
+            <button onClick={() => setInviteLeague(null)} className="w-full border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm hover:bg-gray-50 transition-colors">Close</button>
+          </div>
+        </div>
+      )}
 
       {/* Scoring legend */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-xs text-amber-900 flex flex-wrap gap-x-5 gap-y-1.5">
