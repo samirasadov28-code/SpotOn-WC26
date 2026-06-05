@@ -14,7 +14,6 @@ const NAV_LINKS = [
   { href: '/results', label: 'Results' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/teams', label: 'Teams' },
-  { href: '/chat', label: 'Chat' },
   { href: '/rules', label: 'Rules' },
 ]
 
@@ -23,12 +22,10 @@ const BOTTOM_TABS = [
   { href: '/results', label: 'Results', icon: '📊' },
   { href: '/leaderboard', label: 'Leaderboard', icon: '🏆' },
   { href: '/teams', label: 'Teams', icon: '👥' },
-  { href: '/chat', label: 'Chat', icon: '💬' },
+  { href: '/rules', label: 'Rules', icon: '📋' },
 ]
 
-const MORE_LINKS = [
-  { href: '/rules', label: 'Rules' },
-]
+const MORE_LINKS: { href: string; label: string }[] = []
 
 export default function Navbar() {
   const [displayName, setDisplayName] = useState<string | null>(null)

@@ -5,7 +5,6 @@ import './globals.css'
 import Navbar from '@/components/nav/Navbar'
 import ScoreTicker from '@/components/ScoreTicker'
 import { ToastProvider } from '@/components/ToastProvider'
-import MatchResultWatcher from '@/components/MatchResultWatcher'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -40,7 +39,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ToastProvider>
           <Navbar />
           <ScoreTicker />
-          <MatchResultWatcher />
           <main className="pb-16 md:pb-0">{children}</main>
         </ToastProvider>
       </body>
