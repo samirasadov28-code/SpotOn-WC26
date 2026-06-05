@@ -1067,7 +1067,7 @@ export const translations: Translations = {
     home_matches: 'Matchs de Phase de Groupes',
     home_stadiums: 'Stades',
     home_prize_title: 'Prix à Annoncer',
-    home_prize_sub: 'Des prix passionnants arrivent — les détails seront révélés après le coup d'envoi.',
+    home_prize_sub: "Des prix passionnants arrivent — les détails seront révélés après le coup d'envoi.",
     home_timeline_title: 'Calendrier du Tournoi',
     home_how_title: 'Comment Ça Marche',
     home_how_predict_title: 'Pronostiquer',
