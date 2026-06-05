@@ -49,8 +49,21 @@ function LoginForm() {
     if (mode === 'signup') {
       const { data, error: err } = await supabase.auth.signUp({ email, password })
       if (err) {
-        setLoading(false)
-        setError(err.message)
+        const msg = err.message.toLowerCase()
+        if (msg.includes('already registered') || msg.includes('already been registered')) {
+          // Auto-attempt sign in with the same credentials
+          const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
+          setLoading(false)
+          if (!signInErr && signInData.session) {
+            await joinLeagueAndRedirect(supabase, signInData.session.user.id)
+          } else {
+            setMode('signin')
+            setSuccess('You already have an account. Enter your password to sign in.')
+          }
+        } else {
+          setLoading(false)
+          setError(err.message)
+        }
         return
       }
 
