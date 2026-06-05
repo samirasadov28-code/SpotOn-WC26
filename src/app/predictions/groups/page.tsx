@@ -296,28 +296,28 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
     <div className={`max-w-6xl mx-auto px-4 py-8 ${savedCount >= 72 ? 'pb-28' : ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-[#0B1F3A]">Group Stage Predictions</h1>
+        <h1 className="text-2xl font-bold text-[#0B1F3A]">{t('pred_group_stage')}</h1>
         <div className="flex items-center gap-2">
-          {isGloballyLocked && <span className="text-red-600 font-semibold text-sm">🔒 Predictions locked</span>}
+          {isGloballyLocked && <span className="text-red-600 font-semibold text-sm">🔒 {t('grp_locked')}</span>}
           {!isGloballyLocked && savedCount > 0 && (
             confirmClear ? (
               <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
-                <span className="text-xs text-red-700 font-medium">Clear all {savedCount} predictions?</span>
+                <span className="text-xs text-red-700 font-medium">{t('grp_clear_confirm', { n: savedCount })}</span>
                 <button onClick={handleClearAll} disabled={clearing} className="text-xs bg-red-600 text-white px-2 py-1 rounded font-semibold hover:bg-red-700 disabled:opacity-50">
-                  {clearing ? 'Clearing…' : 'Yes, clear'}
+                  {clearing ? t('grp_clearing') : t('grp_yes_clear')}
                 </button>
-                <button onClick={() => setConfirmClear(false)} className="text-xs text-gray-500 hover:text-gray-700 px-1">Cancel</button>
+                <button onClick={() => setConfirmClear(false)} className="text-xs text-gray-500 hover:text-gray-700 px-1">{t('grp_cancel')}</button>
               </div>
             ) : (
               <button onClick={() => setConfirmClear(true)} className="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors font-medium">
-                🗑 Clear all predictions
+                {t('grp_clear_all')}
               </button>
             )
           )}
         </div>
       </div>
 
-      {isGloballyLocked && <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-red-700 font-semibold text-center">🔒 Predictions are locked. The tournament has started!</div>}
+      {isGloballyLocked && <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-red-700 font-semibold text-center">{t('grp_locked_banner')}</div>}
 
       {/* Group tabs */}
       <div className="flex flex-wrap gap-1 mb-6">
