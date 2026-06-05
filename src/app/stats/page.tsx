@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 interface MatchResult {
   id: string
@@ -50,6 +51,7 @@ function getPredScore(predHome: number, predAway: number, actualHome: number, ac
 }
 
 export default function StatsPage() {
+  const { t } = useTranslation()
   const [stats, setStats] = useState<StatsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notLoggedIn, setNotLoggedIn] = useState(false)
@@ -159,17 +161,17 @@ export default function StatsPage() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading your stats…</div>
+    return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">{t('stats_loading')}</div>
   }
 
   if (notLoggedIn) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center">
         <div className="text-4xl mb-4">📊</div>
-        <h1 className="text-2xl font-bold text-[#0B1F3A] mb-2">My Stats</h1>
-        <p className="text-gray-500 mb-6">Sign in to see your personal prediction statistics.</p>
+        <h1 className="text-2xl font-bold text-[#0B1F3A] mb-2">{t('stats_title')}</h1>
+        <p className="text-gray-500 mb-6">{t('stats_sign_in')}</p>
         <a href="/auth/login" className="bg-[#0B1F3A] text-white px-6 py-3 rounded-xl font-semibold hover:bg-[#0B1F3A]/80 transition-colors">
-          Sign in
+          {t('stats_sign_in_btn')}
         </a>
       </div>
     )
@@ -192,11 +194,11 @@ export default function StatsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-[#0B1F3A] mb-6">📊 My Stats</h1>
+      <h1 className="text-2xl font-bold text-[#0B1F3A] mb-6">📊 {t('stats_title')}</h1>
 
       {/* Overall accuracy */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
-        <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-4">Overall Accuracy</h2>
+        <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-4">{t('stats_accuracy')}</h2>
         <div className="flex items-center gap-6">
           {/* Circle indicator */}
           <div className="relative shrink-0 w-24 h-24">
@@ -224,7 +226,7 @@ export default function StatsPage() {
 
       {/* By category */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
-        <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-4">Prediction Breakdown</h2>
+        <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-4">{t('stats_breakdown')}</h2>
         {/* Stacked bar */}
         <div className="flex rounded-full overflow-hidden h-4 mb-4 bg-gray-100">
           {exactW > 0 && <div className="bg-green-500 h-full transition-all" style={{ width: `${exactW}%` }} title={`Exact: ${accuracy.exact}`} />}
@@ -235,22 +237,22 @@ export default function StatsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-sm bg-green-500 shrink-0" />
-            <span className="text-gray-600">🎯 Exact score</span>
+            <span className="text-gray-600">🎯 {t('stats_exact')}</span>
             <span className="ml-auto font-bold text-green-600">{accuracy.exact}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-sm bg-blue-400 shrink-0" />
-            <span className="text-gray-600">📐 Correct GD</span>
+            <span className="text-gray-600">📐 {t('stats_correct_gd')}</span>
             <span className="ml-auto font-bold text-blue-500">{accuracy.correctGD}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-sm bg-indigo-300 shrink-0" />
-            <span className="text-gray-600">✅ Outcome</span>
+            <span className="text-gray-600">✅ {t('stats_outcome')}</span>
             <span className="ml-auto font-bold text-indigo-500">{accuracy.correctOutcome}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-sm bg-gray-200 shrink-0" />
-            <span className="text-gray-600">❌ Wrong</span>
+            <span className="text-gray-600">❌ {t('stats_wrong')}</span>
             <span className="ml-auto font-bold text-gray-400">{accuracy.wrong}</span>
           </div>
         </div>
@@ -285,7 +287,7 @@ export default function StatsPage() {
       <div className="grid sm:grid-cols-3 gap-4 mb-4">
         {/* Streaks */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-3">Streaks</h2>
+          <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-3">{t('stats_streaks')}</h2>
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <span className="text-xs text-gray-500">Current streak</span>
@@ -300,7 +302,7 @@ export default function StatsPage() {
 
         {/* Predicted champion */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-3">Predicted Champion</h2>
+          <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-3">{t('stats_champion')}</h2>
           {predictedChampion ? (
             <div className="text-center">
               <div className="text-3xl mb-1">🏆</div>
@@ -313,7 +315,7 @@ export default function StatsPage() {
 
         {/* vs Average */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-3">vs Average</h2>
+          <h2 className="text-sm font-bold text-[#0B1F3A] uppercase tracking-wide mb-3">{t('stats_vs_avg')}</h2>
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <span className="text-xs text-gray-500">Your pts</span>

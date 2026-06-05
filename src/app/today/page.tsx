@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { format, addDays, subDays, parseISO, isSameDay } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 interface Team {
   id: string
@@ -88,6 +89,7 @@ function FlagImg({ fifaCode, emoji, size = 32 }: { fifaCode: string; emoji: stri
 }
 
 export default function TodayPage() {
+  const { t } = useTranslation()
   const supabase = createClient()
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [displayDate, setDisplayDate] = useState<Date>(new Date())
@@ -252,7 +254,7 @@ export default function TodayPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold text-[#0B1F3A]">
-          {noMatchesMsg && noMatchesMsg !== 'No matches scheduled' ? 'Next Match Day' : "Today's Matches"}
+          {noMatchesMsg && noMatchesMsg !== 'No matches scheduled' ? t('today_next_match_day') : t('today_title')}
         </h1>
       </div>
 
@@ -284,12 +286,12 @@ export default function TodayPage() {
 
       {loading && (
         <div className="flex items-center justify-center min-h-[40vh] text-gray-400">
-          Loading matches…
+          {t('today_loading')}
         </div>
       )}
 
       {!loading && noMatchesMsg === 'No matches scheduled' && (
-        <div className="text-center text-gray-400 py-20 text-lg">No matches scheduled</div>
+        <div className="text-center text-gray-400 py-20 text-lg">{t('today_no_upcoming')}</div>
       )}
 
       {!loading && matches.length > 0 && (
@@ -327,10 +329,10 @@ export default function TodayPage() {
                         <div className="text-3xl font-black text-[#0B1F3A] tracking-tight">
                           {match.home_score} – {match.away_score}
                         </div>
-                        <span className="text-xs text-gray-400 mt-0.5">Final</span>
+                        <span className="text-xs text-gray-400 mt-0.5">{t('today_final')}</span>
                       </>
                     ) : (
-                      <div className="text-xl font-bold text-gray-400">vs</div>
+                      <div className="text-xl font-bold text-gray-400">{t('today_vs')}</div>
                     )}
                   </div>
 
@@ -345,16 +347,16 @@ export default function TodayPage() {
                 <div className="mt-3 border-t border-gray-100 pt-3">
                   {!userId ? (
                     <p className="text-xs text-center text-gray-400 py-1">
-                      <a href="/auth/login" className="text-[#0B1F3A] underline underline-offset-2 font-medium">Sign in</a> to see predictions
+                      <a href="/auth/login" className="text-[#0B1F3A] underline underline-offset-2 font-medium">{t('today_sign_in')}</a>
                     </p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="text-gray-400">
-                            <th className="text-left pb-1.5 font-medium">Player</th>
-                            <th className="text-center pb-1.5 font-medium">Prediction</th>
-                            {hasResult && <th className="text-center pb-1.5 font-medium">Result</th>}
+                            <th className="text-left pb-1.5 font-medium">{t('today_player')}</th>
+                            <th className="text-center pb-1.5 font-medium">{t('today_prediction')}</th>
+                            {hasResult && <th className="text-center pb-1.5 font-medium">{t('today_result')}</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -372,12 +374,12 @@ export default function TodayPage() {
                                   const predGD = match.myPred.pred_home_score - match.myPred.pred_away_score
                                   const actualGD = match.home_score! - match.away_score!
                                   if (match.myPred.pred_home_score === match.home_score && match.myPred.pred_away_score === match.away_score)
-                                    return <span className="text-green-600 font-bold">🎯 Exact</span>
+                                    return <span className="text-green-600 font-bold">🎯 {t('today_exact')}</span>
                                   if (predGD === actualGD)
-                                    return <span className="text-blue-500 font-semibold">📐 GD</span>
+                                    return <span className="text-blue-500 font-semibold">📐 {t('today_gd')}</span>
                                   if (Math.sign(predGD) === Math.sign(actualGD))
-                                    return <span className="text-yellow-600 font-semibold">✅ Win</span>
-                                  return <span className="text-red-500">❌ Miss</span>
+                                    return <span className="text-yellow-600 font-semibold">✅ {t('today_win')}</span>
+                                  return <span className="text-red-500">❌ {t('today_miss')}</span>
                                 })() : <span className="text-gray-300">—</span>}
                               </td>
                             )}

@@ -3,10 +3,12 @@
 import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 type Mode = 'signin' | 'signup'
 
 function LoginForm() {
+  const { t } = useTranslation()
   const searchParams = useSearchParams()
   const leagueCode = searchParams.get('league')
 
@@ -120,10 +122,10 @@ function LoginForm() {
       <div className="text-center mb-6">
         <div className="text-4xl mb-3">⚽</div>
         <h1 className="text-2xl font-bold text-[#0B1F3A]">
-          {mode === 'signup' ? 'Create account' : 'Sign in to SpotOn WC26'}
+          {mode === 'signup' ? t('auth_join_subtitle') : t('auth_sign_in_title')}
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          {mode === 'signup' ? 'Join the prediction league' : 'Welcome back'}
+          {mode === 'signup' ? t('auth_joining_league') : t('auth_welcome_back')}
         </p>
       </div>
 
@@ -143,7 +145,7 @@ function LoginForm() {
         {mode === 'signup' && (
           <div>
             <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-1">
-              Your name <span className="text-gray-400 font-normal">(shown on leaderboard)</span>
+              {t('auth_your_name')} <span className="text-gray-400 font-normal">({t('auth_shown_on_lb')})</span>
             </label>
             <input
               id="displayName"
@@ -160,7 +162,7 @@ function LoginForm() {
 
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-            Email address
+            {t('auth_email')}
           </label>
           <input
             id="email"
@@ -176,7 +178,7 @@ function LoginForm() {
 
         <div>
           <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-            Password
+            {t('auth_password')}
           </label>
           <input
             id="password"
@@ -186,7 +188,7 @@ function LoginForm() {
             minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
+            placeholder={mode === 'signup' ? t('auth_min_6') : '••••••••'}
             className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
           />
         </div>
@@ -198,21 +200,21 @@ function LoginForm() {
           disabled={loading}
           className="bg-[#0B1F3A] hover:bg-blue-900 text-white font-bold py-2.5 rounded-lg transition-colors disabled:opacity-50"
         >
-          {loading ? '…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+          {loading ? '…' : mode === 'signup' ? t('auth_sign_up_btn') : t('auth_sign_in_btn')}
         </button>
       </form>
 
       <p className="text-center text-sm text-gray-500 mt-5">
         {mode === 'signin' ? (
-          <>No account?{' '}
+          <>{t('auth_no_account')}{' '}
             <button onClick={() => switchMode('signup')} className="text-[#0B1F3A] font-semibold hover:underline">
-              Sign up
+              {t('auth_sign_up')}
             </button>
           </>
         ) : (
-          <>Already have one?{' '}
+          <>{t('auth_have_account')}{' '}
             <button onClick={() => switchMode('signin')} className="text-[#0B1F3A] font-semibold hover:underline">
-              Sign in
+              {t('auth_sign_in_btn')}
             </button>
           </>
         )}

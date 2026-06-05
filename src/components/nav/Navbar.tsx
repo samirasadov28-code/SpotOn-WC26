@@ -10,22 +10,6 @@ import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 
-const NAV_LINKS = [
-  { href: '/predictions', label: 'Predictions' },
-  { href: '/results', label: 'Results' },
-  { href: '/leaderboard', label: 'Leaderboard' },
-  { href: '/teams', label: 'Teams' },
-  { href: '/rules', label: 'Rules' },
-]
-
-const BOTTOM_TABS = [
-  { href: '/predictions', label: 'Predictions', icon: '🎯' },
-  { href: '/results', label: 'Results', icon: '📊' },
-  { href: '/leaderboard', label: 'Leaderboard', icon: '🏆' },
-  { href: '/teams', label: 'Teams', icon: '👥' },
-  { href: '/rules', label: 'Rules', icon: '📋' },
-]
-
 const MORE_LINKS: { href: string; label: string }[] = []
 
 export default function Navbar() {
@@ -36,6 +20,22 @@ export default function Navbar() {
   const pathname = usePathname()
   const supabase = createClient()
   const { lang, setLang, t, languages } = useTranslation()
+
+  const NAV_LINKS = [
+    { href: '/predictions', label: t('nav_predictions') },
+    { href: '/results', label: t('nav_results') },
+    { href: '/leaderboard', label: t('nav_leaderboard') },
+    { href: '/teams', label: t('nav_teams') },
+    { href: '/rules', label: t('nav_rules') },
+  ]
+
+  const BOTTOM_TABS = [
+    { href: '/predictions', label: t('nav_predictions'), icon: '🎯' },
+    { href: '/results', label: t('nav_results'), icon: '📊' },
+    { href: '/leaderboard', label: t('nav_leaderboard'), icon: '🏆' },
+    { href: '/teams', label: t('nav_teams'), icon: '👥' },
+    { href: '/rules', label: t('nav_rules'), icon: '📋' },
+  ]
 
   useEffect(() => {
     const getUser = async () => {
@@ -181,7 +181,7 @@ export default function Navbar() {
             <div className="border-t border-white/10 mt-2 pt-3">
               {/* Mobile language selector */}
               <div className="px-4 pb-2">
-                <p className="text-xs text-white/40 mb-1">Language</p>
+                <p className="text-xs text-white/40 mb-1">{t('nav_language')}</p>
                 <div className="grid grid-cols-3 gap-1">
                   {languages.map(l => (
                     <button

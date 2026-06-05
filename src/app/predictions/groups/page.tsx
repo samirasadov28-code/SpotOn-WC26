@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000
@@ -136,6 +137,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
 
+  const { t } = useTranslation()
   const supabase = createClient()
 
   const handleClearAll = useCallback(async () => {
@@ -269,13 +271,13 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       .map((r, i) => ({ ...r!, qualifies: i < 8 }))
   }, [matches, teams, preds])
 
-  if (loading) return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading predictions…</div>
+  if (loading) return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">{t('grp_loading')}</div>
 
   if (!userId) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
       <div className="text-4xl">🔒</div>
-      <h2 className="text-xl font-bold text-[#0B1F3A]">Sign in to make predictions</h2>
-      <a href="/auth/login" className="bg-[#0B1F3A] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-900 transition-colors">Sign in</a>
+      <h2 className="text-xl font-bold text-[#0B1F3A]">{t('grp_sign_in')}</h2>
+      <a href="/auth/login" className="bg-[#0B1F3A] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-900 transition-colors">{t('stats_sign_in_btn')}</a>
     </div>
   )
 

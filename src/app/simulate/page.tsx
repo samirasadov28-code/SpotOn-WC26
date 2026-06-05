@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
@@ -35,6 +36,7 @@ function calcPts(predH: number, predA: number, realH: number, realA: number): nu
 }
 
 export default function SimulatePage() {
+  const { t } = useTranslation()
   const [matches, setMatches] = useState<MatchRow[]>([])
   const [preds, setPreds] = useState<PredRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
@@ -118,14 +120,14 @@ export default function SimulatePage() {
   }).length
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">Loading…</div>
+    return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">{t('sim_loading')}</div>
   }
 
   if (matches.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-center px-4">
         <div className="text-4xl">🏗️</div>
-        <h2 className="text-xl font-bold text-[#0B1F3A]">No match data yet</h2>
+        <h2 className="text-xl font-bold text-[#0B1F3A]">{t('sim_no_match_data')}</h2>
         <p className="text-gray-500 text-sm">Run database migrations to load the match schedule.</p>
       </div>
     )
@@ -134,9 +136,9 @@ export default function SimulatePage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#0B1F3A]">Hypothetical Results</h1>
+        <h1 className="text-2xl font-bold text-[#0B1F3A]">{t('sim_title')}</h1>
         <p className="text-gray-500 text-sm mt-1">
-          Enter any scores below to see how the leaderboard would change. Nothing is saved.{' '}
+          {t('sim_subtitle')}{' '}
           <span className="font-medium text-[#0B1F3A]">{filledCount} / {matches.length} scores entered</span>
         </p>
       </div>
@@ -222,8 +224,8 @@ export default function SimulatePage() {
                 <thead>
                   <tr className="bg-[#0B1F3A] text-white">
                     <th className="py-2.5 px-3 text-left w-8">#</th>
-                    <th className="py-2.5 px-3 text-left">Player</th>
-                    <th className="py-2.5 px-3 text-right font-bold">Pts</th>
+                    <th className="py-2.5 px-3 text-left">{t('sim_player')}</th>
+                    <th className="py-2.5 px-3 text-right font-bold">{t('sim_pts')}</th>
                   </tr>
                 </thead>
                 <tbody>

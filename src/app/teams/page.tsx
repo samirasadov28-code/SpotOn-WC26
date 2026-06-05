@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { STATIC_TEAMS, GROUPS_ORDER } from '@/lib/teams-data'
+import { useTranslation } from '@/lib/i18n/LanguageContext'
 
 const KEY_DATES = [
   { label: 'Prediction lock', date: 'June 11 · 9:00 AM ET', highlight: true },
@@ -39,6 +40,7 @@ type TeamsTab = 'teams' | 'stadiums'
 
 export default function TeamsPage() {
   const [activeTab, setActiveTab] = useState<TeamsTab>('teams')
+  const { t } = useTranslation()
 
   const byGroup = GROUPS_ORDER.map(g => ({
     letter: g,
@@ -53,21 +55,21 @@ export default function TeamsPage() {
           onClick={() => setActiveTab('teams')}
           className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'teams' ? 'bg-[#0B1F3A] text-white' : 'text-gray-600 hover:text-[#0B1F3A]'}`}
         >
-          Teams & Groups
+          {t('teams_tab')}
         </button>
         <button
           onClick={() => setActiveTab('stadiums')}
           className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'stadiums' ? 'bg-[#0B1F3A] text-white' : 'text-gray-600 hover:text-[#0B1F3A]'}`}
         >
-          Stadiums
+          {t('teams_stadiums')}
         </button>
       </div>
 
       {activeTab === 'teams' && (
         <>
           <div className="mb-10">
-            <h1 className="text-3xl font-black text-[#0B1F3A] mb-1">Teams & Groups</h1>
-            <p className="text-gray-500">48 nations across 12 groups — FIFA World Cup 2026. Click any team for profile & squad.</p>
+            <h1 className="text-3xl font-black text-[#0B1F3A] mb-1">{t('teams_tab')}</h1>
+            <p className="text-gray-500">{t('teams_48_desc')}</p>
           </div>
 
           {/* Groups */}
@@ -102,7 +104,7 @@ export default function TeamsPage() {
                         {team.stars.length > 0 && (
                           <p className="text-xs text-gray-500 mt-2 truncate">⭐ {team.stars.slice(0, 2).join(', ')}</p>
                         )}
-                        <p className="text-xs text-[#0B1F3A] font-semibold mt-2 group-hover:underline">View profile →</p>
+                        <p className="text-xs text-[#0B1F3A] font-semibold mt-2 group-hover:underline">{t('teams_view_profile')}</p>
                       </div>
                     </Link>
                   ))}
@@ -113,7 +115,7 @@ export default function TeamsPage() {
 
           {/* Key dates */}
           <div>
-            <h2 className="text-2xl font-black text-[#0B1F3A] mb-4">📅 Key Dates</h2>
+            <h2 className="text-2xl font-black text-[#0B1F3A] mb-4">{t('teams_key_dates')}</h2>
             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
               {KEY_DATES.map((item, i) => (
                 <div key={i} className={`flex justify-between items-center px-5 py-3.5 text-sm ${i > 0 ? 'border-t border-gray-100' : ''} ${item.highlight ? 'bg-yellow-50' : ''}`}>
@@ -129,8 +131,8 @@ export default function TeamsPage() {
       {activeTab === 'stadiums' && (
         <>
           <div className="mb-8">
-            <h1 className="text-3xl font-black text-[#0B1F3A] mb-1">16 World-Class Stadiums</h1>
-            <p className="text-gray-500">Spread across 3 nations — USA, Mexico & Canada. Click any stadium for full details.</p>
+            <h1 className="text-3xl font-black text-[#0B1F3A] mb-1">{t('teams_16_stadiums')}</h1>
+            <p className="text-gray-500">{t('teams_stadiums_desc')}</p>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -169,7 +171,7 @@ export default function TeamsPage() {
                   <p className="text-gray-500 text-xs mt-1">{s.city} · {s.country}</p>
                   <div className="flex items-center justify-between mt-3">
                     <span className="text-xs text-gray-400">🏟️ {s.capacity}</span>
-                    <span className="text-xs font-bold text-[#0B1F3A]/60">{s.matches} matches</span>
+                    <span className="text-xs font-bold text-[#0B1F3A]/60">{s.matches} {t('teams_matches')}</span>
                   </div>
                 </div>
               </Link>
