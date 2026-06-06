@@ -209,9 +209,9 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
           {([['homeScore', homeTeam], ['awayScore', awayTeam]] as const).map(([side, team]) => (
             <div key={side} className="flex items-center gap-1.5">
               {team?.fifa_code
-                ? <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />
+                ? <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm flex-shrink-0" />
                 : <span className="w-5 h-3.5 bg-gray-100 rounded-sm flex-shrink-0" />}
-              <span className={`flex-1 min-w-0 text-[11px] font-medium text-[#0B1F3A] truncate transition-all duration-300 ease-in-out ${team ? 'animate-fade-slide' : ''}`}>{team?.name ?? 'TBD'}</span>
+              <span className={`flex-1 min-w-0 text-[11px] font-medium text-[#0B1F3A] truncate`}>{team ? team.name.slice(0, 3).toUpperCase() : 'TBD'}</span>
               <input
                 type="number" min={0} max={99} inputMode="numeric"
                 disabled={disabled || !team}
@@ -236,7 +236,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
         <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5 overflow-hidden">
           <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{homeTeam?.name ?? 'TBD'}</span>
           {homeTeam?.fifa_code
-            ? <img src={flagUrl(homeTeam.fifa_code, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0" />
+            ? <img src={flagUrl(homeTeam.fifa_code, 40)} alt="" className="w-7 h-5 object-cover rounded-sm flex-shrink-0" />
             : <span className="w-6 h-4 bg-gray-100 rounded-sm flex-shrink-0" />}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -260,7 +260,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
         </div>
         <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
           {awayTeam?.fifa_code
-            ? <img src={flagUrl(awayTeam.fifa_code, 40)} alt="" className="w-6 sm:w-7 h-auto rounded-sm flex-shrink-0" />
+            ? <img src={flagUrl(awayTeam.fifa_code, 40)} alt="" className="w-7 h-5 object-cover rounded-sm flex-shrink-0" />
             : <span className="w-6 h-4 bg-gray-100 rounded-sm flex-shrink-0" />}
           <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{awayTeam?.name ?? 'TBD'}</span>
         </div>
@@ -659,8 +659,8 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
     return `W${def.homeParent} vs W${def.awayParent}`
   }
 
-  const BracketColumn = ({ title, slots, className = '', delay = 0 }: { title: string; slots: number[]; className?: string; delay?: number }) => (
-    <div className={`flex flex-col gap-2 animate-fade-slide opacity-0 ${className}`} style={{ animationDelay: `${delay}ms` }}>
+  const BracketColumn = ({ title, slots, className = '' }: { title: string; slots: number[]; className?: string }) => (
+    <div className={`flex flex-col gap-2 ${className}`}>
       <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100">{title}</div>
       <div className="flex flex-col justify-around flex-1 gap-2">
         {slots.map(slot => (
@@ -674,13 +674,13 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
     <div className="overflow-x-auto -mx-4 px-4">
       <div className="min-w-[1100px] flex gap-1.5 items-stretch">
         {/* Left half — R32 → R16 → QF → SF */}
-        <BracketColumn title="R32" slots={leftR32} className="flex-1 min-w-[120px]" delay={0} />
-        <BracketColumn title="R16" slots={leftR16} className="flex-1 min-w-[120px]" delay={80} />
-        <BracketColumn title="QF"  slots={leftQF}  className="flex-1 min-w-[120px]" delay={160} />
-        <BracketColumn title="SF"  slots={leftSF}  className="flex-1 min-w-[120px]" delay={240} />
+        <BracketColumn title="R32" slots={leftR32} className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R16" slots={leftR16} className="flex-1 min-w-[120px]" />
+        <BracketColumn title="QF"  slots={leftQF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="SF"  slots={leftSF}  className="flex-1 min-w-[120px]" />
 
         {/* Center: Final + 3rd */}
-        <div className="flex flex-col justify-center gap-3 flex-1 min-w-[120px] mx-0.5 animate-fade-slide opacity-0" style={{ animationDelay: '320ms' }}>
+        <div className="flex flex-col justify-center gap-3 flex-1 min-w-[120px] mx-0.5">
           <div className="text-[10px] font-bold text-center text-[#0B1F3A] uppercase tracking-widest pb-1 border-b border-[#0B1F3A]/20">{t('ko_final')}</div>
           <MatchCard compact label={`🏆 ${t('ko_final')}`} {...slotProps(32)} />
           <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100 mt-2">{t('ko_third')}</div>
@@ -688,10 +688,10 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
         </div>
 
         {/* Right half — SF → QF → R16 → R32 */}
-        <BracketColumn title="SF"  slots={rightSF}  className="flex-1 min-w-[120px]" delay={240} />
-        <BracketColumn title="QF"  slots={rightQF}  className="flex-1 min-w-[120px]" delay={160} />
-        <BracketColumn title="R16" slots={rightR16} className="flex-1 min-w-[120px]" delay={80} />
-        <BracketColumn title="R32" slots={rightR32} className="flex-1 min-w-[120px]" delay={0} />
+        <BracketColumn title="SF"  slots={rightSF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="QF"  slots={rightQF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R16" slots={rightR16} className="flex-1 min-w-[120px]" />
+        <BracketColumn title="R32" slots={rightR32} className="flex-1 min-w-[120px]" />
       </div>
     </div>
   )
