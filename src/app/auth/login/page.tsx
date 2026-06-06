@@ -200,7 +200,7 @@ function LoginForm() {
           disabled={loading}
           className="bg-[#0B1F3A] hover:bg-blue-900 text-white font-bold py-2.5 rounded-lg transition-colors disabled:opacity-50"
         >
-          {loading ? '…' : mode === 'signup' ? t('auth_sign_up_btn') : t('auth_sign_in_btn')}
+          {loading ? '…' : mode === 'signup' ? t('auth_signup_btn') : t('auth_signin_btn')}
         </button>
       </form>
 
@@ -214,7 +214,7 @@ function LoginForm() {
         ) : (
           <>{t('auth_have_account')}{' '}
             <button onClick={() => switchMode('signin')} className="text-[#0B1F3A] font-semibold hover:underline">
-              {t('auth_sign_in_btn')}
+              {t('auth_signin_btn')}
             </button>
           </>
         )}

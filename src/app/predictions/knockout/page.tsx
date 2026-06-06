@@ -479,7 +479,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
           <p className="text-sm text-gray-500 mt-0.5">
             {qualifiedCount < 32
               ? t('ko_teams_tbd')
-              : '32 teams qualified — bracket fully set from your group predictions'}
+              : t('ko_bracket_set')}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
