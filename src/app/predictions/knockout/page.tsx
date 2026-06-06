@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
+import { getTeamName } from '@/lib/team-name'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
@@ -168,7 +169,7 @@ interface MatchCardProps {
 }
 
 function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, isSaving, isSaved, isLocked, compact, isLastFilled }: MatchCardProps) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const [localPred, setLocalPred] = useState(pred)
   const isFocusedRef = useRef(false)
 
@@ -234,7 +235,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
       <div className="text-xs text-gray-400 mb-2">{label}</div>
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5 overflow-hidden">
-          <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{homeTeam?.name ?? 'TBD'}</span>
+          <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{homeTeam ? (getTeamName(homeTeam.fifa_code, lang) ?? homeTeam.name) : 'TBD'}</span>
           {homeTeam?.fifa_code
             ? <img src={flagUrl(homeTeam.fifa_code, 40)} alt="" className="w-7 h-5 object-cover rounded-sm flex-shrink-0" />
             : <span className="w-6 h-4 bg-gray-100 rounded-sm flex-shrink-0" />}
@@ -262,7 +263,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
           {awayTeam?.fifa_code
             ? <img src={flagUrl(awayTeam.fifa_code, 40)} alt="" className="w-7 h-5 object-cover rounded-sm flex-shrink-0" />
             : <span className="w-6 h-4 bg-gray-100 rounded-sm flex-shrink-0" />}
-          <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{awayTeam?.name ?? 'TBD'}</span>
+          <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{awayTeam ? (getTeamName(awayTeam.fifa_code, lang) ?? awayTeam.name) : 'TBD'}</span>
         </div>
         <div className="w-4 flex-shrink-0 text-center">
           {isSaving ? <span className="text-xs text-yellow-500">…</span>
@@ -282,7 +283,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function KnockoutPredictionsPage({ onCountChange }: { onCountChange?: (n: number) => void }) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const [groupMatches, setGroupMatches] = useState<MatchWithTeams[]>([])
   const [allTeams, setAllTeams] = useState<Team[]>([])
   const [groupPreds, setGroupPreds] = useState<GroupPredMap>({})
@@ -557,7 +558,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
                   onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
                 />
               )}
-              <h2 className="text-3xl font-black text-[#0B1F3A] mb-1">{predictedWinner.name}</h2>
+              <h2 className="text-3xl font-black text-[#0B1F3A] mb-1">{getTeamName(predictedWinner.fifa_code, lang) ?? predictedWinner.name}</h2>
               <p className="text-gray-500 text-sm">Congratulations on completing your bracket!</p>
               <div className="flex gap-3 mt-6 justify-center">
                 <button onClick={() => setShowWinner(false)}
@@ -576,7 +577,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
 // ── List View ─────────────────────────────────────────────────────────────────
 
 function ListView({ slotProps, koPreds, onShowWinner }: { slotProps: (slot: number) => Omit<MatchCardProps, 'label' | 'compact'>; koPreds: KOPredMap; onShowWinner: () => void }) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const bracketComplete = Array.from({ length: 32 }, (_, i) => i + 1).every(slot => {
     const pred = koPreds[slot]
     if (!pred || pred.homeScore === '' || pred.awayScore === '') return false
@@ -637,7 +638,7 @@ function ListView({ slotProps, koPreds, onShowWinner }: { slotProps: (slot: numb
 // ── Bracket View ──────────────────────────────────────────────────────────────
 
 function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCardProps, 'label' | 'compact'> }) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const leftR32  = [2, 5, 1, 3, 11, 12, 9, 10]
   const leftR16  = [17, 18, 21, 22]
   const leftQF   = [25, 26]

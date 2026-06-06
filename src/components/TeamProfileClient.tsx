@@ -43,7 +43,8 @@ interface Props {
 
 export default function TeamProfileClient({ team, players }: Props) {
   const { t, lang } = useTranslation()
-  const tr = TEAM_TRANSLATIONS[lang]?.[team.fifaCode]
+  const tr = TEAM_TRANSLATIONS[lang]?.[team.fifaCode] as any
+  const displayName = tr?.name ?? team.name
   const displayBlurb = tr?.blurb ?? team.blurb
   const displayHistory = tr?.history ?? team.history
 
@@ -69,13 +70,13 @@ export default function TeamProfileClient({ team, players }: Props) {
       <div className="rounded-3xl overflow-hidden shadow-xl mb-8 bg-[#0B1F3A] text-white">
         <div className="relative h-56 sm:h-72 w-full">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`https://flagcdn.com/w1280/${team.iso2}.png`} alt={`${team.name} flag`} className="w-full h-full object-cover opacity-55" />
+          <img src={`https://flagcdn.com/w1280/${team.iso2}.png`} alt={`${displayName} flag`} className="w-full h-full object-cover opacity-55" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0B1F3A] via-[#0B1F3A]/30 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6">
             <div className="flex items-end gap-4">
               <span className="text-7xl drop-shadow-lg">{team.flagEmoji}</span>
               <div>
-                <h1 className="text-3xl sm:text-4xl font-black leading-tight">{team.name}</h1>
+                <h1 className="text-3xl sm:text-4xl font-black leading-tight">{displayName}</h1>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${CONF_COLORS[team.confederation] ?? 'bg-white/20 text-white'}`}>{team.confederation}</span>
                   <span className="text-white/50 text-sm">{t('team_group_label')} {team.groupLetter} · {team.fifaCode}</span>
