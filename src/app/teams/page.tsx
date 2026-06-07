@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { STATIC_TEAMS, GROUPS_ORDER } from '@/lib/teams-data'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
+import { getTeamName } from '@/lib/team-name'
 
 const KEY_DATES = [
   { label: 'Prediction lock', date: 'June 11 · 9:00 AM ET', highlight: true },
@@ -40,7 +41,17 @@ type TeamsTab = 'teams' | 'stadiums'
 
 export default function TeamsPage() {
   const [activeTab, setActiveTab] = useState<TeamsTab>('teams')
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
+  const iso2ToFifa: Record<string, string> = { us: 'USA', ca: 'CAN', mx: 'MEX' }
+  const noteKey: Record<string, string> = {
+    'Opening Match': 'stadium_note_opening',
+    'The Final': 'stadium_note_final',
+    'Most Matches (9)': 'stadium_note_most',
+    'Western Hub': 'stadium_note_west',
+    'Eastern Hub': 'stadium_note_east',
+    'Canadian Host': 'stadium_note_canada',
+    'Mexican Host': 'stadium_note_mexico',
+  }
 
   const byGroup = GROUPS_ORDER.map(g => ({
     letter: g,
@@ -99,7 +110,7 @@ export default function TeamsPage() {
                         <span className="absolute bottom-2 left-3 text-xl">{team.flagEmoji}</span>
                       </div>
                       <div className="p-3">
-                        <p className="font-black text-[#0B1F3A] text-sm leading-tight">{team.name}</p>
+                        <p className="font-black text-[#0B1F3A] text-sm leading-tight">{getTeamName(team.fifaCode, lang) ?? team.name}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{team.confederation}</p>
                         {team.stars.length > 0 && (
                           <p className="text-xs text-gray-500 mt-2 truncate">⭐ {team.stars.slice(0, 2).join(', ')}</p>
@@ -153,7 +164,7 @@ export default function TeamsPage() {
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0B1F3A]/80 to-transparent" />
                   {s.note && (
                     <span className="absolute top-2 left-2 bg-green-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
-                      {s.note}
+                      {noteKey[s.note] ? t(noteKey[s.note]) : s.note}
                     </span>
                   )}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -168,7 +179,7 @@ export default function TeamsPage() {
                   <h3 className="font-black text-[#0B1F3A] text-sm leading-tight group-hover:text-green-700 transition-colors">
                     {s.name}
                   </h3>
-                  <p className="text-gray-500 text-xs mt-1">{s.city} · {s.country}</p>
+                  <p className="text-gray-500 text-xs mt-1">{s.city} · {getTeamName(iso2ToFifa[s.iso2], lang) ?? s.country}</p>
                   <div className="flex items-center justify-between mt-3">
                     <span className="text-xs text-gray-400">🏟️ {s.capacity}</span>
                     <span className="text-xs font-bold text-[#0B1F3A]/60">{s.matches} {t('teams_matches')}</span>

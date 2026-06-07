@@ -212,7 +212,7 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
               {team?.fifa_code
                 ? <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm flex-shrink-0" />
                 : <span className="w-5 h-3.5 bg-gray-100 rounded-sm flex-shrink-0" />}
-              <span className={`flex-1 min-w-0 text-[11px] font-medium text-[#0B1F3A] truncate`}>{team ? team.name.slice(0, 3).toUpperCase() : 'TBD'}</span>
+              <span className={`flex-1 min-w-0 text-[11px] font-medium text-[#0B1F3A] truncate`}>{team ? (getTeamName(team.fifa_code, lang) ?? team.name).slice(0, 3).toUpperCase() : 'TBD'}</span>
               <input
                 type="number" min={0} max={99} inputMode="numeric"
                 disabled={disabled || !team}

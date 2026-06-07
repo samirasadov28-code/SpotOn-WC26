@@ -141,9 +141,9 @@ export default function HomePage() {
           </div>
 
           <h1 className="text-5xl sm:text-7xl font-black tracking-tight mb-4 leading-none">
-            <span className="text-white">PREDICT.</span>{' '}
-            <span className="text-brand-green">COMPETE.</span>{' '}
-            <span className="text-[#DC2626]">WIN.</span>
+            <span className="text-white">{t('home_predict')}</span>{' '}
+            <span className="text-brand-green">{t('home_compete')}</span>{' '}
+            <span className="text-[#DC2626]">{t('home_win')}</span>
           </h1>
 
           <p className="text-lg sm:text-xl text-white/70 max-w-xl mx-auto mb-10">
