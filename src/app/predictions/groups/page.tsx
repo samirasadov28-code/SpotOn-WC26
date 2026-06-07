@@ -138,6 +138,36 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
 
+  // Auto-advance: track when the active group was last completed to avoid re-triggering
+  const autoAdvancedRef = useRef<string | null>(null)
+  const prevSavedCountRef = useRef(0)
+
+  useEffect(() => {
+    if (loading || matches.length === 0) return
+    // Only react when savedCount increases (a new prediction was just saved)
+    if (savedCount <= prevSavedCountRef.current) { prevSavedCountRef.current = savedCount; return }
+    prevSavedCountRef.current = savedCount
+
+    const groupMatchIds = matches.filter(m => m.group_letter === activeGroup).map(m => m.id)
+    const filledCount = groupMatchIds.filter(id =>
+      savedIds.has(id) && preds[id]?.home !== '' && preds[id]?.away !== ''
+    ).length
+    if (filledCount < groupMatchIds.length || autoAdvancedRef.current === activeGroup) return
+    autoAdvancedRef.current = activeGroup
+
+    const nextIncomplete = GROUPS.find(g => {
+      if (g === activeGroup) return false
+      const ids = matches.filter(m => m.group_letter === g).map(m => m.id)
+      return ids.filter(id => savedIds.has(id) && preds[id]?.home !== '' && preds[id]?.away !== '').length < ids.length
+    })
+
+    if (nextIncomplete) {
+      setTimeout(() => setActiveGroup(nextIncomplete), 700)
+    } else {
+      setTimeout(() => { window.location.href = '/predictions?tab=bracket' }, 900)
+    }
+  }, [savedCount, activeGroup, loading, savedIds, preds, matches])
+
   const { t, lang } = useTranslation()
   const tn = (fifaCode: string | null | undefined, fallback: string | null | undefined) =>
     getTeamName(fifaCode, lang) ?? fallback ?? '?'
@@ -366,7 +396,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                     ) : (
                       <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{tn(homeCode, match.home_team?.name)}</span>
                     )}
-                    {homeCode && <a href={`/teams/${homeCode}`}><img src={flagUrl(homeCode, 40)} alt="" className="w-7 h-5 object-cover rounded-sm flex-shrink-0 hover:opacity-80" /></a>}
+                    {homeCode && <a href={`/teams/${homeCode}`}><img src={flagUrl(homeCode, 40)} alt="" className="w-7 h-5 object-cover rounded-sm flex-shrink-0 hover:opacity-80" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /></a>}
                   </div>
                   {/* Inputs */}
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -394,7 +424,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                   </div>
                   {/* Away */}
                   <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
-                    {awayCode && <a href={`/teams/${awayCode}`}><img src={flagUrl(awayCode, 40)} alt="" className="w-7 h-5 object-cover rounded-sm flex-shrink-0 hover:opacity-80" /></a>}
+                    {awayCode && <a href={`/teams/${awayCode}`}><img src={flagUrl(awayCode, 40)} alt="" className="w-7 h-5 object-cover rounded-sm flex-shrink-0 hover:opacity-80" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /></a>}
                     {awayCode ? (
                       <a href={`/teams/${awayCode}`} className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate hover:underline">{tn(awayCode, match.away_team?.name)}</a>
                     ) : (
@@ -448,7 +478,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                       <div key={s.team.id} className="px-4 py-3">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-black flex-shrink-0">3</span>
-                          {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-4 object-cover rounded-sm flex-shrink-0" />}
+                          {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-4 object-cover rounded-sm flex-shrink-0" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                           <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-sm hover:underline">{tn((s.team as any).fifa_code, s.team.name)}</a>
                           <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${qualifies ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
                             {qualifies ? `Qualifies (${r3rdRankLabel})` : `Out (${r3rdRankLabel})`}
@@ -458,7 +488,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                           <div className="ml-7 space-y-1">
                             <div className="text-xs text-gray-500 flex items-center gap-1.5">
                               <span className="text-gray-400 w-7">{t('grp_r32')}</span>
-                              {r32OppCode && <img src={flagUrl(r32OppCode, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" />}
+                              {r32OppCode && <img src={flagUrl(r32OppCode, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                               <span className="font-medium text-[#0B1F3A]">{r32Opp ? tn((r32Opp as any).fifa_code, r32Opp.name) : (oppPosKey ?? "?")}</span>
                             </div>
                             <div className="text-xs text-gray-400 flex items-center gap-1.5 flex-wrap">
@@ -466,16 +496,16 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                               {r16Teams.length >= 2 ? (
                                 <>
                                   <span>{t('grp_vs_winner')}</span>
-                                  {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" />}
+                                  {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                                   <span className="font-medium text-gray-600">{tn((r16Teams[0] as any).fifa_code, r16Teams[0].name)}</span>
                                   <span>{t('grp_or')}</span>
-                                  {(r16Teams[1] as any).fifa_code && <img src={flagUrl((r16Teams[1] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" />}
+                                  {(r16Teams[1] as any).fifa_code && <img src={flagUrl((r16Teams[1] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                                   <span className="font-medium text-gray-600">{tn((r16Teams[1] as any).fifa_code, r16Teams[1].name)}</span>
                                 </>
                               ) : r16Teams.length === 1 ? (
                                 <>
                                   <span>{t('grp_vs_winner')}</span>
-                                  {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" />}
+                                  {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                                   <span className="font-medium text-gray-600">{tn((r16Teams[0] as any).fifa_code, r16Teams[0].name)}</span>
                                   <span className="text-gray-300">{t('grp_or')} TBD</span>
                                 </>
@@ -508,13 +538,13 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                     <div key={s.team.id} className="px-4 py-3">
                       <div className="flex items-center gap-2 mb-2">
                         <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${i === 0 ? 'bg-yellow-400 text-[#0B1F3A]' : 'bg-gray-300 text-[#0B1F3A]'}`}>{i + 1}</span>
-                        {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-4 object-cover rounded-sm flex-shrink-0" />}
+                        {teamCode && <img src={flagUrl(teamCode, 40)} alt="" className="w-6 h-4 object-cover rounded-sm flex-shrink-0" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                         <a href={`/teams/${teamCode}`} className="font-semibold text-[#0B1F3A] text-sm hover:underline">{tn((s.team as any).fifa_code, s.team.name)}</a>
                       </div>
                       <div className="ml-7 space-y-1">
                         <div className="text-xs text-gray-500 flex items-center gap-1.5">
                           <span className="text-gray-400 w-7">{t('grp_r32')}</span>
-                          {r32OppCode && <img src={flagUrl(r32OppCode, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" />}
+                          {r32OppCode && <img src={flagUrl(r32OppCode, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                           <span className="font-medium text-[#0B1F3A]">{r32OppLabel}</span>
                         </div>
                         <div className="text-xs text-gray-400 flex items-center gap-1.5 flex-wrap">
@@ -522,16 +552,16 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                           {r16Teams.length >= 2 ? (
                             <>
                               <span>{t('grp_vs_winner')}</span>
-                              {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" />}
+                              {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                               <span className="font-medium text-gray-600">{tn((r16Teams[0] as any).fifa_code, r16Teams[0].name)}</span>
                               <span>{t('grp_or')}</span>
-                              {(r16Teams[1] as any).fifa_code && <img src={flagUrl((r16Teams[1] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" />}
+                              {(r16Teams[1] as any).fifa_code && <img src={flagUrl((r16Teams[1] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                               <span className="font-medium text-gray-600">{tn((r16Teams[1] as any).fifa_code, r16Teams[1].name)}</span>
                             </>
                           ) : r16Teams.length === 1 ? (
                             <>
                               <span>{t('grp_vs_winner')}</span>
-                              {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" />}
+                              {(r16Teams[0] as any).fifa_code && <img src={flagUrl((r16Teams[0] as any).fifa_code, 40)} alt="" className="w-4 h-3 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />}
                               <span className="font-medium text-gray-600">{tn((r16Teams[0] as any).fifa_code, r16Teams[0].name)}</span>
                               <span className="text-gray-300">{t('grp_or')} TBD</span>
                             </>
@@ -570,7 +600,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                     <td className="px-3 py-2 flex items-center gap-1.5">
                       <span className="text-gray-300 text-[10px] w-3">{i + 1}</span>
                       {(s.team as any).fifa_code && (
-                        <img src={flagUrl((s.team as any).fifa_code, 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm" />
+                        <img src={flagUrl((s.team as any).fifa_code, 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
                       )}
                       <span className="font-medium text-[#0B1F3A] truncate max-w-[80px]">{tn((s.team as any).fifa_code, s.team.name)}</span>
                     </td>
@@ -609,7 +639,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
                       <td className="px-3 py-2 flex items-center gap-1.5">
                         <span className="text-gray-300 text-[10px] w-3">{i + 1}</span>
                         {(r.team as any).fifa_code && (
-                          <img src={flagUrl((r.team as any).fifa_code, 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm" />
+                          <img src={flagUrl((r.team as any).fifa_code, 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
                         )}
                         <span className={`font-medium truncate max-w-[80px] ${r.qualifies ? 'text-[#0B1F3A]' : 'text-gray-400'}`}>{tn((r.team as any).fifa_code, r.team.name)}</span>
                       </td>
