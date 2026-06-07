@@ -100,7 +100,11 @@ export default function ScoreTicker() {
 
   if (items.length === 0) return null
 
-  const tickerText = items.join('  ·  ')
+  const lockReminder = '🔒 Predictions lock Jun 11'
+  const tickerItems = items.length > 1
+    ? [items[0], lockReminder, ...items.slice(1)]
+    : [items[0], lockReminder]
+  const tickerText = tickerItems.join('  ·  ')
 
   return (
     <>
