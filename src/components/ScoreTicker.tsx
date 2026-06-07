@@ -103,10 +103,12 @@ export default function ScoreTicker() {
 
   if (items.length === 0) return null
 
-  // Lock time: Jun 11 09:00 ET = 13:00 UTC — same format as match times (user local, no tz label)
-  const lockDate = new Date('2026-06-11T13:00:00Z')
+  // Lock = 2 hours before first match kickoff, same format as game times
+  const firstKickoff = matches[0]?.kickoff_at ? new Date(matches[0].kickoff_at) : new Date('2026-06-11T15:00:00Z')
+  const lockDate = new Date(firstKickoff.getTime() - 2 * 3600 * 1000)
   const lockTime = lockDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-  const lockReminder = `🔒 ${t('predictions_lock_warning', { time: `Jun 11 · ${lockTime}` })}`
+  const lockDay = lockDate.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })
+  const lockReminder = `🔒 ${t('predictions_lock_warning', { time: `${lockDay} · ${lockTime}` })}`
   const tickerText = [lockReminder, ...items].join('  ·  ')
 
   return (
