@@ -122,7 +122,7 @@ function LoginForm() {
       <div className="text-center mb-6">
         <div className="text-4xl mb-3">⚽</div>
         <h1 className="text-2xl font-bold text-[#0B1F3A]">
-          {mode === 'signup' ? t('auth_join_subtitle') : t('auth_sign_in_title')}
+          {mode === 'signup' ? t('auth_signup_title') : t('auth_signin_title')}
         </h1>
         <p className="text-sm text-gray-500 mt-1">
           {mode === 'signup' ? t('auth_joining_league') : t('auth_welcome_back')}
@@ -188,7 +188,7 @@ function LoginForm() {
             minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={mode === 'signup' ? t('auth_min_6') : '••••••••'}
+            placeholder={mode === 'signup' ? t('auth_min_6_chars') : '••••••••'}
             className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
           />
         </div>
