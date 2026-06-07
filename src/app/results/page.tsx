@@ -4,17 +4,18 @@ import { useEffect, useState, useMemo } from 'react'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
+import { getTeamName } from '@/lib/team-name'
 import SimulatePage from '../simulate/page'
 import type { Team } from '@/lib/supabase/types'
 
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
 const KO_STAGES = [
-  { key: 'r32', label: 'Round of 32' },
-  { key: 'r16', label: 'Round of 16' },
-  { key: 'qf',  label: 'Quarterfinals' },
-  { key: 'sf',  label: 'Semifinals' },
-  { key: 'third', label: 'Third Place' },
-  { key: 'final', label: 'Final' },
+  { key: 'r32', tKey: 'ko_r32' },
+  { key: 'r16', tKey: 'ko_r16' },
+  { key: 'qf',  tKey: 'ko_qf' },
+  { key: 'sf',  tKey: 'ko_sf' },
+  { key: 'third', tKey: 'ko_third' },
+  { key: 'final', tKey: 'ko_final' },
 ]
 
 interface MatchRow {
@@ -239,7 +240,7 @@ function MatchResultsTabs({
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   activeKoStage === s.key ? 'bg-[#0B1F3A] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}>
-                {s.label}
+                {t(s.tKey)}
               </button>
             ))}
           </div>
@@ -251,7 +252,7 @@ function MatchResultsTabs({
 }
 
 function MatchList({ matches }: { matches: MatchRow[] }) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   if (matches.length === 0) return <p className="text-gray-400 text-sm text-center py-10">{t('res_no_selection')}</p>
   return (
     <div className="flex flex-col gap-3">
@@ -265,7 +266,7 @@ function MatchList({ matches }: { matches: MatchRow[] }) {
             <div className="text-xs text-gray-400 mb-2 truncate">{kickoff}{m.venue ? ` · ${m.venue}` : ''}</div>
             <div className="flex items-center gap-2">
               <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5">
-                <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{m.home_team?.name ?? '?'}</span>
+                <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{m.home_team ? (getTeamName(m.home_team.fifa_code, lang) ?? m.home_team.name) : '?'}</span>
                 {m.home_team?.fifa_code && <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
               </div>
               <div className="text-center flex-shrink-0 min-w-[56px]">
@@ -275,7 +276,7 @@ function MatchList({ matches }: { matches: MatchRow[] }) {
               </div>
               <div className="flex-1 min-w-0 flex items-center gap-1.5">
                 {m.away_team?.fifa_code && <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
-                <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{m.away_team?.name ?? '?'}</span>
+                <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{m.away_team ? (getTeamName(m.away_team.fifa_code, lang) ?? m.away_team.name) : '?'}</span>
               </div>
             </div>
             {!played && <div className="text-center mt-2"><span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{t('res_not_played')}</span></div>}
@@ -297,6 +298,7 @@ function StandingsTab({
   activeGroup: string
   setActiveGroup: (g: string) => void
 }) {
+  const { lang } = useTranslation()
   const standings = groupStandingsMap.get(activeGroup) ?? []
 
   return (
@@ -334,7 +336,7 @@ function StandingsTab({
                   <td className="px-3 py-2.5 flex items-center gap-2">
                     <span className="text-gray-300 text-[10px] w-3">{i + 1}</span>
                     {s.team.fifa_code && <img src={flagUrl(s.team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />}
-                    <span className="font-medium text-[#0B1F3A] truncate max-w-[100px]">{s.team.name}</span>
+                    <span className="font-medium text-[#0B1F3A] truncate max-w-[100px]">{getTeamName(s.team.fifa_code, lang) ?? s.team.name}</span>
                   </td>
                   <td className="px-2 py-2.5 text-center text-gray-500">{s.played}</td>
                   <td className="px-2 py-2.5 text-center text-gray-500">{s.wins}</td>
@@ -371,7 +373,7 @@ function StandingsTab({
                     <td className="px-3 py-2 flex items-center gap-1.5">
                       <span className="text-gray-300 text-[10px] w-3">{i + 1}</span>
                       {r.team.fifa_code && <img src={flagUrl(r.team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />}
-                      <span className={`font-medium truncate max-w-[80px] ${r.qualifies ? 'text-[#0B1F3A]' : 'text-gray-400'}`}>{r.team.name}</span>
+                      <span className={`font-medium truncate max-w-[80px] ${r.qualifies ? 'text-[#0B1F3A]' : 'text-gray-400'}`}>{getTeamName(r.team.fifa_code, lang) ?? r.team.name}</span>
                     </td>
                     <td className="px-2 py-2 text-center text-gray-500">{r.group}</td>
                     <td className="px-2 py-2 text-center text-gray-500">{r.gd > 0 ? `+${r.gd}` : r.gd}</td>
@@ -401,6 +403,7 @@ const BRACKET_RIGHT_R16 = [19, 20, 23, 24]
 const BRACKET_RIGHT_R32 = [4, 6, 7, 8, 14, 16, 13, 15]
 
 function BracketMatchCard({ match }: { match: MatchRow | undefined }) {
+  const { lang } = useTranslation()
   if (!match) {
     return (
       <div className="bg-white rounded-lg border border-gray-100 p-2 shadow-sm opacity-40">
@@ -433,7 +436,7 @@ function BracketMatchCard({ match }: { match: MatchRow | undefined }) {
               ? <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />
               : <span className="w-5 h-3.5 bg-gray-100 rounded-sm flex-shrink-0" />}
             <span className={`flex-1 min-w-0 text-[11px] font-medium truncate ${team ? (wins ? 'text-green-700' : 'text-[#0B1F3A]') : 'text-gray-300'}`}>
-              {team?.name ?? 'TBD'}
+              {team ? (getTeamName(team.fifa_code, lang) ?? team.name) : 'TBD'}
             </span>
             <span className={`text-xs font-bold flex-shrink-0 w-4 text-right ${wins ? 'text-green-700' : 'text-[#0B1F3A]'}`}>
               {score !== null ? score : (team ? '–' : '')}
@@ -446,7 +449,7 @@ function BracketMatchCard({ match }: { match: MatchRow | undefined }) {
 }
 
 function BracketTab({ matches }: { matches: MatchRow[] }) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const bySlot = new Map<number, MatchRow>()
   for (const m of matches) {
     if (m.bracket_slot !== null) bySlot.set(m.bracket_slot, m)
@@ -473,23 +476,23 @@ function BracketTab({ matches }: { matches: MatchRow[] }) {
   return (
     <div className="overflow-x-auto -mx-4 px-4">
       <div className="min-w-[1100px] flex gap-1.5 items-stretch">
-        <BracketColumn title="R32" slots={BRACKET_LEFT_R32}  className="flex-1 min-w-[120px]" />
-        <BracketColumn title="R16" slots={BRACKET_LEFT_R16}  className="flex-1 min-w-[120px]" />
-        <BracketColumn title="QF"  slots={BRACKET_LEFT_QF}   className="flex-1 min-w-[120px]" />
-        <BracketColumn title="SF"  slots={BRACKET_LEFT_SF}   className="flex-1 min-w-[120px]" />
+        <BracketColumn title={t('ko_r32')} slots={BRACKET_LEFT_R32}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title={t('ko_r16')} slots={BRACKET_LEFT_R16}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title={t('ko_qf')}  slots={BRACKET_LEFT_QF}   className="flex-1 min-w-[120px]" />
+        <BracketColumn title={t('ko_sf')}  slots={BRACKET_LEFT_SF}   className="flex-1 min-w-[120px]" />
 
         {/* Center: Final + 3rd */}
         <div className="flex flex-col justify-center gap-3 flex-1 min-w-[120px] mx-0.5">
-          <div className="text-[10px] font-bold text-center text-[#0B1F3A] uppercase tracking-widest pb-1 border-b border-[#0B1F3A]/20">Final</div>
+          <div className="text-[10px] font-bold text-center text-[#0B1F3A] uppercase tracking-widest pb-1 border-b border-[#0B1F3A]/20">{t('ko_final')}</div>
           <BracketMatchCard match={bySlot.get(32)} />
-          <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100 mt-2">3rd Place</div>
+          <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100 mt-2">{t('ko_third')}</div>
           <BracketMatchCard match={bySlot.get(31)} />
         </div>
 
-        <BracketColumn title="SF"  slots={BRACKET_RIGHT_SF}  className="flex-1 min-w-[120px]" />
-        <BracketColumn title="QF"  slots={BRACKET_RIGHT_QF}  className="flex-1 min-w-[120px]" />
-        <BracketColumn title="R16" slots={BRACKET_RIGHT_R16} className="flex-1 min-w-[120px]" />
-        <BracketColumn title="R32" slots={BRACKET_RIGHT_R32} className="flex-1 min-w-[120px]" />
+        <BracketColumn title={t('ko_sf')}  slots={BRACKET_RIGHT_SF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title={t('ko_qf')}  slots={BRACKET_RIGHT_QF}  className="flex-1 min-w-[120px]" />
+        <BracketColumn title={t('ko_r16')} slots={BRACKET_RIGHT_R16} className="flex-1 min-w-[120px]" />
+        <BracketColumn title={t('ko_r32')} slots={BRACKET_RIGHT_R32} className="flex-1 min-w-[120px]" />
       </div>
     </div>
   )
