@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
+import { getTeamName } from '@/lib/team-name'
 
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
@@ -36,7 +37,7 @@ function calcPts(predH: number, predA: number, realH: number, realA: number): nu
 }
 
 export default function SimulatePage() {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const [matches, setMatches] = useState<MatchRow[]>([])
   const [preds, setPreds] = useState<PredRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
@@ -139,7 +140,7 @@ export default function SimulatePage() {
         <h1 className="text-2xl font-bold text-[#0B1F3A]">{t('sim_title')}</h1>
         <p className="text-gray-500 text-sm mt-1">
           {t('sim_subtitle')}{' '}
-          <span className="font-medium text-[#0B1F3A]">{filledCount} / {matches.length} scores entered</span>
+          <span className="font-medium text-[#0B1F3A]">{t('sim_entered', { filled: String(filledCount), total: String(matches.length) })}</span>
         </p>
       </div>
 
@@ -179,11 +180,11 @@ export default function SimulatePage() {
                 <div key={m.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${isActual ? 'border-green-400' : 'border-gray-200'}`}>
                   <div className="flex items-center justify-between gap-1 mb-0.5">
                     <span className="text-[10px] text-gray-400">{kickoff}</span>
-                    {isActual && <span className="text-[10px] text-green-600 font-semibold">Official result</span>}
+                    {isActual && <span className="text-[10px] text-green-600 font-semibold">{t('sim_official')}</span>}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="flex-1 min-w-0 text-right text-xs sm:text-sm font-semibold text-[#0B1F3A] truncate">
-                      {m.home_team?.flag_emoji} {m.home_team?.name}
+                      {m.home_team?.flag_emoji} {m.home_team ? (getTeamName(m.home_team.fifa_code, lang) ?? m.home_team.name) : '?'}
                     </span>
                     <input
                       type="number" min={0} max={99} inputMode="numeric"
@@ -199,7 +200,7 @@ export default function SimulatePage() {
                       className="w-11 flex-shrink-0 text-center border border-gray-300 rounded-lg py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
                     />
                     <span className="flex-1 min-w-0 text-xs sm:text-sm font-semibold text-[#0B1F3A] truncate">
-                      {m.away_team?.name} {m.away_team?.flag_emoji}
+                      {m.away_team ? (getTeamName(m.away_team.fifa_code, lang) ?? m.away_team.name) : '?'} {m.away_team?.flag_emoji}
                     </span>
                   </div>
                 </div>
@@ -211,14 +212,14 @@ export default function SimulatePage() {
         {/* Right: live leaderboard */}
         <div className="lg:sticky lg:top-24">
           <h2 className="text-lg font-bold text-[#0B1F3A] mb-3">
-            {isLocked ? 'Simulated Leaderboard' : 'Your Simulated Score'}
+            {isLocked ? t('sim_lb') : t('sim_your_score')}
           </h2>
           {!isLocked && (
-            <p className="text-xs text-gray-500 mb-3">Full leaderboard simulation unlocks after predictions close on Jun 11.</p>
+            <p className="text-xs text-gray-500 mb-3">{t('sim_locked')}</p>
           )}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             {simLeaderboard.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-8">No predictions to score yet</p>
+              <p className="text-gray-400 text-sm text-center py-8">{t('sim_no_preds')}</p>
             ) : (
               <table className="w-full text-sm">
                 <thead>

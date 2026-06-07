@@ -21,7 +21,7 @@ function formatDate(iso: string) {
 }
 
 export default function ScoreTicker() {
-  const { lang } = useTranslation()
+  const { t, lang } = useTranslation()
   const [matches, setMatches] = useState<TickerMatch[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -103,10 +103,10 @@ export default function ScoreTicker() {
 
   if (items.length === 0) return null
 
-  // Lock time: Jun 11 09:00 ET = 13:00 UTC, displayed in user's local timezone
+  // Lock time: Jun 11 09:00 ET = 13:00 UTC — same format as match times (user local, no tz label)
   const lockDate = new Date('2026-06-11T13:00:00Z')
-  const lockTime = lockDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
-  const lockReminder = `🔒 Predictions lock · Jun 11 · ${lockTime}`
+  const lockTime = lockDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  const lockReminder = `🔒 ${t('predictions_lock_warning', { time: `Jun 11 · ${lockTime}` })}`
   const tickerText = [lockReminder, ...items].join('  ·  ')
 
   return (
