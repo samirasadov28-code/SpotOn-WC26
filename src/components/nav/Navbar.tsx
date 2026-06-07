@@ -128,7 +128,7 @@ export default function Navbar() {
 
               {displayName ? (
                 <div className="hidden md:flex items-center gap-2">
-                  <span className="text-sm text-white/70">{displayName}</span>
+                  <Link href="/profile" className="text-sm text-white/70 hover:text-white transition-colors">{displayName}</Link>
                   <button onClick={handleSignOut} className="text-sm text-red-400 hover:text-red-300">{t('nav_signout')}</button>
                 </div>
               ) : (
@@ -197,7 +197,7 @@ export default function Navbar() {
               <div className="border-t border-white/10 mt-2 pt-3">
                 {displayName ? (
                   <div className="flex items-center justify-between px-4">
-                    <span className="text-sm text-white/60">{displayName}</span>
+                    <Link href="/profile" onClick={() => setMoreOpen(false)} className="text-sm text-white/60 hover:text-white transition-colors">{displayName}</Link>
                     <button onClick={handleSignOut} className="text-sm text-red-400 hover:text-red-300">{t('nav_signout')}</button>
                   </div>
                 ) : (
