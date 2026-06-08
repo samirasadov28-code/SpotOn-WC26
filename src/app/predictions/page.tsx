@@ -50,8 +50,11 @@ function PredictionsInner() {
     router.replace(`/predictions?tab=${t}`)
   }
 
+  const TOTAL = GROUP_TOTAL + KO_TOTAL
+  const totalSaved = groupsSaved + koSaved
   const groupsDone = groupsSaved >= GROUP_TOTAL
   const koDone = koSaved >= KO_TOTAL
+  const allDone = groupsDone && koDone
 
   if (!initialised) return null
 
@@ -81,16 +84,14 @@ function PredictionsInner() {
               </button>
             ))}
           </div>
-          {/* Live group-stage counter */}
-          {tab === 'groups' && (
-            <div className={`text-sm font-bold tabular-nums flex items-center gap-1 ${groupsDone ? 'text-green-600' : 'text-[#0B1F3A]'}`}>
-              {groupsDone ? '✅' : null}
-              <span>{groupsSaved}</span>
-              <span className="text-gray-400 font-normal">/</span>
-              <span className="text-gray-400 font-normal">{GROUP_TOTAL}</span>
-              <span className="text-gray-400 font-normal text-xs hidden sm:inline">{t('pred_saved')}</span>
-            </div>
-          )}
+          {/* Overall completion counter */}
+          <div className={`text-sm font-bold tabular-nums flex items-center gap-1 ${allDone ? 'text-green-600' : 'text-[#0B1F3A]'}`}>
+            {allDone ? '✅' : null}
+            <span>{totalSaved}</span>
+            <span className="text-gray-400 font-normal">/</span>
+            <span className="text-gray-400 font-normal">{TOTAL}</span>
+            <span className="text-gray-400 font-normal text-xs hidden sm:inline">{t('pred_saved')}</span>
+          </div>
         </div>
       </div>
 
