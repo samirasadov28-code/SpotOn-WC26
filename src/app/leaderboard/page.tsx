@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
 
-const GROUP_MATCHES_TOTAL = 72
+const PREDICTIONS_TOTAL = 104 // 72 group + 32 knockout
 
 interface UserLeague {
   id: string
@@ -132,7 +132,7 @@ export default function LeaderboardPage() {
     const users: { id: string; display_name: string | null }[] = userRes.data ?? []
     const scores = new Map((scoreRes.data ?? []).map((s: any) => [s.user_id, s]))
     const predCounts = new Map<string, number>()
-    for (const p of (predRes.data ?? []) as { user_id: string }[]) {
+    for (const p of [...(predRes.data ?? []), ...(koPredRes.data ?? [])] as { user_id: string }[]) {
       predCounts.set(p.user_id, (predCounts.get(p.user_id) ?? 0) + 1)
     }
 
@@ -440,8 +440,8 @@ export default function LeaderboardPage() {
             <tbody>
               {visibleEntries.map((entry, idx) => {
                 const isMe = entry.userId === currentUserId
-                const isComplete = entry.predictionCount >= GROUP_MATCHES_TOTAL
-                const pctDone = Math.min(100, Math.round((entry.predictionCount / GROUP_MATCHES_TOTAL) * 100))
+                const isComplete = entry.predictionCount >= PREDICTIONS_TOTAL
+                const pctDone = Math.min(100, Math.round((entry.predictionCount / PREDICTIONS_TOTAL) * 100))
                 const isExpanded = expandedId === entry.userId
                 const bd = breakdowns[entry.userId]
 
@@ -568,7 +568,7 @@ export default function LeaderboardPage() {
             </tbody>
           </table>
           <p className="text-xs text-gray-400 px-4 py-2 border-t border-gray-100">
-            {t('lb_footer', { n: String(GROUP_MATCHES_TOTAL) })}
+            {t('lb_footer', { n: String(PREDICTIONS_TOTAL) })}
           </p>
         </div>
       )}
