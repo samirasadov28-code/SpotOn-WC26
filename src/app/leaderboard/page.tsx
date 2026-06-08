@@ -361,7 +361,7 @@ export default function LeaderboardPage() {
           ))}
         </select>
         <span className="text-sm font-bold text-[#0B1F3A] tabular-nums">
-          {visibleEntries.length} <span className="text-gray-400 font-normal text-xs">{t('leaderboard_player')}</span>
+          {visibleEntries.length} <span className="text-gray-400 font-normal text-xs">{visibleEntries.length === 1 ? t('leaderboard_player') : t('lb_players')}</span>
         </span>
         <button
           onClick={() => setShowLeaguePanel(o => !o)}
