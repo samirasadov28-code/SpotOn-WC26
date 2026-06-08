@@ -163,8 +163,6 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
 
     if (nextIncomplete) {
       setTimeout(() => setActiveGroup(nextIncomplete), 700)
-    } else {
-      setTimeout(() => { window.location.href = '/predictions?tab=bracket' }, 900)
     }
   }, [savedCount, activeGroup, loading, savedIds, preds, matches])
 
