@@ -96,6 +96,7 @@ export default function LeaderboardPage() {
   const [userLeagues, setUserLeagues] = useState<UserLeague[]>([])
   const [selectedLeagueId, setSelectedLeagueId] = useState<string>('global')
   const [leagueMembers, setLeagueMembers] = useState<Set<string>>(new Set())
+  const [leagueCounts, setLeagueCounts] = useState<Record<string, number>>({})
   const [showLeaguePanel, setShowLeaguePanel] = useState(false)
   const [newLeagueName, setNewLeagueName] = useState('')
   const [joinCode, setJoinCode] = useState('')
@@ -126,6 +127,12 @@ export default function LeaderboardPage() {
         const { data: leagues } = await (supabase as any)
           .from('leagues').select('id, name, join_code').in('id', ids)
         setUserLeagues(leagues ?? [])
+        // Fetch member counts for all user leagues
+        const { data: allMembers } = await (supabase as any)
+          .from('league_members').select('league_id').in('league_id', ids)
+        const counts: Record<string, number> = {}
+        for (const m of (allMembers ?? [])) counts[m.league_id] = (counts[m.league_id] ?? 0) + 1
+        setLeagueCounts(counts)
       }
     }
 
@@ -278,7 +285,9 @@ export default function LeaderboardPage() {
     if (leagueId === 'global') { setLeagueMembers(new Set()); return }
     const { data } = await (supabase as any)
       .from('league_members').select('user_id').eq('league_id', leagueId)
-    setLeagueMembers(new Set((data ?? []).map((r: any) => r.user_id)))
+    const members = (data ?? []).map((r: any) => r.user_id)
+    setLeagueMembers(new Set(members))
+    setLeagueCounts(prev => ({ ...prev, [leagueId]: members.length }))
   }
 
   const handleCreateLeague = async (e: React.FormEvent) => {
@@ -338,22 +347,11 @@ export default function LeaderboardPage() {
         {lastUpdated && <div className="text-xs text-gray-400">{t('lb_updated', { time: formatDistanceToNow(lastUpdated, { addSuffix: true }) })}</div>}
       </div>
 
-      {/* League selector */}
-      <div className="flex items-center gap-3 mb-5">
-        <label className="text-sm font-semibold text-gray-600 shrink-0">{t('lb_view')}</label>
-        <select
-          value={selectedLeagueId}
-          onChange={e => handleLeagueChange(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] bg-white"
-        >
-          <option value="global">{t('lb_global')}</option>
-          {userLeagues.map(l => (
-            <option key={l.id} value={l.id}>🏅 {l.name}</option>
-          ))}
-        </select>
+      {/* Manage leagues button */}
+      <div className="flex justify-end mb-4">
         <button
           onClick={() => setShowLeaguePanel(o => !o)}
-          className="ml-auto text-xs bg-[#0B1F3A] text-white px-3 py-1.5 rounded-lg hover:bg-blue-900 transition-colors shrink-0"
+          className="text-xs bg-[#0B1F3A] text-white px-3 py-1.5 rounded-lg hover:bg-blue-900 transition-colors"
         >
           {showLeaguePanel ? t('lb_close') : t('lb_manage')}
         </button>
@@ -407,6 +405,34 @@ export default function LeaderboardPage() {
             <button onClick={() => { handleCopyInvite(inviteLeague); }} className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm mb-2 hover:bg-green-500 transition-colors">{copiedLeagueId === inviteLeague?.id ? t('leaderboard_copied') : t('lb_copy_msg')}</button>
             <button onClick={() => setInviteLeague(null)} className="w-full border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm hover:bg-gray-50 transition-colors">{t('lb_close')}</button>
           </div>
+        </div>
+      )}
+
+      {/* Player count summary */}
+      {!loading && (
+        <div className="flex flex-wrap gap-3 mb-5">
+          <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold ${selectedLeagueId === 'global' ? 'bg-[#0B1F3A] text-white border-[#0B1F3A]' : 'bg-white text-[#0B1F3A] border-gray-200'}`}>
+            🌍 {t('lb_global')}
+            <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-bold ${selectedLeagueId === 'global' ? 'bg-white/20 text-white' : 'bg-[#0B1F3A]/10 text-[#0B1F3A]'}`}>
+              {entries.length}
+            </span>
+          </div>
+          {userLeagues.map(l => {
+            const isActive = selectedLeagueId === l.id
+            const count = leagueCounts[l.id] ?? 0
+            return (
+              <button
+                key={l.id}
+                onClick={() => handleLeagueChange(l.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-colors ${isActive ? 'bg-[#0B1F3A] text-white border-[#0B1F3A]' : 'bg-white text-[#0B1F3A] border-gray-200 hover:border-[#0B1F3A]/40'}`}
+              >
+                🏅 {l.name}
+                <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-[#0B1F3A]/10 text-[#0B1F3A]'}`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
       )}
 
