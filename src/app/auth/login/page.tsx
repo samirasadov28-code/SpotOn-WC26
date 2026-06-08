@@ -125,7 +125,7 @@ function LoginForm() {
           {mode === 'signup' ? t('auth_signup_title') : t('auth_signin_title')}
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          {mode === 'signup' ? t('auth_joining_league') : t('auth_welcome_back')}
+          {mode === 'signup' && leagueCode ? t('auth_joining_league') : mode === 'signup' ? t('auth_join_subtitle') : t('auth_welcome_back')}
         </p>
       </div>
 
