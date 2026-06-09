@@ -107,11 +107,9 @@ export default function LeaderboardPage() {
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
-    const [userRes, scoreRes, predRes, koPredRes, authRes] = await Promise.all([
+    const [userRes, scoreRes, authRes] = await Promise.all([
       supabase.from('users').select('id, display_name'),
       supabase.from('scores').select('*'),
-      supabase.from('predictions_group').select('user_id').limit(10000),
-      supabase.from('predictions_knockout').select('user_id').limit(10000),
       supabase.auth.getUser(),
     ])
 
@@ -138,22 +136,17 @@ export default function LeaderboardPage() {
 
     const users: { id: string; display_name: string | null }[] = userRes.data ?? []
     const scores = new Map((scoreRes.data ?? []).map((s: any) => [s.user_id, s]))
-    const predCounts = new Map<string, number>()
-    for (const p of [...(predRes.data ?? []), ...(koPredRes.data ?? [])] as { user_id: string }[]) {
-      predCounts.set(p.user_id, (predCounts.get(p.user_id) ?? 0) + 1)
-    }
 
-    // Include any user who has predictions but no users row (upsert may have failed at signup)
-    const knownUserIds = new Set(users.map(u => u.id))
-    const allPredUserIds = new Set([
-      ...(predRes.data ?? []).map((p: any) => p.user_id),
-      ...(koPredRes.data ?? []).map((p: any) => p.user_id),
-    ])
-    for (const id of allPredUserIds) {
-      if (!knownUserIds.has(id)) {
-        users.push({ id, display_name: null })
-      }
-    }
+    // Count predictions per user via individual queries — avoids row-limit issues entirely
+    const predCounts = new Map<string, number>()
+    await Promise.all(users.map(async (u) => {
+      const [gRes, kRes] = await Promise.all([
+        supabase.from('predictions_group').select('match_id', { count: 'exact', head: true }).eq('user_id', u.id),
+        supabase.from('predictions_knockout').select('bracket_slot', { count: 'exact', head: true }).eq('user_id', u.id),
+      ])
+      predCounts.set(u.id, (gRes.count ?? 0) + (kRes.count ?? 0))
+    }))
+
 
     const built: Omit<LeaderboardEntry, 'rank'>[] = users.map((u) => {
       const s = scores.get(u.id)
