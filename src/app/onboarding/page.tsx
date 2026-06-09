@@ -40,7 +40,7 @@ export default function OnboardingPage() {
     if (err) {
       setError(err.message)
     } else {
-      router.push('/predictions/groups')
+      router.push('/predictions')
     }
   }
 

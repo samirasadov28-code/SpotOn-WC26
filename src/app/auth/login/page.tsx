@@ -22,7 +22,7 @@ function LoginForm() {
 
   const joinLeagueAndRedirect = async (supabase: ReturnType<typeof createClient>, userId: string) => {
     if (!leagueCode) {
-      window.location.href = '/predictions/groups'
+      window.location.href = '/predictions'
       return
     }
     const { data: league } = await supabase
@@ -36,7 +36,7 @@ function LoginForm() {
         .upsert({ league_id: league.id, user_id: userId }, { onConflict: 'league_id,user_id' })
       window.location.href = `/league/${league.id}`
     } else {
-      window.location.href = '/predictions/groups'
+      window.location.href = '/predictions'
     }
   }
 
@@ -109,7 +109,7 @@ function LoginForm() {
         if (signInData.session) {
           await joinLeagueAndRedirect(supabase, signInData.session.user.id)
         } else {
-          window.location.href = '/predictions/groups'
+          window.location.href = '/predictions'
         }
       }
     }
