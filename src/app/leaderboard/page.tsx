@@ -110,8 +110,8 @@ export default function LeaderboardPage() {
     const [userRes, scoreRes, predRes, koPredRes, authRes] = await Promise.all([
       supabase.from('users').select('id, display_name'),
       supabase.from('scores').select('*'),
-      supabase.from('predictions_group').select('user_id'),
-      supabase.from('predictions_knockout').select('user_id'),
+      supabase.from('predictions_group').select('user_id').limit(10000),
+      supabase.from('predictions_knockout').select('user_id').limit(10000),
       supabase.auth.getUser(),
     ])
 
@@ -442,7 +442,7 @@ export default function LeaderboardPage() {
               <tr className="bg-[#0B1F3A] text-white">
                 <th className="py-3 px-3 text-left w-10">#</th>
                 <th className="py-3 px-3 text-left">{t('leaderboard_player')}</th>
-                <th className="py-3 px-3 text-center" title="Group predictions submitted">{t('lb_preds')}</th>
+                <th className="py-3 px-3 text-center" title="Predictions completed out of 104">{t('lb_preds')}</th>
                 <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_group_col')}</th>
                 <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_advance_col')}</th>
                 <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_playoff_col')}</th>
