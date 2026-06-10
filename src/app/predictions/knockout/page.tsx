@@ -6,6 +6,7 @@ import { flagUrl } from '@/lib/flag-map'
 import type { Team, Match } from '@/lib/supabase/types'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { getTeamName } from '@/lib/team-name'
+import { getAnnexC, THIRD_SLOT_OPPONENT } from '@/lib/annex-c'
 
 const LOCK_AT = new Date('2026-06-11T13:00:00Z')
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
@@ -104,10 +105,22 @@ function calcQualified(allMatches: MatchWithTeams[], allTeams: Team[], preds: Gr
     if (s[1]) qualified.set('2' + g, s[1].team)
     if (s[2]) thirds.push({ group: g, ...s[2] })
   }
-  thirds
+  const top8 = thirds
     .sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
     .slice(0, 8)
-    .forEach((t, i) => qualified.set(`3rd${i + 1}`, t.team))
+  const thirdsMap = new Map(top8.map(t => [t.group, t.team]))
+  const annexMapping = getAnnexC(top8.map(t => t.group))
+  for (const [placeholder, opponent] of Object.entries(THIRD_SLOT_OPPONENT)) {
+    if (annexMapping) {
+      const groupCode = annexMapping[opponent]
+      const groupLetter = groupCode?.slice(1)
+      const team = groupLetter ? thirdsMap.get(groupLetter) : undefined
+      if (team) qualified.set(placeholder, team)
+    } else {
+      const idx = parseInt(placeholder.replace('3rd', '')) - 1
+      if (top8[idx]) qualified.set(placeholder, top8[idx].team)
+    }
+  }
   return qualified
 }
 
