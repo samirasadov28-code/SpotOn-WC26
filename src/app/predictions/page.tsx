@@ -10,7 +10,7 @@ import StatsPage from '../stats/page'
 
 type Tab = 'groups' | 'bracket' | 'stats'
 
-const LOCK_AT = new Date('2026-06-11T17:00:00Z')
+const LOCK_AT = new Date('2026-06-11T18:00:00Z')
 const GROUP_TOTAL = 72
 const KO_TOTAL = 32
 
