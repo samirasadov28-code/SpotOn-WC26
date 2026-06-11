@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow, isBefore } from 'date-fns'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
 
-const LOCK_AT = new Date('2026-06-11T13:00:00Z')
+const LOCK_AT = new Date('2026-06-11T17:00:00Z')
 
 const MORE_LINKS: { href: string; label: string }[] = []
 
