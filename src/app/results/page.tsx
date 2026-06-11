@@ -32,7 +32,7 @@ interface MatchRow {
   away_team: Team | null
 }
 
-type PageTab = 'results' | 'standings' | 'bracket' | 'simulate'
+type PageTab = 'byday' | 'results' | 'standings' | 'bracket' | 'simulate'
 
 interface TeamStat {
   team: Team
@@ -64,7 +64,7 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(true)
   const [activeGroup, setActiveGroup] = useState('A')
   const [activeKoStage, setActiveKoStage] = useState('r32')
-  const [tab, setTab] = useState<PageTab>('results')
+  const [tab, setTab] = useState<PageTab>('byday')
 
   useEffect(() => {
     const supabase = createClient()
@@ -131,16 +131,20 @@ export default function ResultsPage() {
       </div>
 
       {/* Page tabs */}
-      <div className="flex gap-4 border-b border-gray-200 mb-6">
-        {(['results', 'standings', 'bracket', 'simulate'] as PageTab[]).map(tabKey => (
+      <div className="flex gap-4 border-b border-gray-200 mb-6 overflow-x-auto">
+        {(['byday', 'results', 'standings', 'bracket', 'simulate'] as PageTab[]).map(tabKey => (
           <button key={tabKey} onClick={() => setTab(tabKey)}
-            className={`pb-3 text-sm font-semibold border-b-2 transition-colors capitalize ${
+            className={`pb-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
               tab === tabKey ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            {tabKey === 'results' ? t('res_match_results') : tabKey === 'standings' ? t('res_group_standings') : tabKey === 'bracket' ? t('res_bracket') : t('res_simulate')}
+            {tabKey === 'byday' ? '📅 By Day' : tabKey === 'results' ? t('res_match_results') : tabKey === 'standings' ? t('res_group_standings') : tabKey === 'bracket' ? t('res_bracket') : t('res_simulate')}
           </button>
         ))}
       </div>
+
+      {tab === 'byday' && (
+        <ByDayTab matches={matches} />
+      )}
 
       {tab === 'results' && (
         <>
@@ -181,6 +185,96 @@ export default function ResultsPage() {
       {tab === 'simulate' && (
         <SimulatePage />
       )}
+    </div>
+  )
+}
+
+// ── By Day tab ───────────────────────────────────────────────────────────────
+
+function ByDayTab({ matches }: { matches: MatchRow[] }) {
+  const { t, lang } = useTranslation()
+
+  const byDay = new Map<string, MatchRow[]>()
+  for (const m of matches) {
+    const day = m.kickoff_at ? m.kickoff_at.slice(0, 10) : 'unknown'
+    if (!byDay.has(day)) byDay.set(day, [])
+    byDay.get(day)!.push(m)
+  }
+  const days = Array.from(byDay.keys()).sort()
+
+  // Auto-scroll: find today or nearest upcoming day
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const activeDayDefault = days.find(d => d >= todayStr) ?? days[days.length - 1] ?? ''
+  const [activeDay, setActiveDay] = useState(activeDayDefault)
+
+  const dayMatches = byDay.get(activeDay) ?? []
+  const playedCount = dayMatches.filter(m => m.actual_home_score !== null).length
+
+  return (
+    <div>
+      {/* Day selector */}
+      <div className="flex gap-1.5 flex-wrap mb-5">
+        {days.map(day => {
+          const dayMatches = byDay.get(day)!
+          const allPlayed = dayMatches.every(m => m.actual_home_score !== null)
+          const someToday = day === todayStr
+          const label = new Date(day + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+          return (
+            <button key={day} onClick={() => setActiveDay(day)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors relative ${
+                activeDay === day ? 'bg-[#0B1F3A] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}>
+              {label}
+              {allPlayed && <span className="ml-1 text-[9px] opacity-70">✓</span>}
+              {someToday && activeDay !== day && <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" />}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Day header */}
+      {activeDay && (
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold text-[#0B1F3A]">
+            {new Date(activeDay + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </h2>
+          <span className="text-xs text-gray-400">{playedCount}/{dayMatches.length} played</span>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {dayMatches.map(m => {
+          const played = m.actual_home_score !== null && m.actual_away_score !== null
+          const kickoff = m.kickoff_at
+            ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short' })
+            : ''
+          const stageLabel = m.stage === 'group' ? `Group ${m.group_letter}` : m.ko_stage?.toUpperCase() ?? 'KO'
+          return (
+            <div key={m.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${played ? 'border-green-500' : 'border-gray-200'}`}>
+              <div className="text-xs text-gray-400 mb-2 flex items-center gap-2">
+                <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-[10px] font-medium">{stageLabel}</span>
+                <span>{kickoff}{m.venue ? ` · ${m.venue}` : ''}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5">
+                  <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{m.home_team ? (getTeamName(m.home_team.fifa_code, lang) ?? m.home_team.name) : '?'}</span>
+                  {m.home_team?.fifa_code && <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
+                </div>
+                <div className="text-center flex-shrink-0 min-w-[56px]">
+                  {played
+                    ? <span className="font-black text-xl text-[#0B1F3A]">{m.actual_home_score} – {m.actual_away_score}</span>
+                    : <span className="text-sm text-gray-400 font-medium">vs</span>}
+                </div>
+                <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                  {m.away_team?.fifa_code && <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
+                  <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] truncate">{m.away_team ? (getTeamName(m.away_team.fifa_code, lang) ?? m.away_team.name) : '?'}</span>
+                </div>
+              </div>
+              {!played && <div className="text-center mt-2"><span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{t('res_not_played')}</span></div>}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

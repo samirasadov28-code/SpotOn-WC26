@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
@@ -560,6 +561,11 @@ export default function LeaderboardPage() {
                                   </div>
                                 </div>
                               )}
+                              <div className="mt-3 text-right">
+                                <Link href={`/predictions/view/${entry.userId}`} className="text-xs text-[#0B1F3A] font-semibold hover:underline inline-flex items-center gap-1">
+                                  👁 View all predictions →
+                                </Link>
+                              </div>
                             </>
                           ) : (
                             <div className="text-xs text-gray-400 py-2">{t('lb_no_scored')}</div>
