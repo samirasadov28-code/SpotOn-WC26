@@ -6,7 +6,7 @@ import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { getTeamName } from '@/lib/team-name'
 
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
-const LOCK_AT = new Date('2026-06-11T18:00:00Z')
+const LOCK_AT = new Date('2026-06-11T20:00:00Z')
 
 interface TeamRow { id: string; name: string; flag_emoji: string; fifa_code: string }
 interface MatchRow {

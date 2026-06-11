@@ -7,7 +7,7 @@ import type { Team, Match } from '@/lib/supabase/types'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { getTeamName } from '@/lib/team-name'
 
-const LOCK_AT = new Date('2026-06-11T18:00:00Z')
+const LOCK_AT = new Date('2026-06-11T20:00:00Z')
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000
 
 function isMatchLocked(kickoffAt: string | null | undefined): boolean {
