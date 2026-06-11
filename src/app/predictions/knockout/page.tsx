@@ -109,18 +109,46 @@ function calcQualified(allMatches: MatchWithTeams[], allTeams: Team[], preds: Gr
     .sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
     .slice(0, 8)
   const thirdsMap = new Map(top8.map(t => [t.group, t.team]))
+
+  // Each placeholder slot faces a fixed group winner; derive the opponent's group letter
+  const slotOpponents = Object.entries(THIRD_SLOT_OPPONENT).map(
+    ([placeholder, opponent]) => ({ placeholder, opponentGroup: opponent[1] }) // "1A" → "A"
+  )
+
+  // Try Annex C; validate it produces no same-group pairings
+  let assigned = false
   const annexMapping = getAnnexC(top8.map(t => t.group))
-  for (const [placeholder, opponent] of Object.entries(THIRD_SLOT_OPPONENT)) {
-    if (annexMapping) {
-      const groupCode = annexMapping[opponent]
+  if (annexMapping) {
+    const temp = new Map<string, Team>()
+    let valid = true
+    for (const { placeholder, opponentGroup } of slotOpponents) {
+      const groupCode = annexMapping['1' + opponentGroup]
       const groupLetter = groupCode?.slice(1)
       const team = groupLetter ? thirdsMap.get(groupLetter) : undefined
-      if (team) qualified.set(placeholder, team)
-    } else {
-      const idx = parseInt(placeholder.replace('3rd', '')) - 1
-      if (top8[idx]) qualified.set(placeholder, top8[idx].team)
+      if (!team || team.group_letter === opponentGroup) { valid = false; break }
+      temp.set(placeholder, team)
+    }
+    if (valid && temp.size === slotOpponents.length) {
+      for (const [k, v] of temp) qualified.set(k, v)
+      assigned = true
     }
   }
+
+  // Fallback: assign by rank, skipping any team whose group matches the slot's group winner
+  if (!assigned) {
+    const remaining = [...top8]
+    for (const { placeholder, opponentGroup } of slotOpponents) {
+      const idx = remaining.findIndex(t => t.group !== opponentGroup)
+      if (idx >= 0) {
+        qualified.set(placeholder, remaining[idx].team)
+        remaining.splice(idx, 1)
+      } else if (remaining.length > 0) {
+        qualified.set(placeholder, remaining[0].team)
+        remaining.splice(0, 1)
+      }
+    }
+  }
+
   return qualified
 }
 
