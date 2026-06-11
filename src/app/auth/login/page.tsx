@@ -12,7 +12,7 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const leagueCode = searchParams.get('league')
 
-  const [mode, setMode] = useState<Mode>(leagueCode ? 'signup' : 'signin')
+  const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -205,19 +205,7 @@ function LoginForm() {
       </form>
 
       <p className="text-center text-sm text-gray-500 mt-5">
-        {mode === 'signin' ? (
-          <>{t('auth_no_account')}{' '}
-            <button onClick={() => switchMode('signup')} className="text-[#0B1F3A] font-semibold hover:underline">
-              {t('auth_sign_up')}
-            </button>
-          </>
-        ) : (
-          <>{t('auth_have_account')}{' '}
-            <button onClick={() => switchMode('signin')} className="text-[#0B1F3A] font-semibold hover:underline">
-              {t('auth_signin_btn')}
-            </button>
-          </>
-        )}
+        Registration is closed — sign in to view your predictions.
       </p>
     </div>
   )
