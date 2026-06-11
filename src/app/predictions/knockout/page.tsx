@@ -724,7 +724,7 @@ function BracketView({ slotProps }: { slotProps: (slot: number) => Omit<MatchCar
         {/* Center: Final + 3rd */}
         <div className="flex flex-col justify-center gap-3 flex-1 min-w-[120px] mx-0.5">
           <div className="text-[10px] font-bold text-center text-[#0B1F3A] uppercase tracking-widest pb-1 border-b border-[#0B1F3A]/20">{t('ko_final')}</div>
-          <MatchCard compact label={`🏆 ${t('ko_final')}`} {...slotProps(32)} />
+          <MatchCard compact label={t('ko_final')} {...slotProps(32)} />
           <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-100 mt-2">{t('ko_third')}</div>
           <MatchCard compact label={t('ko_third')} {...slotProps(31)} />
         </div>
