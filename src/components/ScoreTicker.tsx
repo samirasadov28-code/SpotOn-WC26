@@ -4,26 +4,48 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { getTeamName } from '@/lib/team-name'
+import { flagUrl } from '@/lib/flag-map'
 
 interface TickerMatch {
   id: string
   kickoff_at: string | null
   actual_home_score: number | null
   actual_away_score: number | null
-  home_team: { name: string; flag_emoji: string | null; fifa_code: string | null } | null
-  away_team: { name: string; flag_emoji: string | null; fifa_code: string | null } | null
+  home_team: { name: string; fifa_code: string | null } | null
+  away_team: { name: string; fifa_code: string | null } | null
 }
 
-// CDT = UTC-6. All "match days" are grouped by Central Daylight Time.
 function toCDTDate(isoStr: string): string {
-  const d = new Date(new Date(isoStr).getTime() - 6 * 60 * 60 * 1000)
-  return d.toISOString().slice(0, 10)
+  return new Date(new Date(isoStr).getTime() - 6 * 3600_000).toISOString().slice(0, 10)
 }
 
 function formatKickoff(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }) +
     ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' UTC'
+}
+
+function TickerItem({ m, lang }: { m: TickerMatch; lang: string }) {
+  const hCode = m.home_team?.fifa_code ?? null
+  const aCode = m.away_team?.fifa_code ?? null
+  const hName = m.home_team ? (getTeamName(hCode, lang) ?? m.home_team.name) : '?'
+  const aName = m.away_team ? (getTeamName(aCode, lang) ?? m.away_team.name) : '?'
+
+  return (
+    <span className="inline-flex items-center gap-1.5 mx-4">
+      {hCode && <img src={flagUrl(hCode, 40)} alt={hCode} className="h-3.5 w-auto rounded-sm inline-block" />}
+      <span>{hName}</span>
+      {m.actual_home_score !== null && m.actual_away_score !== null ? (
+        <span className="font-bold mx-0.5">{m.actual_home_score}–{m.actual_away_score}</span>
+      ) : (
+        <span className="text-white/50 mx-0.5">
+          {m.kickoff_at ? formatKickoff(m.kickoff_at) : 'vs'}
+        </span>
+      )}
+      <span>{aName}</span>
+      {aCode && <img src={flagUrl(aCode, 40)} alt={aCode} className="h-3.5 w-auto rounded-sm inline-block" />}
+    </span>
+  )
 }
 
 export default function ScoreTicker() {
@@ -33,17 +55,13 @@ export default function ScoreTicker() {
 
   async function fetchMatches() {
     const supabase = createClient()
-
-    // Current CDT "today"
     const nowCDT = toCDTDate(new Date().toISOString())
-
-    // Try today's CDT match day first (may span two UTC days)
-    const cdtDayStart = new Date(nowCDT + 'T06:00:00Z') // CDT midnight = UTC 06:00
-    const cdtDayEnd   = new Date(new Date(cdtDayStart).getTime() + 24 * 60 * 60 * 1000)
+    const cdtDayStart = new Date(nowCDT + 'T06:00:00Z')
+    const cdtDayEnd   = new Date(cdtDayStart.getTime() + 24 * 3600_000)
 
     const { data: todayData } = await supabase
       .from('matches')
-      .select('*, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
+      .select('*, home_team:teams!matches_home_team_id_fkey(name,fifa_code), away_team:teams!matches_away_team_id_fkey(name,fifa_code)')
       .gte('kickoff_at', cdtDayStart.toISOString())
       .lt('kickoff_at', cdtDayEnd.toISOString())
       .order('kickoff_at')
@@ -54,7 +72,6 @@ export default function ScoreTicker() {
       return
     }
 
-    // Fallback: find next upcoming match and show all games on that CDT day
     const { data: nextData } = await supabase
       .from('matches')
       .select('kickoff_at')
@@ -64,13 +81,13 @@ export default function ScoreTicker() {
 
     if (!nextData || nextData.length === 0) { setLoading(false); return }
 
-    const nextCDTDay = toCDTDate(nextData[0].kickoff_at!)
+    const nextCDTDay = toCDTDate((nextData[0] as any).kickoff_at!)
     const nextStart = new Date(nextCDTDay + 'T06:00:00Z')
-    const nextEnd   = new Date(nextStart.getTime() + 24 * 60 * 60 * 1000)
+    const nextEnd   = new Date(nextStart.getTime() + 24 * 3600_000)
 
     const { data } = await supabase
       .from('matches')
-      .select('*, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
+      .select('*, home_team:teams!matches_home_team_id_fkey(name,fifa_code), away_team:teams!matches_away_team_id_fkey(name,fifa_code)')
       .gte('kickoff_at', nextStart.toISOString())
       .lt('kickoff_at', nextEnd.toISOString())
       .order('kickoff_at')
@@ -91,19 +108,7 @@ export default function ScoreTicker() {
 
   if (loading || matches.length === 0) return null
 
-  const items = matches.map(m => {
-    const hFlag = m.home_team?.flag_emoji ?? ''
-    const aFlag = m.away_team?.flag_emoji ?? ''
-    const hName = m.home_team ? (getTeamName(m.home_team.fifa_code, lang) ?? m.home_team.name) : '?'
-    const aName = m.away_team ? (getTeamName(m.away_team.fifa_code, lang) ?? m.away_team.name) : '?'
-    if (m.actual_home_score !== null && m.actual_away_score !== null) {
-      return `${hFlag} ${hName} ${m.actual_home_score}–${m.actual_away_score} ${aName} ${aFlag}`
-    }
-    const when = m.kickoff_at ? formatKickoff(m.kickoff_at) : ''
-    return `🔜 ${hFlag} ${hName} vs ${aName} ${aFlag} · ${when}`
-  })
-
-  const tickerText = items.join('     ·     ')
+  const separator = <span className="text-white/30 mx-2">·</span>
 
   return (
     <>
@@ -113,16 +118,15 @@ export default function ScoreTicker() {
           100% { transform: translateX(-100%); }
         }
         .ticker-track {
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
           white-space: nowrap;
           animation: ticker 25s linear infinite;
         }
         @media (min-width: 768px) {
           .ticker-track { animation-duration: 45s; }
         }
-        .ticker-wrap:hover .ticker-track {
-          animation-play-state: paused;
-        }
+        .ticker-wrap:hover .ticker-track,
         .ticker-wrap:active .ticker-track {
           animation-play-state: paused;
         }
@@ -131,8 +135,13 @@ export default function ScoreTicker() {
         className="ticker-wrap bg-[#0B1F3A] text-white h-8 overflow-hidden flex items-center w-full select-none"
         aria-label="Live score ticker"
       >
-        <span className="ticker-track text-sm font-medium tracking-wide px-4">
-          {tickerText}
+        <span className="ticker-track text-sm font-medium tracking-wide">
+          {matches.map((m, i) => (
+            <span key={m.id} className="inline-flex items-center">
+              {i > 0 && separator}
+              <TickerItem m={m} lang={lang} />
+            </span>
+          ))}
         </span>
       </div>
     </>

@@ -102,7 +102,6 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
       const days = [...new Set(data.map((m: any) => toCDTDate(m.kickoff_at)))]
       setAllDays(days)
       const todayCDT = toCDTDate(new Date().toISOString())
-      // Prefer today or most-recent past day with results
       const pastDays = days.filter((d: string) => d <= todayCDT)
       setSelectedDay(pastDays[pastDays.length - 1] ?? days[0] ?? '')
     })
@@ -124,30 +123,25 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
         const matchIds = matches.map(m => m.id)
         if (!matchIds.length) { setDayMatches([]); setPredsMap(new Map()); setLoading(false); return }
 
-        // Fetch predictions filtered to these match IDs only
         Promise.all([
           (supabase as any).from('predictions_group')
             .select('user_id,match_id,pred_home_score,pred_away_score')
-            .in('match_id', matchIds)
-            .limit(5000),
-          // Fetch predicted champions (Final = bracket_slot 32) with team info
+            .in('match_id', matchIds).limit(5000),
           (supabase as any).from('predictions_knockout')
-            .select('user_id, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
-            .eq('bracket_slot', 32)
-            .limit(500),
-          (supabase as any).from('teams').select('id, name, fifa_code'),
+            .select('user_id,pred_home_team_id,pred_away_team_id,pred_home_score,pred_away_score')
+            .eq('bracket_slot', 32).limit(500),
+          (supabase as any).from('teams').select('id,name,fifa_code'),
         ]).then(([predRes, champRes, teamsRes]: any[]) => {
-          const teamById = new Map<string, { name: string; fifa_code: string }>((teamsRes.data ?? []).map((t: any) => [t.id, t]))
-
+          const teamById = new Map<string, { name: string; fifa_code: string }>(
+            (teamsRes.data ?? []).map((t: any) => [t.id, t])
+          )
           const map = new Map<string, Map<string, { h: number; a: number }>>()
           for (const p of (predRes.data ?? [])) {
             if (!map.has(p.user_id)) map.set(p.user_id, new Map())
             map.get(p.user_id)!.set(p.match_id, { h: p.pred_home_score, a: p.pred_away_score })
           }
-
           const cmap = new Map<string, { name: string; fifa_code: string } | null>()
           for (const c of (champRes.data ?? [])) {
-            // Winner = team with higher predicted score; tie = home team wins (penalties assumed)
             let winnerId: string | null = null
             if (c.pred_home_score != null && c.pred_away_score != null) {
               winnerId = c.pred_home_score >= c.pred_away_score ? c.pred_home_team_id : c.pred_away_team_id
@@ -157,58 +151,84 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
             const team = winnerId ? teamById.get(winnerId) ?? null : null
             cmap.set(c.user_id, team ? { name: team.name, fifa_code: team.fifa_code } : null)
           }
-
           setDayMatches(matches)
           setPredsMap(map)
           setChampMap(cmap)
           setLoading(false)
 
-          // Auto-popup recap once per league+day if matches are finished
+          // Auto-popup once per league+day, only after a real successful recap
           const hasResults = matches.some((m: DayMatch) => m.actual_home_score !== null)
           const seenKey = `spoton_recap_seen_${leagueId}_${selectedDay}`
           if (hasResults && !localStorage.getItem(seenKey)) {
-            localStorage.setItem(seenKey, '1')
             setShowRecap(true)
-            setRecapLoading(true)
+            // trigger fetch — seenKey only written on success inside fetchRecapInner
+            fetchRecapInner(selectedDay, leagueId, leagueName, entries, seenKey)
+              .then(text => { setRecap(text); setRecapLoading(false) })
           }
         })
       })
   }, [selectedDay, leagueId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fetchRecap = async () => {
+  const fetchRecapInner = async (
+    day: string, lgId: string, lgName: string,
+    ents: LeaderboardEntry[], seenKey: string
+  ): Promise<string> => {
+    setRecapLoading(true)
     try {
       const res = await fetch('/api/recap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          day: selectedDay,
-          leagueId: leagueId === 'global' ? null : leagueId,
-          leagueName,
-          playerNames: entries.map(e => e.displayName),
+          day,
+          leagueId: lgId === 'global' ? null : lgId,
+          leagueName: lgName,
+          playerNames: ents.map(e => e.displayName),
         }),
       })
       const data = await res.json()
-      setRecap(data.recap ?? 'Could not generate recap.')
+      const text = data.recap ?? ''
+      // Only mark seen if we got a real recap (not a config-error message)
+      if (text && !text.includes('requires GROQ_API_KEY')) {
+        localStorage.setItem(seenKey, '1')
+      }
+      return text || 'Could not generate recap.'
     } catch {
-      setRecap('Failed to load recap — check your connection.')
+      return 'Failed to load recap — check your connection.'
     }
-    setRecapLoading(false)
   }
 
-  // Fires when auto-popup sets recapLoading, or when user manually clicks
-  useEffect(() => {
-    if (recapLoading && !recap) fetchRecap()
-  }, [recapLoading]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadRecap = () => {
+  const loadRecap = async () => {
     setShowRecap(true)
-    if (recap) return
-    setRecapLoading(true)
+    if (recap || recapLoading) return
+    const seenKey = `spoton_recap_seen_${leagueId}_${selectedDay}`
+    const text = await fetchRecapInner(selectedDay, leagueId, leagueName, entries, seenKey)
+    setRecap(text)
+    setRecapLoading(false)
   }
 
   const dayLabel = selectedDay
     ? new Date(selectedDay + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
     : ''
+
+  // Compute day pts per user and sort descending
+  const withDayPts = entries.map(entry => {
+    const userPreds = predsMap.get(entry.userId)
+    let dayPts = 0
+    for (const m of dayMatches) {
+      if (m.actual_home_score === null) continue
+      const p = userPreds?.get(m.id)
+      if (p) dayPts += predPts(p.h, p.a, m.actual_home_score!, m.actual_away_score!)
+    }
+    return { entry, dayPts }
+  }).sort((a, b) => b.dayPts - a.dayPts || b.entry.totalPts - a.entry.totalPts)
+
+  // Assign day ranks (tied = same rank)
+  const dayRanked = withDayPts.map((row, i, arr) => ({
+    ...row,
+    dayRank: i === 0 ? 1 : row.dayPts < arr[i - 1].dayPts ? i + 1 : (arr[i - 1] as any).dayRank,
+  }))
+
+  const rankIcon = (r: number) => r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : String(r)
 
   return (
     <div>
@@ -228,13 +248,10 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
         <div className="text-center text-gray-400 py-10 text-sm">No group matches on this day</div>
       ) : (
         <>
-          {/* Recap button */}
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-gray-400">{dayLabel} · {dayMatches.length} matches</p>
-            <button
-              onClick={loadRecap}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow"
-            >
+            <button onClick={loadRecap}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow">
               📰 Day Recap
             </button>
           </div>
@@ -244,19 +261,14 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
               <thead>
                 <tr className="bg-[#0B1F3A] text-white">
                   <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">Player</th>
-                  <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">Pts</th>
                   {dayMatches.map(m => (
                     <th key={m.id} className="py-2 px-2 text-center font-normal min-w-[100px]">
                       <div className="flex items-center justify-center gap-1">
-                        {m.home_team?.fifa_code && (
-                          <img src={flagUrl(m.home_team.fifa_code, 40)} alt={m.home_team.fifa_code} className="w-5 h-auto rounded-sm" />
-                        )}
+                        {m.home_team?.fifa_code && <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />}
                         <span className="font-semibold text-[11px]">{m.home_team?.fifa_code}</span>
-                        <span className="text-white/40">v</span>
+                        <span className="text-white/40 text-[10px]">v</span>
                         <span className="font-semibold text-[11px]">{m.away_team?.fifa_code}</span>
-                        {m.away_team?.fifa_code && (
-                          <img src={flagUrl(m.away_team.fifa_code, 40)} alt={m.away_team.fifa_code} className="w-5 h-auto rounded-sm" />
-                        )}
+                        {m.away_team?.fifa_code && <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />}
                       </div>
                       <div className="text-[10px] opacity-70 mt-0.5">
                         {m.actual_home_score !== null
@@ -265,36 +277,27 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                       </div>
                     </th>
                   ))}
-                  <th className="py-2 px-2 text-center font-normal min-w-[80px] text-yellow-300 text-[11px]">🏆 Champion</th>
+                  <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[76px]">🏆 Champ</th>
+                  <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">Pts</th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map((entry, idx) => {
+                {dayRanked.map(({ entry, dayPts, dayRank }, idx) => {
                   const isMe = entry.userId === currentUserId
                   const userPreds = predsMap.get(entry.userId)
-                  let todayPts = 0
-                  for (const m of dayMatches) {
-                    if (m.actual_home_score === null) continue
-                    const p = userPreds?.get(m.id)
-                    if (p) todayPts += predPts(p.h, p.a, m.actual_home_score!, m.actual_away_score!)
-                  }
                   const rowBg = isMe ? 'bg-blue-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'
                   const champ = champMap.get(entry.userId)
                   return (
                     <tr key={entry.userId} className={`border-t border-gray-100 ${rowBg}`}>
                       <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg}`}>
-                        <div className="flex items-center gap-1 min-w-0">
-                          <span className="text-gray-400 text-[10px] w-4 shrink-0">{entry.rank}</span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="shrink-0 w-6 text-center font-bold text-sm">{rankIcon(dayRank)}</span>
                           <Link href={`/predictions/view/${entry.userId}`}
-                            className="font-semibold text-[#0B1F3A] hover:underline truncate max-w-[100px]" title={entry.displayName}>
+                            className="font-semibold text-[#0B1F3A] hover:underline truncate max-w-[95px]" title={entry.displayName}>
                             {entry.displayName}
                           </Link>
                           {isMe && <span className="text-[10px] text-blue-400 shrink-0">you</span>}
                         </div>
-                      </td>
-                      <td className="py-2 px-3 text-center whitespace-nowrap">
-                        <span className="font-bold text-[#0B1F3A]">{entry.totalPts}</span>
-                        {todayPts > 0 && <span className="text-green-600 ml-1 font-medium">+{todayPts}</span>}
                       </td>
                       {dayMatches.map(m => {
                         const p = userPreds?.get(m.id)
@@ -310,9 +313,12 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                             <img src={flagUrl(champ.fifa_code, 40)} alt={champ.fifa_code} className="w-4 h-auto rounded-sm" />
                             <span className="text-[10px] font-semibold text-gray-700">{champ.fifa_code}</span>
                           </div>
-                        ) : (
-                          <span className="text-gray-300 text-[10px]">—</span>
-                        )}
+                        ) : <span className="text-gray-300 text-[10px]">—</span>}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <span className={`font-bold text-sm ${dayPts > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                          {dayPts}
+                        </span>
                       </td>
                     </tr>
                   )
@@ -343,8 +349,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
             </div>
             {recapLoading ? (
               <div className="flex flex-col items-center gap-3 py-8">
-                <div className="w-8 h-8 border-3 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-gray-500">Generating recap with AI…</p>
+                <div className="w-8 h-8 border-[3px] border-purple-600 border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-gray-500">Generating recap…</p>
               </div>
             ) : (
               <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{recap}</div>
@@ -520,13 +526,13 @@ export default function LeaderboardPage() {
 
     const actualGroupMap = new Map((matchRes.data ?? []).map((m: any) => [m.id, m]))
     const groupPreds = (gpRes.data ?? []).filter((p: any) => actualGroupMap.has(p.match_id)).map((p: any) => {
-      const m = actualGroupMap.get(p.match_id)
+      const m = actualGroupMap.get(p.match_id) as any
       return { match_id: p.match_id, pred_home: p.pred_home_score, pred_away: p.pred_away_score, actual_home: m.actual_home_score, actual_away: m.actual_away_score }
     })
 
     const actualKoMap = new Map((koMatchRes.data ?? []).map((m: any) => [m.bracket_slot, m]))
     const koPreds = (kpRes.data ?? []).filter((p: any) => actualKoMap.has(p.bracket_slot)).map((p: any) => {
-      const m = actualKoMap.get(p.bracket_slot)
+      const m = actualKoMap.get(p.bracket_slot) as any
       return { bracket_slot: p.bracket_slot, pred_home: p.pred_home_score, pred_away: p.pred_away_score, actual_home: m.actual_home_score, actual_away: m.actual_away_score }
     })
 
@@ -543,7 +549,7 @@ export default function LeaderboardPage() {
       let rivalPts = 0, myPts = 0
 
       for (const rp of groupPreds) {
-        const mp = myGroupMap.get(rp.match_id)
+        const mp = myGroupMap.get(rp.match_id) as any
         const rivalCorrect = getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away) > 0
         const myCorrect = mp ? getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away) > 0 : false
 
@@ -557,7 +563,7 @@ export default function LeaderboardPage() {
       }
 
       for (const rp of koPreds) {
-        const mp = myKoMap.get(rp.bracket_slot)
+        const mp = myKoMap.get(rp.bracket_slot) as any
         const rivalCorrect = getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away) > 0
         const myCorrect = mp ? getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away) > 0 : false
 

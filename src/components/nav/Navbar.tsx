@@ -27,17 +27,17 @@ export default function Navbar() {
     { href: '/predictions', label: t('nav_predictions') },
     { href: '/results', label: t('nav_results') },
     { href: '/leaderboard', label: t('nav_leaderboard') },
-    { href: '/chat', label: '💬 Chat' },
     { href: '/teams', label: t('nav_teams') },
     { href: '/rules', label: t('nav_rules') },
+    { href: '/chat', label: 'AI Chat' },
   ]
 
   const BOTTOM_TABS = [
     { href: '/predictions', label: t('nav_predictions'), icon: '🎯' },
     { href: '/results', label: t('nav_results'), icon: '📊' },
     { href: '/leaderboard', label: t('nav_leaderboard'), icon: '🏆' },
-    { href: '/chat', label: 'Chat', icon: '💬' },
     { href: '/teams', label: t('nav_teams'), icon: '👥' },
+    { href: '/chat', label: 'AI Chat', icon: '🤖' },
   ]
 
   useEffect(() => {
