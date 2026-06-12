@@ -6,6 +6,7 @@ import { format, addDays, subDays, parseISO, isSameDay } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
+import { transliterateName } from '@/lib/transliterate'
 
 interface Team {
   id: string
@@ -199,7 +200,7 @@ export default function TodayPage() {
     if (top3UserIds.length > 0) {
       const { data: usersData } = await supabase.from('users').select('id,display_name').in('id', top3UserIds)
       for (const u of (usersData ?? []) as any[]) {
-        usersMap[u.id] = u.display_name ?? `User ${u.id.slice(0, 6)}`
+        usersMap[u.id] = transliterateName(u.display_name ?? `User ${u.id.slice(0, 6)}`)
       }
     }
 

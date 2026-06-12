@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow, isBefore } from 'date-fns'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
+import { transliterateName } from '@/lib/transliterate'
 
 const LOCK_AT = new Date('2026-06-11T19:00:00Z')
 
@@ -48,7 +49,7 @@ export default function Navbar() {
           .eq('id', user.id)
           .single()
         const name = (data as any)?.display_name
-        setDisplayName(name || user.email?.split('@')[0] || 'Player')
+        setDisplayName(transliterateName(name || user.email?.split('@')[0] || 'Player'))
         setIsAdmin(!!(data as any)?.is_admin)
       }
     }

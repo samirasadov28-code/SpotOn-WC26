@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { transliterateName } from '@/lib/transliterate'
 
 interface League {
   id: string
@@ -149,7 +150,7 @@ export default function LeagueDetailPage() {
         const s = scoresData.find((x: any) => x.user_id === uid)
         return {
           userId: uid,
-          displayName: u?.display_name ?? 'Unknown',
+          displayName: transliterateName(u?.display_name ?? 'Unknown'),
           predCount: predCounts[uid] ?? 0,
           groupPts: s?.group_pts ?? 0,
           advancementPts: s?.advancement_pts ?? 0,

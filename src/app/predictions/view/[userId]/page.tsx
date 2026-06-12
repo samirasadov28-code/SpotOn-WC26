@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import { getTeamName } from '@/lib/team-name'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
+import { transliterateName } from '@/lib/transliterate'
 
 interface Team {
   id: string
@@ -128,7 +129,7 @@ export default function UserPredictionsPage() {
       supabase.from('predictions_group').select('match_id, pred_home_score, pred_away_score').eq('user_id', userId),
       supabase.from('predictions_knockout').select('bracket_slot, pred_home_score, pred_away_score').eq('user_id', userId),
     ]).then(([userRes, matchRes, gpRes, kpRes]) => {
-      setDisplayName((userRes.data as any)?.display_name ?? 'Unknown player')
+      setDisplayName(transliterateName((userRes.data as any)?.display_name ?? 'Unknown player'))
       setMatches((matchRes.data as MatchRow[]) ?? [])
       setGroupPreds(new Map((gpRes.data ?? []).map((p: GroupPred) => [p.match_id, p])))
       setKoPreds(new Map((kpRes.data ?? []).map((p: KOPred) => [p.bracket_slot, p])))

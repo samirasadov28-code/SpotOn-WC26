@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
+import { transliterateName } from '@/lib/transliterate'
 
 const PREDICTIONS_TOTAL = 104 // 72 group + 32 knockout
 
@@ -153,7 +154,7 @@ export default function LeaderboardPage() {
       const s = scores.get(u.id)
       return {
         userId: u.id,
-        displayName: u.display_name ?? `User ${u.id.slice(0, 6)}`,
+        displayName: transliterateName(u.display_name ?? `User ${u.id.slice(0, 6)}`),
         groupPts: s?.group_pts ?? 0,
         advancementPts: s?.advancement_pts ?? 0,
         knockoutPts: s?.knockout_match_pts ?? 0,
