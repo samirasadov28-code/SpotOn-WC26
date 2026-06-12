@@ -1,16 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import { getTeamName } from '@/lib/team-name'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
+import { transliterateName } from '@/lib/transliterate'
+import { simulateBracket } from '@/lib/bracket-sim'
+import type { TeamInfo, MatchInfo } from '@/lib/bracket-sim'
 
-interface Team {
-  id: string
-  name: string
-  fifa_code: string
-  group_letter: string | null
+interface Team extends TeamInfo {
   flag_emoji: string | null
 }
 
@@ -23,6 +23,8 @@ interface MatchRow {
   kickoff_at: string | null
   actual_home_score: number | null
   actual_away_score: number | null
+  home_team_id: string | null
+  away_team_id: string | null
   home_team: Team | null
   away_team: Team | null
 }
@@ -35,19 +37,8 @@ interface GroupPred {
 
 interface KOPred {
   bracket_slot: number
-  pred_home_team_id: string | null
-  pred_away_team_id: string | null
   pred_home_score: number | null
   pred_away_score: number | null
-}
-
-interface Props {
-  userId: string
-  displayName: string
-  matches: MatchRow[]
-  groupPreds: GroupPred[]
-  koPreds: KOPred[]
-  teams: Team[]
 }
 
 const KO_STAGE_ORDER = ['r32', 'r16', 'qf', 'sf', 'third', 'final']
@@ -85,7 +76,6 @@ function MatchCard({ m, pred, lang, noPick }: { m: MatchRow; pred: GroupPred | u
   const ph = hasPred ? pred.pred_home_score! : null
   const pa = hasPred ? pred.pred_away_score! : null
   const pts = (hasPred && hasResult) ? matchPts(ph!, pa!, m.actual_home_score!, m.actual_away_score!) : null
-
   const ptsBg = pts === 3 ? 'border-green-200 bg-green-50/50' : pts === 2 ? 'border-blue-200 bg-blue-50/50' : pts === 1 ? 'border-yellow-200 bg-yellow-50/50' : pts === 0 ? 'border-red-200 bg-red-50/30' : 'border-gray-100 bg-white'
 
   return (
@@ -95,11 +85,8 @@ function MatchCard({ m, pred, lang, noPick }: { m: MatchRow; pred: GroupPred | u
           <span className="font-semibold text-xs text-[#0B1F3A] truncate">
             {m.home_team ? (getTeamName(m.home_team.fifa_code, lang) ?? m.home_team.name) : 'TBD'}
           </span>
-          {m.home_team?.fifa_code && (
-            <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />
-          )}
+          {m.home_team?.fifa_code && <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
         </div>
-
         <div className="flex flex-col items-center min-w-[90px] gap-0.5 flex-shrink-0">
           {hasResult ? (
             <span className="font-black text-base text-[#0B1F3A] leading-none">{m.actual_home_score} – {m.actual_away_score}</span>
@@ -112,15 +99,10 @@ function MatchCard({ m, pred, lang, noPick }: { m: MatchRow; pred: GroupPred | u
             <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${hasResult ? (pts === 3 ? 'bg-green-100 text-green-700' : pts === 2 ? 'bg-blue-100 text-blue-700' : pts === 1 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600') : 'bg-gray-100 text-gray-500'}`}>
               {ph}–{pa}{pts !== null && <PtsChip pts={pts} />}
             </span>
-          ) : (
-            <span className="text-[10px] text-gray-300 italic">{noPick}</span>
-          )}
+          ) : <span className="text-[10px] text-gray-300 italic">{noPick}</span>}
         </div>
-
         <div className="flex-1 flex items-center gap-1.5 min-w-0">
-          {m.away_team?.fifa_code && (
-            <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />
-          )}
+          {m.away_team?.fifa_code && <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
           <span className="font-semibold text-xs text-[#0B1F3A] truncate">
             {m.away_team ? (getTeamName(m.away_team.fifa_code, lang) ?? m.away_team.name) : 'TBD'}
           </span>
@@ -132,22 +114,13 @@ function MatchCard({ m, pred, lang, noPick }: { m: MatchRow; pred: GroupPred | u
 
 interface GroupStanding {
   team: Team
-  played: number
-  won: number
-  drawn: number
-  lost: number
-  gf: number
-  ga: number
-  pts: number
+  played: number; won: number; drawn: number; lost: number
+  gf: number; ga: number; pts: number
 }
 
 function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, groupTableLabel }: {
-  groupLetter: string
-  matches: MatchRow[]
-  preds: Map<string, GroupPred>
-  teamById: Map<string, Team>
-  lang: string
-  groupTableLabel: string
+  groupLetter: string; matches: MatchRow[]; preds: Map<string, GroupPred>
+  teamById: Map<string, Team>; lang: string; groupTableLabel: string
 }) {
   const standings = new Map<string, GroupStanding>()
   const teams = new Set<string>()
@@ -159,16 +132,13 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, grou
     const t = teamById.get(tid)
     if (t) standings.set(tid, { team: t, played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, pts: 0 })
   }
-
   for (const m of matches) {
     const pred = preds.get(m.id)
     const hScore = pred?.pred_home_score ?? null
     const aScore = pred?.pred_away_score ?? null
     if (hScore === null || aScore === null) continue
-    const hId = m.home_team?.id
-    const aId = m.away_team?.id
-    const hS = standings.get(hId ?? '')
-    const aS = standings.get(aId ?? '')
+    const hS = standings.get(m.home_team?.id ?? '')
+    const aS = standings.get(m.away_team?.id ?? '')
     if (!hS || !aS) continue
     hS.played++; aS.played++
     hS.gf += hScore; hS.ga += aScore
@@ -177,7 +147,6 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, grou
     else if (hScore < aScore) { aS.won++; aS.pts += 3; hS.lost++ }
     else { hS.drawn++; hS.pts++; aS.drawn++; aS.pts++ }
   }
-
   const sorted = [...standings.values()].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf)
 
   return (
@@ -228,16 +197,14 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, grou
 }
 
 function KOMatchCard({ m, pred, teamById, lang, noPick }: { m: MatchRow; pred: KOPred | undefined; teamById: Map<string, Team>; lang: string; noPick: string }) {
-  const homeTeam = pred?.pred_home_team_id ? teamById.get(pred.pred_home_team_id) ?? m.home_team : m.home_team
-  const awayTeam = pred?.pred_away_team_id ? teamById.get(pred.pred_away_team_id) ?? m.away_team : m.away_team
+  const homeTeam = m.home_team
+  const awayTeam = m.away_team
   const hasPred = pred && pred.pred_home_score !== null
   const hasResult = m.actual_home_score !== null && m.actual_away_score !== null
   const ph = hasPred ? pred.pred_home_score! : null
   const pa = hasPred ? pred.pred_away_score! : null
   const pts = (hasPred && hasResult) ? matchPts(ph!, pa!, m.actual_home_score!, m.actual_away_score!) : null
-
   const ptsBg = pts === 3 ? 'border-green-200 bg-green-50/50' : pts === 2 ? 'border-blue-200 bg-blue-50/50' : pts === 1 ? 'border-yellow-200 bg-yellow-50/50' : pts === 0 ? 'border-red-200 bg-red-50/30' : 'border-gray-100 bg-white'
-  const locale = LANG_TO_LOCALE[lang] ?? 'en-GB'
 
   return (
     <div className={`rounded-xl shadow-sm p-3 border ${ptsBg}`}>
@@ -252,7 +219,9 @@ function KOMatchCard({ m, pred, teamById, lang, noPick }: { m: MatchRow; pred: K
           {hasResult ? (
             <span className="font-black text-base text-[#0B1F3A]">{m.actual_home_score} – {m.actual_away_score}</span>
           ) : (
-            <span className="text-[10px] text-gray-400">{m.kickoff_at ? new Date(m.kickoff_at).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : 'TBD'}</span>
+            <span className="text-[10px] text-gray-400">
+              {m.kickoff_at ? new Date(m.kickoff_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'TBD'}
+            </span>
           )}
           {hasPred ? (
             <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${hasResult ? (pts === 3 ? 'bg-green-100 text-green-700' : pts === 2 ? 'bg-blue-100 text-blue-700' : pts === 1 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600') : 'bg-gray-100 text-gray-500'}`}>
@@ -271,9 +240,71 @@ function KOMatchCard({ m, pred, teamById, lang, noPick }: { m: MatchRow; pred: K
   )
 }
 
-export default function PredictionsViewClient({ userId, displayName, matches, groupPreds, koPreds, teams }: Props) {
+export default function PredictionsViewClient({ userId }: { userId: string }) {
   const { lang, t } = useTranslation()
   const [tab, setTab] = useState<'groups' | 'standings' | 'knockout'>('groups')
+  const [loading, setLoading] = useState(true)
+  const [displayName, setDisplayName] = useState('')
+  const [matches, setMatches] = useState<MatchRow[]>([])
+  const [groupPreds, setGroupPreds] = useState<GroupPred[]>([])
+  const [koPreds, setKoPreds] = useState<KOPred[]>([])
+  const [teams, setTeams] = useState<Team[]>([])
+  const [champTeam, setChampTeam] = useState<Team | null>(null)
+
+  useEffect(() => {
+    if (!userId) return
+    const supabase = createClient()
+
+    Promise.all([
+      supabase.from('users').select('display_name').eq('id', userId).single(),
+      supabase.from('matches')
+        .select('id, stage, group_letter, bracket_slot, ko_stage, kickoff_at, actual_home_score, actual_away_score, home_team_id, away_team_id, home_team:teams!matches_home_team_id_fkey(id,name,fifa_code,group_letter,flag_emoji), away_team:teams!matches_away_team_id_fkey(id,name,fifa_code,group_letter,flag_emoji)')
+        .order('kickoff_at'),
+      supabase.from('teams').select('id, name, fifa_code, group_letter, flag_emoji'),
+      fetch('/api/userpreds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      }).then(r => r.json()),
+    ]).then(([userRes, matchRes, teamsRes, predsData]) => {
+      const rawName = (userRes.data as any)?.display_name ?? 'Unknown player'
+      setDisplayName(transliterateName(rawName))
+
+      const matchData = (matchRes.data ?? []) as MatchRow[]
+      const teamData = (teamsRes.data ?? []) as Team[]
+      const gp: GroupPred[] = predsData.groupPreds ?? []
+      const kp: KOPred[] = predsData.koPreds ?? []
+
+      setMatches(matchData)
+      setTeams(teamData)
+      setGroupPreds(gp)
+      setKoPreds(kp)
+
+      // Simulate bracket for champion
+      try {
+        const groupMatchInfos = matchData
+          .filter(m => m.stage === 'group')
+          .map(m => ({ id: m.id, group_letter: m.group_letter, home_team_id: m.home_team_id, away_team_id: m.away_team_id }))
+
+        const teamInfos = teamData.map(t => ({
+          id: t.id, name: t.name, fifa_code: t.fifa_code, group_letter: t.group_letter, flag_emoji: t.flag_emoji,
+        }))
+
+        const gpMap = new Map(gp.filter(p => p.pred_home_score !== null).map(p => [p.match_id, { h: p.pred_home_score!, a: p.pred_away_score! }]))
+        const kpMap = new Map(kp.filter(p => p.pred_home_score !== null).map(p => [p.bracket_slot, { h: p.pred_home_score!, a: p.pred_away_score! }]))
+
+        const result = simulateBracket(gpMap, kpMap, groupMatchInfos, teamInfos)
+        if (result.champion) {
+          const fullTeam = teamData.find(t => t.fifa_code === result.champion!.fifa_code) ?? null
+          setChampTeam(fullTeam)
+        }
+      } catch (e) {
+        // simulation failed — champion stays null
+      }
+
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [userId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const groupPredsMap = new Map(groupPreds.map(p => [p.match_id, p]))
   const koPredsMap = new Map(koPreds.map(p => [p.bracket_slot, p]))
@@ -282,7 +313,6 @@ export default function PredictionsViewClient({ userId, displayName, matches, gr
   const groupMatches = matches.filter(m => m.stage === 'group')
   const koMatches = matches.filter(m => m.stage !== 'group').sort((a, b) => (a.bracket_slot ?? 0) - (b.bracket_slot ?? 0))
 
-  // CDT-grouped days
   const byDay = new Map<string, MatchRow[]>()
   for (const m of groupMatches) {
     const day = m.kickoff_at ? toCDTDate(m.kickoff_at) : 'unknown'
@@ -290,24 +320,21 @@ export default function PredictionsViewClient({ userId, displayName, matches, gr
     byDay.get(day)!.push(m)
   }
   const days = Array.from(byDay.keys()).sort()
-
   const groupLetters = [...new Set(groupMatches.map(m => m.group_letter).filter(Boolean) as string[])].sort()
 
   const groupPredCount = groupPreds.filter(p => p.pred_home_score !== null).length
   const koPredCount = koPreds.filter(p => p.pred_home_score !== null).length
 
-  // Champion prediction (Final = bracket_slot 32)
-  const finalPred = koPredsMap.get(32)
-  let champTeam: Team | null = null
-  if (finalPred?.pred_home_score != null && finalPred?.pred_away_score != null) {
-    const winnerId = finalPred.pred_home_score >= finalPred.pred_away_score
-      ? finalPred.pred_home_team_id : finalPred.pred_away_team_id
-    if (winnerId) champTeam = teamById.get(winnerId) ?? null
-  } else if (finalPred?.pred_home_team_id) {
-    champTeam = teamById.get(finalPred.pred_home_team_id) ?? null
-  }
-
   const locale = LANG_TO_LOCALE[lang] ?? 'en-GB'
+
+  if (loading) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-8 flex flex-col items-center gap-3 pt-20">
+        <div className="w-8 h-8 border-[3px] border-[#0B1F3A] border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-400">{t('loading')}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 pb-24">
@@ -349,14 +376,12 @@ export default function PredictionsViewClient({ userId, displayName, matches, gr
         <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">{t('pv_legend_wrong')}</span>
       </div>
 
-      {/* Group matches by CDT day */}
       {tab === 'groups' && (
         <div className="flex flex-col gap-6">
+          {days.length === 0 && <p className="text-sm text-gray-400 text-center py-10">No group matches found.</p>}
           {days.map(day => {
             const dayMatchList = byDay.get(day)!
-            const dateLabel = new Date(day + 'T12:00:00Z').toLocaleDateString(locale, {
-              weekday: 'long', day: 'numeric', month: 'long',
-            })
+            const dateLabel = new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
             return (
               <div key={day}>
                 <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -375,30 +400,21 @@ export default function PredictionsViewClient({ userId, displayName, matches, gr
         </div>
       )}
 
-      {/* Predicted group standings */}
       {tab === 'standings' && (
         <div>
           <p className="text-xs text-gray-400 mb-4 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
             {t('pv_standings_note')}
           </p>
-          {groupLetters.map(g => {
-            const gMatches = groupMatches.filter(m => m.group_letter === g)
-            return (
-              <GroupStandingsTable
-                key={g}
-                groupLetter={g}
-                matches={gMatches}
-                preds={groupPredsMap}
-                teamById={teamById}
-                lang={lang}
-                groupTableLabel={t('pv_group_table')}
-              />
-            )
-          })}
+          {groupLetters.map(g => (
+            <GroupStandingsTable key={g} groupLetter={g}
+              matches={groupMatches.filter(m => m.group_letter === g)}
+              preds={groupPredsMap} teamById={teamById} lang={lang}
+              groupTableLabel={t('pv_group_table')}
+            />
+          ))}
         </div>
       )}
 
-      {/* Knockout */}
       {tab === 'knockout' && (
         <div className="flex flex-col gap-1">
           {koMatches.length === 0 ? (

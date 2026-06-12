@@ -100,6 +100,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
   const [champMap, setChampMap] = useState<Map<string, { name: string; fifa_code: string } | null>>(new Map())
   const [top4, setTop4] = useState<Array<Array<{ team: { name: string; fifa_code: string }; votes: number }>>>([[], [], [], []])
   const [loading, setLoading] = useState(true)
+  const [sortMode, setSortMode] = useState<'total' | 'day'>('total')
   const [recap, setRecap] = useState<string | null>(null)
   const [recapLoading, setRecapLoading] = useState(false)
   const [showRecap, setShowRecap] = useState(false)
@@ -124,6 +125,24 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load champion predictions via bracket simulation
+  useEffect(() => {
+    fetch('/api/top4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leagueId: leagueId === 'global' ? null : leagueId }),
+    }).then(r => r.json()).then(data => {
+      if (data.champByUser) {
+        const cmap = new Map<string, { name: string; fifa_code: string } | null>()
+        for (const [uid, champ] of Object.entries(data.champByUser)) {
+          cmap.set(uid, champ as any)
+        }
+        setChampMap(cmap)
+      }
+      if (data.top4) setTop4(data.top4)
+    }).catch(() => {})
+  }, [leagueId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!selectedDay) return
     setLoading(true)
@@ -146,66 +165,15 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
       }).then(r => r.json()),
     ]).then(([matchRes, apiData]) => {
       const matches = ((matchRes as any).data ?? []) as DayMatch[]
-      if (!matches.length) { setDayMatches([]); setPredsMap(new Map()); setChampMap(new Map()); setLoading(false); return }
+      if (!matches.length) { setDayMatches([]); setPredsMap(new Map()); setLoading(false); return }
 
       const map = new Map<string, Map<string, { h: number; a: number }>>()
       for (const p of (apiData.preds ?? [])) {
         if (!map.has(p.user_id)) map.set(p.user_id, new Map())
         map.get(p.user_id)!.set(p.match_id, { h: p.pred_home_score, a: p.pred_away_score })
       }
-      const teamById = new Map<string, { name: string; fifa_code: string }>(
-        (apiData.teams ?? []).map((t: any) => [t.id, t])
-      )
-
-      // Build per-user champ map (slot 32 = Final winner)
-      const cmap = new Map<string, { name: string; fifa_code: string } | null>()
-
-      // Build top-4 vote tallies: positions 1,2,3,4
-      const posVotes: [Map<string, number>, Map<string, number>, Map<string, number>, Map<string, number>] = [
-        new Map(), new Map(), new Map(), new Map(),
-      ]
-
-      for (const f of (apiData.finals ?? [])) {
-        const home = f.pred_home_team_id as string | null
-        const away = f.pred_away_team_id as string | null
-        if (!home && !away) continue
-
-        let winner: string | null = null
-        let loser: string | null = null
-        if (f.pred_home_score != null && f.pred_away_score != null) {
-          winner = f.pred_home_score >= f.pred_away_score ? home : away
-          loser  = f.pred_home_score >= f.pred_away_score ? away : home
-        } else {
-          winner = home; loser = away
-        }
-
-        if (f.bracket_slot === 32) {
-          // champion per user
-          const team = winner ? teamById.get(winner) ?? null : null
-          cmap.set(f.user_id, team ? { name: team.name, fifa_code: team.fifa_code } : null)
-          // 1st and 2nd
-          if (winner) posVotes[0].set(winner, (posVotes[0].get(winner) ?? 0) + 1)
-          if (loser)  posVotes[1].set(loser,  (posVotes[1].get(loser)  ?? 0) + 1)
-        } else if (f.bracket_slot === 31) {
-          // 3rd and 4th
-          if (winner) posVotes[2].set(winner, (posVotes[2].get(winner) ?? 0) + 1)
-          if (loser)  posVotes[3].set(loser,  (posVotes[3].get(loser)  ?? 0) + 1)
-        }
-      }
-
-      // Top 3 teams per position
-      const top4computed: Array<Array<{ team: { name: string; fifa_code: string }; votes: number }>> = posVotes.map(vm =>
-        [...vm.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 3)
-          .map(([id, votes]) => ({ team: teamById.get(id)!, votes }))
-          .filter(x => x.team)
-      )
-
       setDayMatches(matches)
       setPredsMap(map)
-      setChampMap(cmap)
-      setTop4(top4computed)
       setLoading(false)
 
       const hasResults = matches.some((m: DayMatch) => m.actual_home_score !== null)
@@ -261,7 +229,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
     ? new Date(selectedDay + 'T12:00:00Z').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
     : ''
 
-  // Compute day pts per user and sort descending
+  // Compute day pts per user and sort
   const withDayPts = entries.map(entry => {
     const userPreds = predsMap.get(entry.userId)
     let dayPts = 0
@@ -271,7 +239,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
       if (p) dayPts += predPts(p.h, p.a, m.actual_home_score!, m.actual_away_score!)
     }
     return { entry, dayPts }
-  }).sort((a, b) => b.dayPts - a.dayPts || b.entry.totalPts - a.entry.totalPts)
+  }).sort((a, b) =>
+    sortMode === 'day'
+      ? b.dayPts - a.dayPts || b.entry.totalPts - a.entry.totalPts
+      : b.entry.totalPts - a.entry.totalPts || b.dayPts - a.dayPts
+  )
 
   // Assign day ranks (tied = same rank) — must use a for-loop, not .map(), so each
   // row can reference the already-computed dayRank of the previous row
@@ -332,7 +304,19 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
       ) : (
         <>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs text-gray-400">{dayLabel} · {dayMatches.length} matches</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-gray-400">{dayLabel} · {dayMatches.length} matches</p>
+              <div className="flex rounded-lg overflow-hidden border border-gray-200 text-[10px] font-semibold">
+                <button onClick={() => setSortMode('total')}
+                  className={`px-2 py-1 transition-colors ${sortMode === 'total' ? 'bg-[#0B1F3A] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+                  Total
+                </button>
+                <button onClick={() => setSortMode('day')}
+                  className={`px-2 py-1 transition-colors ${sortMode === 'day' ? 'bg-[#0B1F3A] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+                  Day
+                </button>
+              </div>
+            </div>
             <button onClick={loadRecap}
               className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow">
               📰 {t('dv_recap_btn')}
@@ -361,7 +345,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                     </th>
                   ))}
                   <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[76px]">🏆 {t('dv_champ')}</th>
-                  <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{t('pts')}</th>
+                  <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{sortMode === 'day' ? t('pts') : '∑ ' + t('pts')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -374,7 +358,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                     <tr key={entry.userId} className={`border-t border-gray-100 ${rowBg}`}>
                       <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg}`}>
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="shrink-0 w-6 text-center font-bold text-sm">{rankIcon(dayRank)}</span>
+                          <span className="shrink-0 w-6 text-center font-bold text-sm">{rankIcon(sortMode === 'total' ? entry.rank : dayRank)}</span>
                           <Link href={`/predictions/view/${entry.userId}`}
                             className="font-semibold text-[#0B1F3A] hover:underline truncate max-w-[95px]" title={entry.displayName}>
                             {entry.displayName}
@@ -399,9 +383,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                         ) : <span className="text-gray-300 text-[10px]">—</span>}
                       </td>
                       <td className="py-2 px-3 text-center">
-                        <span className={`font-bold text-sm ${dayPts > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                          {dayPts}
-                        </span>
+                        {sortMode === 'total' ? (
+                          <span className="font-bold text-sm text-[#0B1F3A]">{entry.totalPts}</span>
+                        ) : (
+                          <span className={`font-bold text-sm ${dayPts > 0 ? 'text-green-600' : 'text-gray-400'}`}>{dayPts}</span>
+                        )}
                       </td>
                     </tr>
                   )

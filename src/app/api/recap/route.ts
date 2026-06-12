@@ -179,7 +179,8 @@ Rules:
 - End with a day standings mini-table (just text)
 - Use football banter, emojis, and fun energy
 - Keep it under 400 words
-- DO NOT use markdown headers (no ## or **), just plain flowing text with emojis
+- DO NOT use markdown headers (no ## or **), no bold text
+- IMPORTANT: Put each sentence or completed thought on its own line. Use a blank line between topics/matches. This is critical for readability.
 
 Match data:
 ${promptData}`,
