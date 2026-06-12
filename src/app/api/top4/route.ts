@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
     new Map(), new Map(), new Map(), new Map(),
   ]
   const champByUser: Record<string, { name: string; fifa_code: string } | null> = {}
+  const positionsByUser: Record<string, Array<{ name: string; fifa_code: string } | null>> = {}
   const teamById = new Map(allTeams.map(t => [t.id, t]))
 
   for (const uid of allUserIds) {
@@ -99,9 +100,16 @@ export async function POST(request: NextRequest) {
     const kp = userKOPreds.get(uid) ?? new Map()
     const result = simulateBracket(gp, kp, allMatches, allTeams)
 
-    champByUser[uid] = result.champion
-      ? { name: result.champion.name, fifa_code: result.champion.fifa_code }
-      : null
+    const toTeamRef = (t: typeof result.champion) =>
+      t ? { name: t.name, fifa_code: t.fifa_code } : null
+
+    champByUser[uid] = toTeamRef(result.champion)
+    positionsByUser[uid] = [
+      toTeamRef(result.champion),
+      toTeamRef(result.second),
+      toTeamRef(result.third),
+      toTeamRef(result.fourth),
+    ]
 
     const positions = [result.champion, result.second, result.third, result.fourth]
     positions.forEach((team, i) => {
@@ -120,5 +128,5 @@ export async function POST(request: NextRequest) {
       .filter(Boolean)
   )
 
-  return NextResponse.json({ top4, champByUser })
+  return NextResponse.json({ top4, champByUser, positionsByUser })
 }

@@ -9,7 +9,7 @@ import { transliterateName } from '@/lib/transliterate'
 import { flagUrl } from '@/lib/flag-map'
 import { getTeamName } from '@/lib/team-name'
 
-const PREDICTIONS_TOTAL = 104 // 72 group + 32 knockout
+const PREDICTIONS_TOTAL = 104
 
 const LANG_TO_LOCALE: Record<string, string> = {
   en: 'en-GB', uk: 'uk', az: 'az', fr: 'fr-FR', es: 'es-ES', de: 'de-DE',
@@ -17,11 +17,7 @@ const LANG_TO_LOCALE: Record<string, string> = {
   ar: 'ar-SA', hi: 'hi-IN', ru: 'ru-RU', bn: 'bn-BD', ja: 'ja-JP', id: 'id-ID',
 }
 
-interface UserLeague {
-  id: string
-  name: string
-  join_code: string
-}
+interface UserLeague { id: string; name: string; join_code: string }
 
 interface LeaderboardEntry {
   rank: number
@@ -36,25 +32,17 @@ interface LeaderboardEntry {
 }
 
 interface H2HStats {
-  bothRight: number
-  rivalOnly: number
-  youOnly: number
-  neither: number
-  rivalPtsLead: number
+  bothRight: number; rivalOnly: number; youOnly: number; neither: number; rivalPtsLead: number
 }
 
 interface ScoreBreakdown {
-  groupExact: number    // 3-pt hits
-  groupGD: number       // 2-pt hits
-  groupOutcome: number  // 1-pt hits
-  groupTotal: number
-  advTotal: number
-  koExact: number
-  koGD: number
-  koOutcome: number
-  koTotal: number
+  groupExact: number; groupGD: number; groupOutcome: number; groupTotal: number
+  advTotal: number; koExact: number; koGD: number; koOutcome: number; koTotal: number
   h2h?: H2HStats
 }
+
+type TeamRef = { name: string; fifa_code: string } | null
+type PositionRow = [TeamRef, TeamRef, TeamRef, TeamRef]
 
 function toCDTDate(iso: string) {
   return new Date(new Date(iso).getTime() - 6 * 3600_000).toISOString().slice(0, 10)
@@ -67,11 +55,16 @@ function predPts(ph: number, pa: number, ah: number, aa: number) {
   return 0
 }
 
+function getMatchPts(ph: number, pa: number, ah: number, aa: number) {
+  if (ph === ah && pa === aa) return 3
+  if (ph - pa === ah - aa) return 2
+  if (Math.sign(ph - pa) === Math.sign(ah - aa)) return 1
+  return 0
+}
+
 interface DayMatch {
-  id: string
-  kickoff_at: string | null
-  actual_home_score: number | null
-  actual_away_score: number | null
+  id: string; kickoff_at: string | null
+  actual_home_score: number | null; actual_away_score: number | null
   home_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
   away_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
 }
@@ -85,11 +78,41 @@ function PredCell({ ph, pa, ah, aa }: { ph: number|null; pa: number|null; ah: nu
   return <span className={`text-xs font-mono px-1.5 py-0.5 rounded font-semibold ${cls}`}>{ph}–{pa} <span className="opacity-60">({pts})</span></span>
 }
 
-function DayView({ entries, currentUserId, leagueId, leagueName }: {
+function MiniFlag({ team, lang }: { team: TeamRef; lang: string }) {
+  if (!team) return <span className="text-gray-300 text-[10px]">?</span>
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-3.5 h-auto rounded-sm" />
+      <span className="text-[10px] font-medium text-gray-700">{getTeamName(team.fifa_code, lang) ?? team.fifa_code}</span>
+    </span>
+  )
+}
+
+function PredictedFinishCell({ positions, lang }: { positions: PositionRow | undefined; lang: string }) {
+  if (!positions) return <span className="text-gray-300 text-[10px]">—</span>
+  const medals = ['🥇', '🥈', '🥉', '4️⃣']
+  const hasAny = positions.some(Boolean)
+  if (!hasAny) return <span className="text-gray-300 text-[10px]">—</span>
+  return (
+    <div className="flex flex-col gap-0.5 min-w-[90px]">
+      {positions.map((team, i) => team ? (
+        <div key={i} className="flex items-center gap-1">
+          <span className="text-[10px] w-4 shrink-0">{medals[i]}</span>
+          <MiniFlag team={team} lang={lang} />
+        </div>
+      ) : null)}
+    </div>
+  )
+}
+
+// ── DayView ──────────────────────────────────────────────────────────────────
+
+function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser }: {
   entries: LeaderboardEntry[]
   currentUserId: string | null
   leagueId: string
   leagueName: string
+  positionsByUser: Record<string, PositionRow>
 }) {
   const supabase = createClient()
   const { lang, t } = useTranslation()
@@ -97,18 +120,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
   const [selectedDay, setSelectedDay] = useState('')
   const [dayMatches, setDayMatches] = useState<DayMatch[]>([])
   const [predsMap, setPredsMap] = useState<Map<string, Map<string, { h: number; a: number }>>>(new Map())
-  const [champMap, setChampMap] = useState<Map<string, { name: string; fifa_code: string } | null>>(new Map())
-  const [top4, setTop4] = useState<Array<Array<{ team: { name: string; fifa_code: string }; votes: number }>>>([[], [], [], []])
   const [loading, setLoading] = useState(true)
   const [sortMode, setSortMode] = useState<'total' | 'day'>('total')
   const [recap, setRecap] = useState<string | null>(null)
   const [recapLoading, setRecapLoading] = useState(false)
   const [showRecap, setShowRecap] = useState(false)
 
-  useEffect(() => {
-    // Reset recap when language changes
-    setRecap(null)
-  }, [lang])
+  useEffect(() => { setRecap(null) }, [lang])
 
   useEffect(() => {
     supabase.from('matches').select('kickoff_at').eq('stage', 'group').order('kickoff_at').then(({ data }) => {
@@ -118,36 +136,16 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
       const todayCDT = toCDTDate(new Date().toISOString())
       const pastDays = days.filter((d: string) => d <= todayCDT)
       const defaultDay = pastDays[pastDays.length - 1] ?? days[0] ?? ''
-      // Restore saved day, but validate it's still a known past day
       const saved = typeof window !== 'undefined' ? localStorage.getItem('spoton_dayview_day') : null
       const restoredDay = saved && pastDays.includes(saved) ? saved : defaultDay
       setSelectedDay(restoredDay)
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load champion predictions via bracket simulation
-  useEffect(() => {
-    fetch('/api/top4', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ leagueId: leagueId === 'global' ? null : leagueId }),
-    }).then(r => r.json()).then(data => {
-      if (data.champByUser) {
-        const cmap = new Map<string, { name: string; fifa_code: string } | null>()
-        for (const [uid, champ] of Object.entries(data.champByUser)) {
-          cmap.set(uid, champ as any)
-        }
-        setChampMap(cmap)
-      }
-      if (data.top4) setTop4(data.top4)
-    }).catch(() => {})
-  }, [leagueId]) // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => {
     if (!selectedDay) return
     setLoading(true)
     setRecap(null)
-    // Save selected day so it's restored on next visit
     if (typeof window !== 'undefined') localStorage.setItem('spoton_dayview_day', selectedDay)
 
     const start = new Date(selectedDay + 'T06:00:00Z')
@@ -186,33 +184,19 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
     })
   }, [selectedDay, leagueId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fetchRecapInner = async (
-    day: string, lgId: string, lgName: string,
-    ents: LeaderboardEntry[], seenKey: string
-  ): Promise<string> => {
+  const fetchRecapInner = async (day: string, lgId: string, lgName: string, ents: LeaderboardEntry[], seenKey: string): Promise<string> => {
     setRecapLoading(true)
     try {
       const res = await fetch('/api/recap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          day,
-          leagueId: lgId === 'global' ? null : lgId,
-          leagueName: lgName,
-          playerNames: ents.map(e => e.displayName),
-          lang,
-        }),
+        body: JSON.stringify({ day, leagueId: lgId === 'global' ? null : lgId, leagueName: lgName, playerNames: ents.map(e => e.displayName), lang }),
       })
       const data = await res.json()
       const text = data.recap ?? ''
-      // Only mark seen if we got a real recap (not a config-error message)
-      if (text && !text.includes('requires GROQ_API_KEY')) {
-        localStorage.setItem(seenKey, '1')
-      }
+      if (text && !text.includes('requires GROQ_API_KEY')) localStorage.setItem(seenKey, '1')
       return text || 'Could not generate recap.'
-    } catch {
-      return 'Failed to load recap — check your connection.'
-    }
+    } catch { return 'Failed to load recap — check your connection.' }
   }
 
   const loadRecap = async () => {
@@ -229,7 +213,6 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
     ? new Date(selectedDay + 'T12:00:00Z').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
     : ''
 
-  // Compute day pts per user and sort
   const withDayPts = entries.map(entry => {
     const userPreds = predsMap.get(entry.userId)
     let dayPts = 0
@@ -245,14 +228,10 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
       : b.entry.totalPts - a.entry.totalPts || b.dayPts - a.dayPts
   )
 
-  // Assign day ranks (tied = same rank) — must use a for-loop, not .map(), so each
-  // row can reference the already-computed dayRank of the previous row
   const dayRanked: Array<{ entry: LeaderboardEntry; dayPts: number; dayRank: number }> = []
   for (let i = 0; i < withDayPts.length; i++) {
     const row = withDayPts[i]
-    const dayRank = i === 0 ? 1
-      : row.dayPts < withDayPts[i - 1].dayPts ? i + 1
-      : dayRanked[i - 1].dayRank
+    const dayRank = i === 0 ? 1 : row.dayPts < withDayPts[i - 1].dayPts ? i + 1 : dayRanked[i - 1].dayRank
     dayRanked.push({ ...row, dayRank })
   }
 
@@ -264,63 +243,33 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
       <div className="flex gap-1.5 flex-wrap mb-4">
         {allDays.map(day => (
           <button key={day} onClick={() => setSelectedDay(day)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
-              selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
-            }`}>
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
             {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
           </button>
         ))}
       </div>
 
-      {/* Top 4 Predictions widget */}
-      {top4.some(arr => arr.length > 0) && (
-        <div className="mb-4 bg-gradient-to-br from-[#0B1F3A]/5 to-yellow-50/50 rounded-xl p-3 border border-[#0B1F3A]/10">
-          <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1.5">
-            🏆 <span>Predicted Top 4</span>
-          </div>
-          {(['🥇', '🥈', '🥉', '4️⃣'] as const).map((medal, pos) => (
-            top4[pos]?.length > 0 ? (
-              <div key={pos} className="flex items-center gap-2 py-1 border-t border-[#0B1F3A]/5 first:border-t-0">
-                <span className="text-base shrink-0 w-6 text-center">{medal}</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {top4[pos].map(({ team, votes }, j) => (
-                    <span key={team.fifa_code} className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
-                      j === 0 ? 'bg-[#0B1F3A] text-white font-semibold' : 'bg-white text-gray-600 border border-gray-200'
-                    }`}>
-                      <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-3.5 h-auto rounded-sm" />
-                      {getTeamName(team.fifa_code, lang) ?? team.fifa_code}
-                      <span className="opacity-60 text-[10px]">×{votes}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null
-          ))}
-        </div>
-      )}
-
       {loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : dayMatches.length === 0 ? (
         <div className="text-center text-gray-400 py-10 text-sm">{t('dv_no_matches')}</div>
       ) : (
         <>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <p className="text-xs text-gray-400">{dayLabel} · {dayMatches.length} matches</p>
-              <div className="flex rounded-lg overflow-hidden border border-gray-200 text-[10px] font-semibold">
-                <button onClick={() => setSortMode('total')}
-                  className={`px-2 py-1 transition-colors ${sortMode === 'total' ? 'bg-[#0B1F3A] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
-                  Total
-                </button>
-                <button onClick={() => setSortMode('day')}
-                  className={`px-2 py-1 transition-colors ${sortMode === 'day' ? 'bg-[#0B1F3A] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
-                  Day
-                </button>
-              </div>
-            </div>
+          {/* Toolbar: [date label] [📰 Recap] flex-1 [Total|Day toggle] */}
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-xs text-gray-400 shrink-0">{dayLabel} · {dayMatches.length} matches</p>
             <button onClick={loadRecap}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow">
+              className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow mx-auto">
               📰 {t('dv_recap_btn')}
             </button>
+            <div className="flex rounded-lg overflow-hidden border border-gray-200 text-[10px] font-semibold shrink-0">
+              <button onClick={() => setSortMode('total')}
+                className={`px-2.5 py-1.5 transition-colors ${sortMode === 'total' ? 'bg-[#0B1F3A] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+                Total
+              </button>
+              <button onClick={() => setSortMode('day')}
+                className={`px-2.5 py-1.5 transition-colors ${sortMode === 'day' ? 'bg-[#0B1F3A] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+                Day
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto -mx-4 px-4">
@@ -344,7 +293,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                       </div>
                     </th>
                   ))}
-                  <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[76px]">🏆 {t('dv_champ')}</th>
+                  <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[100px]">🏆 Predicted Finish</th>
                   <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{sortMode === 'day' ? t('pts') : '∑ ' + t('pts')}</th>
                 </tr>
               </thead>
@@ -353,7 +302,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                   const isMe = entry.userId === currentUserId
                   const userPreds = predsMap.get(entry.userId)
                   const rowBg = isMe ? 'bg-blue-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'
-                  const champ = champMap.get(entry.userId)
+                  const positions = positionsByUser[entry.userId] as PositionRow | undefined
                   return (
                     <tr key={entry.userId} className={`border-t border-gray-100 ${rowBg}`}>
                       <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg}`}>
@@ -374,20 +323,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                           </td>
                         )
                       })}
-                      <td className="py-2 px-2 text-center">
-                        {champ ? (
-                          <div className="flex items-center justify-center gap-1">
-                            <img src={flagUrl(champ.fifa_code, 40)} alt={champ.fifa_code} className="w-4 h-auto rounded-sm" />
-                            <span className="text-[10px] font-semibold text-gray-700">{getTeamName(champ.fifa_code, lang) ?? champ.name}</span>
-                          </div>
-                        ) : <span className="text-gray-300 text-[10px]">—</span>}
+                      <td className="py-2 px-2">
+                        <PredictedFinishCell positions={positions} lang={lang} />
                       </td>
                       <td className="py-2 px-3 text-center">
-                        {sortMode === 'total' ? (
-                          <span className="font-bold text-sm text-[#0B1F3A]">{entry.totalPts}</span>
-                        ) : (
-                          <span className={`font-bold text-sm ${dayPts > 0 ? 'text-green-600' : 'text-gray-400'}`}>{dayPts}</span>
-                        )}
+                        {sortMode === 'total'
+                          ? <span className="font-bold text-sm text-[#0B1F3A]">{entry.totalPts}</span>
+                          : <span className={`font-bold text-sm ${dayPts > 0 ? 'text-green-600' : 'text-gray-400'}`}>{dayPts}</span>}
                       </td>
                     </tr>
                   )
@@ -417,8 +359,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
               <button onClick={() => setShowRecap(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">✕</button>
             </div>
             <div className="flex items-center gap-1.5 mb-4 text-[10px] text-purple-500 bg-purple-50 border border-purple-100 rounded-lg px-2.5 py-1.5 w-fit">
-              <span>🤖</span>
-              <span>Generated by AI · may contain errors</span>
+              <span>🤖</span><span>Generated by AI · may contain errors</span>
             </div>
             {recapLoading ? (
               <div className="flex flex-col items-center gap-3 py-8">
@@ -428,9 +369,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
             ) : (
               <div className="text-sm text-gray-700 leading-relaxed">
                 {(recap ?? '').split('\n').map((line, i) =>
-                  line.trim() === ''
-                    ? <div key={i} className="h-3" />
-                    : <p key={i} className="mb-1.5">{line}</p>
+                  line.trim() === '' ? <div key={i} className="h-3" /> : <p key={i} className="mb-1.5">{line}</p>
                 )}
               </div>
             )}
@@ -441,13 +380,156 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
   )
 }
 
-function getMatchPts(pred_home: number, pred_away: number, actual_home: number, actual_away: number): number {
-  if (pred_home === actual_home && pred_away === actual_away) return 3
-  const predGD = pred_home - pred_away, actualGD = actual_home - actual_away
-  if (predGD === actualGD) return 2
-  if (Math.sign(predGD) === Math.sign(actualGD)) return 1
-  return 0
+// ── Stats View ────────────────────────────────────────────────────────────────
+
+function StatsView({ top4, entries, positionsByUser, lang, leagueId, leagueName }: {
+  top4: Array<Array<{ team: TeamRef & {}; votes: number }>>
+  entries: LeaderboardEntry[]
+  positionsByUser: Record<string, PositionRow>
+  lang: string
+  leagueId: string
+  leagueName: string
+}) {
+  const { t } = useTranslation()
+  const locale = LANG_TO_LOCALE[lang] ?? 'en-GB'
+
+  // Champion distribution
+  const champCounts = new Map<string, { team: TeamRef & {}; count: number }>()
+  for (const [, positions] of Object.entries(positionsByUser)) {
+    const champ = positions?.[0]
+    if (champ) {
+      const key = champ.fifa_code
+      if (!champCounts.has(key)) champCounts.set(key, { team: champ, count: 0 })
+      champCounts.get(key)!.count++
+    }
+  }
+  const champList = [...champCounts.values()].sort((a, b) => b.count - a.count)
+  const totalWithChamp = champList.reduce((s, c) => s + c.count, 0)
+
+  // Prediction completeness
+  const complete = entries.filter(e => e.predictionCount >= PREDICTIONS_TOTAL).length
+  const partial = entries.filter(e => e.predictionCount > 0 && e.predictionCount < PREDICTIONS_TOTAL).length
+  const none = entries.filter(e => e.predictionCount === 0).length
+
+  // Top scorers snapshot
+  const top5 = entries.slice(0, 5)
+
+  const hasTop4 = top4.some(arr => arr.length > 0)
+
+  return (
+    <div className="space-y-5">
+      {/* Predicted Top 4 */}
+      {hasTop4 && (
+        <div className="bg-gradient-to-br from-[#0B1F3A]/5 to-yellow-50/50 rounded-xl p-4 border border-[#0B1F3A]/10">
+          <h3 className="text-sm font-bold text-[#0B1F3A] mb-3 flex items-center gap-1.5">🏆 Predicted Top 4 <span className="text-xs font-normal text-gray-400">(most predicted finish)</span></h3>
+          {(['🥇', '🥈', '🥉', '4️⃣'] as const).map((medal, pos) => (
+            top4[pos]?.length > 0 ? (
+              <div key={pos} className="flex items-center gap-2 py-1.5 border-t border-[#0B1F3A]/5 first:border-t-0">
+                <span className="text-base shrink-0 w-6 text-center">{medal}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {top4[pos].map(({ team, votes }: any, j: number) => team && (
+                    <span key={(team as any).fifa_code} className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${j === 0 ? 'bg-[#0B1F3A] text-white font-semibold' : 'bg-white text-gray-600 border border-gray-200'}`}>
+                      <img src={flagUrl((team as any).fifa_code, 40)} alt="" className="w-3.5 h-auto rounded-sm" />
+                      {getTeamName((team as any).fifa_code, lang) ?? (team as any).fifa_code}
+                      <span className="opacity-60 text-[10px]">×{votes}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null
+          ))}
+        </div>
+      )}
+
+      {/* Champion consensus */}
+      {champList.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <h3 className="text-sm font-bold text-[#0B1F3A] mb-3 flex items-center gap-1.5">
+            🏅 Champion Picks
+            <span className="text-xs font-normal text-gray-400 ml-1">{totalWithChamp} players have a predicted champion</span>
+          </h3>
+          <div className="space-y-2">
+            {champList.slice(0, 8).map(({ team, count }) => {
+              const pct = Math.round((count / totalWithChamp) * 100)
+              return (
+                <div key={(team as any).fifa_code} className="flex items-center gap-2">
+                  <img src={flagUrl((team as any).fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm shrink-0" />
+                  <span className="text-xs font-medium text-[#0B1F3A] w-20 shrink-0 truncate">
+                    {getTeamName((team as any).fifa_code, lang) ?? (team as any).fifa_code}
+                  </span>
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#0B1F3A] rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="text-xs text-gray-500 w-10 text-right shrink-0">{count}×</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Prediction completeness */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">📊 Prediction Completeness</h3>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="text-center bg-green-50 rounded-lg p-3 border border-green-100">
+            <div className="text-2xl font-bold text-green-600">{complete}</div>
+            <div className="text-[11px] text-green-700 font-medium mt-0.5">✅ Complete</div>
+          </div>
+          <div className="text-center bg-orange-50 rounded-lg p-3 border border-orange-100">
+            <div className="text-2xl font-bold text-orange-500">{partial}</div>
+            <div className="text-[11px] text-orange-600 font-medium mt-0.5">⏳ Partial</div>
+          </div>
+          <div className="text-center bg-gray-50 rounded-lg p-3 border border-gray-100">
+            <div className="text-2xl font-bold text-gray-400">{none}</div>
+            <div className="text-[11px] text-gray-500 font-medium mt-0.5">— None</div>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          {entries.filter(e => e.predictionCount > 0).sort((a, b) => b.predictionCount - a.predictionCount).slice(0, 10).map(e => {
+            const pct = Math.min(100, Math.round((e.predictionCount / PREDICTIONS_TOTAL) * 100))
+            const done = e.predictionCount >= PREDICTIONS_TOTAL
+            return (
+              <div key={e.userId} className="flex items-center gap-2">
+                <span className="text-xs text-gray-600 w-24 truncate shrink-0">{e.displayName}</span>
+                <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${done ? 'bg-green-500' : 'bg-orange-400'}`} style={{ width: `${pct}%` }} />
+                </div>
+                <span className="text-[10px] text-gray-500 w-8 text-right shrink-0">{done ? '✅' : `${pct}%`}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Score distribution */}
+      {entries.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">📈 Points Distribution</h3>
+          <div className="space-y-1.5">
+            {entries.slice(0, 12).map((e, i) => {
+              const maxPts = entries[0].totalPts || 1
+              const pct = Math.round((e.totalPts / maxPts) * 100)
+              const medals: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
+              return (
+                <div key={e.userId} className="flex items-center gap-2">
+                  <span className="text-[11px] w-5 text-center shrink-0">{medals[e.rank] ?? e.rank}</span>
+                  <span className="text-xs text-gray-600 w-20 truncate shrink-0">{e.displayName}</span>
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-[#0B1F3A] to-blue-400 rounded-full" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="text-xs font-bold text-[#0B1F3A] w-8 text-right shrink-0">{e.totalPts}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
+
+// ── Scoring helpers ───────────────────────────────────────────────────────────
 
 function calcBreakdown(
   groupPreds: { pred_home: number; pred_away: number; actual_home: number; actual_away: number }[],
@@ -459,28 +541,108 @@ function calcBreakdown(
     if (p.pred_home === p.actual_home && p.pred_away === p.actual_away) { groupExact++; continue }
     const predGD = p.pred_home - p.pred_away, actualGD = p.actual_home - p.actual_away
     if (predGD === actualGD) { groupGD++; continue }
-    const predOutcome = Math.sign(predGD), actualOutcome = Math.sign(actualGD)
-    if (predOutcome === actualOutcome) groupOutcome++
+    if (Math.sign(predGD) === Math.sign(actualGD)) groupOutcome++
   }
   let koExact = 0, koGD = 0, koOutcome = 0
   for (const p of koPreds) {
     if (p.pred_home === p.actual_home && p.pred_away === p.actual_away) { koExact++; continue }
     const predGD = p.pred_home - p.pred_away, actualGD = p.actual_home - p.actual_away
     if (predGD === actualGD) { koGD++; continue }
-    const predOutcome = Math.sign(predGD), actualOutcome = Math.sign(actualGD)
-    if (predOutcome === actualOutcome) koOutcome++
+    if (Math.sign(predGD) === Math.sign(actualGD)) koOutcome++
   }
   return {
-    groupExact, groupGD, groupOutcome,
-    groupTotal: groupExact * 3 + groupGD * 2 + groupOutcome,
-    advTotal,
-    koExact, koGD, koOutcome,
-    koTotal: koExact * 3 + koGD * 2 + koOutcome,
+    groupExact, groupGD, groupOutcome, groupTotal: groupExact * 3 + groupGD * 2 + groupOutcome,
+    advTotal, koExact, koGD, koOutcome, koTotal: koExact * 3 + koGD * 2 + koOutcome,
   }
 }
 
-export default function LeaderboardPage() {
+// ── Overview Recap ────────────────────────────────────────────────────────────
+
+function OverviewRecap({ leagueId, leagueName, lang, entries }: {
+  leagueId: string; leagueName: string; lang: string; entries: LeaderboardEntry[]
+}) {
   const { t } = useTranslation()
+  const [recap, setRecap] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [lastDay, setLastDay] = useState('')
+  const [dayLabel, setDayLabel] = useState('')
+  const supabase = createClient()
+  const locale = LANG_TO_LOCALE[lang] ?? 'en-GB'
+
+  useEffect(() => {
+    setRecap(null)
+    setLastDay('')
+  }, [lang, leagueId])
+
+  useEffect(() => {
+    supabase.from('matches').select('kickoff_at').eq('stage', 'group').order('kickoff_at').then(({ data }) => {
+      if (!data) return
+      const days = [...new Set(data.map((m: any) => toCDTDate(m.kickoff_at)))]
+      const todayCDT = toCDTDate(new Date().toISOString())
+      const pastDays = days.filter(d => d <= todayCDT)
+      const day = pastDays[pastDays.length - 1] ?? ''
+      setLastDay(day)
+      if (day) setDayLabel(new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' }))
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadRecap = async () => {
+    if (recap || loading || !lastDay) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/recap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day: lastDay, leagueId: leagueId === 'global' ? null : leagueId, leagueName, playerNames: entries.map(e => e.displayName), lang }),
+      })
+      const data = await res.json()
+      setRecap(data.recap || 'No recap available yet.')
+    } catch { setRecap('Failed to load recap.') }
+    setLoading(false)
+  }
+
+  if (!lastDay) return null
+
+  return (
+    <div className="mt-6 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3">
+        <div>
+          <div className="text-sm font-bold text-[#0B1F3A] flex items-center gap-1.5">📰 Last Day Recap</div>
+          <div className="text-xs text-gray-400 mt-0.5">{dayLabel} · {leagueName}</div>
+        </div>
+        {!recap && (
+          <button onClick={loadRecap} disabled={loading}
+            className="text-xs bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 disabled:opacity-60 transition-all shadow active:scale-95">
+            {loading ? 'Loading…' : 'Load Recap'}
+          </button>
+        )}
+      </div>
+      {loading && (
+        <div className="flex items-center gap-2 px-4 pb-4">
+          <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs text-gray-500">{t('dv_generating_recap')}</span>
+        </div>
+      )}
+      {recap && (
+        <div className="px-4 pb-4">
+          <div className="flex items-center gap-1.5 mb-3 text-[10px] text-purple-500 bg-purple-50 border border-purple-100 rounded-lg px-2.5 py-1.5 w-fit">
+            <span>🤖</span><span>Generated by AI · may contain errors</span>
+          </div>
+          <div className="text-sm text-gray-700 leading-relaxed">
+            {recap.split('\n').map((line, i) =>
+              line.trim() === '' ? <div key={i} className="h-3" /> : <p key={i} className="mb-1.5">{line}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function LeaderboardPage() {
+  const { lang, t } = useTranslation()
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [loading, setLoading] = useState(true)
@@ -502,7 +664,9 @@ export default function LeaderboardPage() {
   const [leagueError, setLeagueError] = useState<string | null>(null)
   const [inviteLeague, setInviteLeague] = useState<UserLeague | null>(null)
   const [copiedLeagueId, setCopiedLeagueId] = useState<string | null>(null)
-  const [lbTab, setLbTab] = useState<'overview' | 'dayview'>('dayview')
+  const [lbTab, setLbTab] = useState<'overview' | 'dayview' | 'stats'>('dayview')
+  const [top4, setTop4] = useState<Array<Array<{ team: TeamRef & {}; votes: number }>>>([[], [], [], []])
+  const [positionsByUser, setPositionsByUser] = useState<Record<string, PositionRow>>({})
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
@@ -511,22 +675,16 @@ export default function LeaderboardPage() {
       supabase.from('scores').select('*'),
       supabase.auth.getUser(),
     ])
-
     const uid = authRes.data.user?.id ?? null
     setCurrentUserId(uid)
 
-    // Load user's leagues
     if (uid) {
-      const { data: memberships } = await (supabase as any)
-        .from('league_members').select('league_id').eq('user_id', uid)
+      const { data: memberships } = await (supabase as any).from('league_members').select('league_id').eq('user_id', uid)
       if (memberships?.length) {
         const ids = memberships.map((m: any) => m.league_id)
-        const { data: leagues } = await (supabase as any)
-          .from('leagues').select('id, name, join_code').in('id', ids)
+        const { data: leagues } = await (supabase as any).from('leagues').select('id, name, join_code').in('id', ids)
         setUserLeagues(leagues ?? [])
-        // Fetch member counts for all user leagues
-        const { data: allMembers } = await (supabase as any)
-          .from('league_members').select('league_id').in('league_id', ids)
+        const { data: allMembers } = await (supabase as any).from('league_members').select('league_id').in('league_id', ids)
         const counts: Record<string, number> = {}
         for (const m of (allMembers ?? [])) counts[m.league_id] = (counts[m.league_id] ?? 0) + 1
         setLeagueCounts(counts)
@@ -536,7 +694,6 @@ export default function LeaderboardPage() {
     const users: { id: string; display_name: string | null }[] = userRes.data ?? []
     const scores = new Map((scoreRes.data ?? []).map((s: any) => [s.user_id, s]))
 
-    // Count predictions per user via service-role API (bypasses RLS + row limits)
     const predCounts = new Map<string, number>()
     try {
       const pcRes = await fetch('/api/predcounts')
@@ -544,10 +701,9 @@ export default function LeaderboardPage() {
         const obj: Record<string, number> = await pcRes.json()
         for (const [uid, cnt] of Object.entries(obj)) predCounts.set(uid, cnt)
       }
-    } catch { /* non-fatal — counts just won't show */ }
+    } catch { }
 
-
-    const built: Omit<LeaderboardEntry, 'rank'>[] = users.map((u) => {
+    const built: Omit<LeaderboardEntry, 'rank'>[] = users.map(u => {
       const s = scores.get(u.id)
       return {
         userId: u.id,
@@ -560,7 +716,6 @@ export default function LeaderboardPage() {
         updatedAt: s ? new Date(s.updated_at) : null,
       }
     })
-
     built.sort((a, b) => b.totalPts - a.totalPts || a.displayName.localeCompare(b.displayName))
 
     const ranked: LeaderboardEntry[] = []
@@ -569,7 +724,6 @@ export default function LeaderboardPage() {
       if (i > 0 && built[i].totalPts < built[i - 1].totalPts) rank = i + 1
       ranked.push({ rank, ...built[i] })
     }
-
     setEntries(ranked)
     setLastUpdated(new Date())
     setLoading(false)
@@ -577,8 +731,7 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     loadData()
-    const channel = supabase
-      .channel('leaderboard-realtime')
+    const channel = supabase.channel('leaderboard-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, loadData)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -590,6 +743,18 @@ export default function LeaderboardPage() {
       .then(({ data }: any) => setLeagueMembers(new Set((data ?? []).map((r: any) => r.user_id))))
   }, [selectedLeagueId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fetch bracket simulation results (champion + positions per user)
+  useEffect(() => {
+    fetch('/api/top4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leagueId: selectedLeagueId === 'global' ? null : selectedLeagueId }),
+    }).then(r => r.json()).then(data => {
+      if (data.top4) setTop4(data.top4)
+      if (data.positionsByUser) setPositionsByUser(data.positionsByUser)
+    }).catch(() => {})
+  }, [selectedLeagueId])
+
   const loadBreakdown = async (userId: string, advTotal: number, meId: string | null) => {
     if (breakdowns[userId]) return
     setLoadingBreakdown(userId)
@@ -600,8 +765,6 @@ export default function LeaderboardPage() {
       (supabase as any).from('predictions_knockout').select('bracket_slot, pred_home_score, pred_away_score').eq('user_id', userId),
       (supabase as any).from('matches').select('id, bracket_slot, actual_home_score, actual_away_score').eq('stage', 'knockout').not('actual_home_score', 'is', null),
     ]
-
-    // If viewing a rival (not self) and we're logged in, also fetch current user's predictions for H2H
     const isRival = meId && meId !== userId
     let myGroupPredsPromise: Promise<any> | null = null
     let myKoPredsPromise: Promise<any> | null = null
@@ -611,13 +774,11 @@ export default function LeaderboardPage() {
     }
 
     const [gpRes, matchRes, kpRes, koMatchRes] = await Promise.all(fetchesForRival)
-
     const actualGroupMap = new Map((matchRes.data ?? []).map((m: any) => [m.id, m]))
     const groupPreds = (gpRes.data ?? []).filter((p: any) => actualGroupMap.has(p.match_id)).map((p: any) => {
       const m = actualGroupMap.get(p.match_id) as any
       return { match_id: p.match_id, pred_home: p.pred_home_score, pred_away: p.pred_away_score, actual_home: m.actual_home_score, actual_away: m.actual_away_score }
     })
-
     const actualKoMap = new Map((koMatchRes.data ?? []).map((m: any) => [m.bracket_slot, m]))
     const koPreds = (kpRes.data ?? []).filter((p: any) => actualKoMap.has(p.bracket_slot)).map((p: any) => {
       const m = actualKoMap.get(p.bracket_slot) as any
@@ -626,44 +787,33 @@ export default function LeaderboardPage() {
 
     const bd = calcBreakdown(groupPreds, koPreds, advTotal)
 
-    // Compute H2H if viewing a rival
     if (isRival && myGroupPredsPromise && myKoPredsPromise) {
       const [myGpRes, myKpRes] = await Promise.all([myGroupPredsPromise, myKoPredsPromise])
-
       const myGroupMap = new Map((myGpRes.data ?? []).map((p: any) => [p.match_id, p]))
       const myKoMap = new Map((myKpRes.data ?? []).map((p: any) => [p.bracket_slot, p]))
-
-      let bothRight = 0, rivalOnly = 0, youOnly = 0, neither = 0
-      let rivalPts = 0, myPts = 0
-
+      let bothRight = 0, rivalOnly = 0, youOnly = 0, neither = 0, rivalPts = 0, myPts = 0
       for (const rp of groupPreds) {
         const mp = myGroupMap.get(rp.match_id) as any
         const rivalCorrect = getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away) > 0
         const myCorrect = mp ? getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away) > 0 : false
-
         if (rivalCorrect && myCorrect) bothRight++
-        else if (rivalCorrect && !myCorrect) rivalOnly++
-        else if (!rivalCorrect && myCorrect) youOnly++
+        else if (rivalCorrect) rivalOnly++
+        else if (myCorrect) youOnly++
         else neither++
-
         rivalPts += getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away)
         if (mp) myPts += getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away)
       }
-
       for (const rp of koPreds) {
         const mp = myKoMap.get(rp.bracket_slot) as any
         const rivalCorrect = getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away) > 0
         const myCorrect = mp ? getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away) > 0 : false
-
         if (rivalCorrect && myCorrect) bothRight++
-        else if (rivalCorrect && !myCorrect) rivalOnly++
-        else if (!rivalCorrect && myCorrect) youOnly++
+        else if (rivalCorrect) rivalOnly++
+        else if (myCorrect) youOnly++
         else neither++
-
         rivalPts += getMatchPts(rp.pred_home, rp.pred_away, rp.actual_home, rp.actual_away)
         if (mp) myPts += getMatchPts(mp.pred_home_score, mp.pred_away_score, rp.actual_home, rp.actual_away)
       }
-
       bd.h2h = { bothRight, rivalOnly, youOnly, neither, rivalPtsLead: rivalPts - myPts }
     }
 
@@ -682,8 +832,7 @@ export default function LeaderboardPage() {
     localStorage.setItem('spoton_league', leagueId)
     setExpandedId(null)
     if (leagueId === 'global') { setLeagueMembers(new Set()); return }
-    const { data } = await (supabase as any)
-      .from('league_members').select('user_id').eq('league_id', leagueId)
+    const { data } = await (supabase as any).from('league_members').select('user_id').eq('league_id', leagueId)
     const members = (data ?? []).map((r: any) => r.user_id)
     setLeagueMembers(new Set(members))
     setLeagueCounts(prev => ({ ...prev, [leagueId]: members.length }))
@@ -726,13 +875,12 @@ export default function LeaderboardPage() {
 
   const visibleEntries = selectedLeagueId === 'global'
     ? entries
-    : entries.filter(e => leagueMembers.has(e.userId)).map((e, i, arr) => {
-        // Re-rank within the league
-        let rank = 1
-        if (i > 0 && e.totalPts < arr[i - 1].totalPts) rank = i + 1
-        else if (i > 0) rank = arr[i - 1].rank ?? i + 1
-        return { ...e, rank: i === 0 ? 1 : (e.totalPts < arr[i-1].totalPts ? i + 1 : (arr[i-1] as any).rank) }
-      })
+    : entries.filter(e => leagueMembers.has(e.userId)).map((e, i, arr) => ({
+        ...e,
+        rank: i === 0 ? 1 : (e.totalPts < arr[i-1].totalPts ? i + 1 : (arr[i-1] as any).rank),
+      }))
+
+  const leagueName = selectedLeagueId === 'global' ? 'Global' : (userLeagues.find(l => l.id === selectedLeagueId)?.name ?? 'League')
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">{t('lb_loading')}</div>
@@ -749,23 +897,16 @@ export default function LeaderboardPage() {
       {/* League selector */}
       <div className="flex items-center gap-3 mb-5">
         <label className="text-sm font-semibold text-gray-600 shrink-0">{t('lb_view')}</label>
-        <select
-          value={selectedLeagueId}
-          onChange={e => handleLeagueChange(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] bg-white"
-        >
+        <select value={selectedLeagueId} onChange={e => handleLeagueChange(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] bg-white">
           <option value="global">{t('lb_global')}</option>
-          {userLeagues.map(l => (
-            <option key={l.id} value={l.id}>🏅 {l.name}</option>
-          ))}
+          {userLeagues.map(l => <option key={l.id} value={l.id}>🏅 {l.name}</option>)}
         </select>
         <span className="text-sm font-bold text-[#0B1F3A] tabular-nums">
           {visibleEntries.length} <span className="text-gray-400 font-normal text-xs">{visibleEntries.length === 1 ? t('leaderboard_player') : t('lb_players')}</span>
         </span>
-        <button
-          onClick={() => setShowLeaguePanel(o => !o)}
-          className="ml-auto text-xs bg-[#0B1F3A] text-white px-3 py-1.5 rounded-lg hover:bg-blue-900 transition-colors shrink-0"
-        >
+        <button onClick={() => setShowLeaguePanel(o => !o)}
+          className="ml-auto text-xs bg-[#0B1F3A] text-white px-3 py-1.5 rounded-lg hover:bg-blue-900 transition-colors shrink-0">
           {showLeaguePanel ? t('lb_close') : t('lb_manage')}
         </button>
       </div>
@@ -809,13 +950,15 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {/* Invite popup after create */}
+      {/* Invite popup */}
       {inviteLeague && !showLeaguePanel && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
             <h2 className="text-lg font-bold text-[#0B1F3A] mb-2">{t('lb_league_created')}</h2>
             <p className="text-sm text-gray-500 mb-4">{t('lb_share_code')} <span className="font-mono font-bold text-green-700">{inviteLeague.join_code}</span></p>
-            <button onClick={() => { handleCopyInvite(inviteLeague); }} className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm mb-2 hover:bg-green-500 transition-colors">{copiedLeagueId === inviteLeague?.id ? t('leaderboard_copied') : t('lb_copy_msg')}</button>
+            <button onClick={() => handleCopyInvite(inviteLeague)} className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm mb-2 hover:bg-green-500 transition-colors">
+              {copiedLeagueId === inviteLeague?.id ? t('leaderboard_copied') : t('lb_copy_msg')}
+            </button>
             <button onClick={() => setInviteLeague(null)} className="w-full border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm hover:bg-gray-50 transition-colors">{t('lb_close')}</button>
           </div>
         </div>
@@ -823,181 +966,197 @@ export default function LeaderboardPage() {
 
       {/* Tab switcher */}
       <div className="flex gap-1 mb-5 border-b border-gray-200">
-        <button onClick={() => setLbTab('overview')} className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === 'overview' ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{t('lb_tab_overview')}</button>
-        <button onClick={() => setLbTab('dayview')} className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === 'dayview' ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{t('lb_tab_dayview')}</button>
+        {(['overview', 'dayview', 'stats'] as const).map(tab => (
+          <button key={tab} onClick={() => setLbTab(tab)}
+            className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === tab ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {tab === 'overview' ? t('lb_tab_overview') : tab === 'dayview' ? t('lb_tab_dayview') : '📊 Stats'}
+          </button>
+        ))}
       </div>
 
-      {lbTab === 'dayview' && <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={selectedLeagueId === 'global' ? 'Global' : (userLeagues.find(l => l.id === selectedLeagueId)?.name ?? 'League')} />}
+      {/* Day View tab */}
+      {lbTab === 'dayview' && (
+        <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} />
+      )}
 
+      {/* Stats tab */}
+      {lbTab === 'stats' && (
+        <StatsView top4={top4 as any} entries={visibleEntries} positionsByUser={positionsByUser} lang={lang} leagueId={selectedLeagueId} leagueName={leagueName} />
+      )}
+
+      {/* Overview tab */}
       {lbTab === 'overview' && <>
-      {/* Scoring legend */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-xs text-amber-900 flex flex-wrap gap-x-5 gap-y-1.5">
-        <span className="font-bold text-amber-800">{t('lb_how_points')}</span>
-        <span>⚽ <strong>{t('lb_group_col')}</strong> — {t('lb_group_pts_desc')}</span>
-        <span>🏅 <strong>{t('lb_advancement')}</strong> — {t('lb_adv_short')}</span>
-        <span>🏆 <strong>{t('lb_playoff_col')}</strong> — {t('lb_playoff_short')}</span>
-        <span className="text-amber-700 italic">{t('lb_click_breakdown')}</span>
-      </div>
-
-      {visibleEntries.length === 0 ? (
-        <div className="text-center text-gray-500 py-16">
-          {selectedLeagueId === 'global' ? t('lb_no_players') : t('lb_no_members')}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-xs text-amber-900 flex flex-wrap gap-x-5 gap-y-1.5">
+          <span className="font-bold text-amber-800">{t('lb_how_points')}</span>
+          <span>⚽ <strong>{t('lb_group_col')}</strong> — {t('lb_group_pts_desc')}</span>
+          <span>🏅 <strong>{t('lb_advancement')}</strong> — {t('lb_adv_short')}</span>
+          <span>🏆 <strong>{t('lb_playoff_col')}</strong> — {t('lb_playoff_short')}</span>
+          <span className="text-amber-700 italic">{t('lb_click_breakdown')}</span>
         </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-[#0B1F3A] text-white">
-                <th className="py-3 px-3 text-left w-10">#</th>
-                <th className="py-3 px-3 text-left">{t('leaderboard_player')}</th>
-                <th className="py-3 px-3 text-center" title="Predictions completed out of 104">{t('lb_preds')}</th>
-                <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_group_col')}</th>
-                <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_advance_col')}</th>
-                <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_playoff_col')}</th>
-                <th className="py-3 px-3 text-right font-bold">{t('lb_total')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleEntries.map((entry, idx) => {
-                const isMe = entry.userId === currentUserId
-                const isComplete = entry.predictionCount >= PREDICTIONS_TOTAL
-                const pctDone = Math.min(100, Math.round((entry.predictionCount / PREDICTIONS_TOTAL) * 100))
-                const isExpanded = expandedId === entry.userId
-                const bd = breakdowns[entry.userId]
 
-                return (
-                  <>
-                    <tr
-                      key={entry.userId}
-                      onClick={() => handleRowClick(entry)}
-                      className={`border-t border-gray-100 cursor-pointer transition-colors hover:bg-blue-50/50 active:bg-blue-100 select-none ${
-                        isMe ? 'bg-blue-50 font-semibold' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'
-                      } ${isExpanded ? 'border-b-0' : ''}`}
-                    >
-                      <td className="py-3 px-3 font-bold text-gray-500 text-base">
-                        {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : entry.rank}
-                      </td>
-                      <td className="py-3 px-3 text-[#0B1F3A] max-w-[120px] sm:max-w-none">
-                        <div className="truncate flex items-center gap-1.5">
-                          {entry.displayName}
-                          <span className="text-gray-300 text-xs">▾</span>
-                          <Link href={`/predictions/view/${entry.userId}`} onClick={e => e.stopPropagation()} className="ml-auto shrink-0 text-gray-300 hover:text-[#0B1F3A] transition-colors text-xs" title="View all predictions">👁</Link>
-                        </div>
-                        {isMe && <div className="text-xs text-blue-500 font-normal">{t('you')}</div>}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        {isComplete
-                          ? <span className="text-green-600 font-semibold text-xs">✅</span>
-                          : entry.predictionCount === 0
-                          ? <span className="text-gray-300 text-xs">—</span>
-                          : <span className="text-orange-500 text-xs font-medium">{pctDone}%</span>}
-                      </td>
-                      <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.groupPts}</td>
-                      <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.advancementPts}</td>
-                      <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.knockoutPts}</td>
-                      <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
-                    </tr>
+        {visibleEntries.length === 0 ? (
+          <div className="text-center text-gray-500 py-16">
+            {selectedLeagueId === 'global' ? t('lb_no_players') : t('lb_no_members')}
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#0B1F3A] text-white">
+                  <th className="py-3 px-3 text-left w-10">#</th>
+                  <th className="py-3 px-3 text-left">{t('leaderboard_player')}</th>
+                  <th className="py-3 px-3 text-center" title="Predictions completed">{t('lb_preds')}</th>
+                  <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_group_col')}</th>
+                  <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_advance_col')}</th>
+                  <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_playoff_col')}</th>
+                  <th className="py-3 px-3 text-right font-bold">{t('lb_total')}</th>
+                  <th className="py-3 px-3 text-left text-yellow-300 text-xs hidden md:table-cell min-w-[110px]">🏆 Predicted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleEntries.map((entry, idx) => {
+                  const isMe = entry.userId === currentUserId
+                  const isComplete = entry.predictionCount >= PREDICTIONS_TOTAL
+                  const pctDone = Math.min(100, Math.round((entry.predictionCount / PREDICTIONS_TOTAL) * 100))
+                  const isExpanded = expandedId === entry.userId
+                  const bd = breakdowns[entry.userId]
+                  const positions = positionsByUser[entry.userId] as PositionRow | undefined
 
-                    {/* Expanded breakdown row */}
-                    {isExpanded && (
-                      <tr key={`${entry.userId}-breakdown`} className={`border-t-0 ${isMe ? 'bg-blue-50' : entry.rank === 1 ? 'bg-yellow-50' : ''}`}>
-                        <td colSpan={7} className="px-4 pb-4 pt-1">
-                          {loadingBreakdown === entry.userId ? (
-                            <div className="text-xs text-gray-400 py-2">Loading breakdown…</div>
-                          ) : bd ? (
-                            <>
-                              <div className="grid sm:grid-cols-3 gap-3 mt-1">
-                                {/* Group stage */}
-                                <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">{t('lb_group_pts')} <span className="text-gray-400 font-normal ml-auto">{bd.groupTotal} {t('pts')}</span></div>
-                                  <div className="space-y-1 text-xs text-gray-600">
-                                    <div className="flex justify-between"><span>{t('lb_exact_x3')}</span><span className="font-semibold text-green-600">{bd.groupExact} × 3 = {bd.groupExact * 3}</span></div>
-                                    <div className="flex justify-between"><span>{t('lb_gd_x2')}</span><span className="font-semibold text-blue-600">{bd.groupGD} × 2 = {bd.groupGD * 2}</span></div>
-                                    <div className="flex justify-between"><span>{t('lb_outcome_x1')}</span><span className="font-semibold text-gray-600">{bd.groupOutcome} × 1 = {bd.groupOutcome}</span></div>
-                                  </div>
-                                </div>
-                                {/* Advancement */}
-                                <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">{t('lb_advancement')} <span className="text-gray-400 font-normal ml-auto">{bd.advTotal} {t('pts')}</span></div>
-                                  <p className="text-xs text-gray-500 leading-relaxed">{t('lb_adv_desc')}</p>
-                                </div>
-                                {/* Knockout */}
-                                <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                                  <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">{t('lb_playoff_pts')} <span className="text-gray-400 font-normal ml-auto">{bd.koTotal} {t('pts')}</span></div>
-                                  {bd.koExact + bd.koGD + bd.koOutcome === 0 ? (
-                                    <p className="text-xs text-gray-400 italic">{t('lb_no_playoff')}</p>
-                                  ) : (
-                                    <div className="space-y-1 text-xs text-gray-600">
-                                      <div className="flex justify-between"><span>{t('lb_exact_x3')}</span><span className="font-semibold text-green-600">{bd.koExact} × 3 = {bd.koExact * 3}</span></div>
-                                      <div className="flex justify-between"><span>{t('lb_gd_x2')}</span><span className="font-semibold text-blue-600">{bd.koGD} × 2 = {bd.koGD * 2}</span></div>
-                                      <div className="flex justify-between"><span>{t('lb_outcome_x1')}</span><span className="font-semibold text-gray-600">{bd.koOutcome} × 1 = {bd.koOutcome}</span></div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* H2H section — only shown when viewing a rival and current user is logged in */}
-                              {!isMe && currentUserId && bd.h2h && (
-                                <div className="mt-3 bg-white rounded-xl border border-[#0B1F3A]/20 p-3 shadow-sm">
-                                  <div className="text-xs font-bold text-[#0B1F3A] mb-3 flex items-center gap-1">
-                                    {t('lb_vs_you')}
-                                    <span className="text-gray-400 font-normal ml-auto text-[11px]">{t('lb_on_scored')}</span>
-                                  </div>
-                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                                    <div className="rounded-lg bg-green-50 border border-green-100 p-2 text-center">
-                                      <div className="text-lg font-bold text-green-600">{bd.h2h.bothRight}</div>
-                                      <div className="text-[10px] text-green-700 font-medium">{t('lb_both_correct')}</div>
-                                    </div>
-                                    <div className="rounded-lg bg-red-50 border border-red-100 p-2 text-center">
-                                      <div className="text-lg font-bold text-red-500">{bd.h2h.rivalOnly}</div>
-                                      <div className="text-[10px] text-red-600 font-medium">{t('lb_rival_only')}</div>
-                                    </div>
-                                    <div className="rounded-lg bg-blue-50 border border-blue-100 p-2 text-center">
-                                      <div className="text-lg font-bold text-blue-500">{bd.h2h.youOnly}</div>
-                                      <div className="text-[10px] text-blue-600 font-medium">{t('lb_you_only')}</div>
-                                    </div>
-                                    <div className="rounded-lg bg-gray-50 border border-gray-100 p-2 text-center">
-                                      <div className="text-lg font-bold text-gray-400">{bd.h2h.neither}</div>
-                                      <div className="text-[10px] text-gray-500 font-medium">{t('lb_neither')}</div>
-                                    </div>
-                                  </div>
-                                  <div className={`text-xs font-semibold text-center py-1 px-3 rounded-full inline-block ${
-                                    bd.h2h.rivalPtsLead > 0
-                                      ? 'bg-red-50 text-red-600'
-                                      : bd.h2h.rivalPtsLead < 0
-                                      ? 'bg-blue-50 text-blue-600'
-                                      : 'bg-gray-50 text-gray-500'
-                                  }`}>
-                                    {bd.h2h.rivalPtsLead === 0
-                                      ? t('lb_tied')
-                                      : bd.h2h.rivalPtsLead > 0
-                                      ? t('lb_rival_leads', { pts: String(bd.h2h.rivalPtsLead) })
-                                      : t('lb_you_lead', { pts: String(Math.abs(bd.h2h.rivalPtsLead)) })}
-                                  </div>
-                                </div>
-                              )}
-                              <div className="mt-3 text-right">
-                                <Link href={`/predictions/view/${entry.userId}`} className="text-xs text-[#0B1F3A] font-semibold hover:underline inline-flex items-center gap-1">
-                                  👁 View all predictions →
-                                </Link>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-xs text-gray-400 py-2">{t('lb_no_scored')}</div>
-                          )}
+                  return (
+                    <>
+                      <tr key={entry.userId} onClick={() => handleRowClick(entry)}
+                        className={`border-t border-gray-100 cursor-pointer transition-colors hover:bg-blue-50/50 active:bg-blue-100 select-none ${isMe ? 'bg-blue-50 font-semibold' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'} ${isExpanded ? 'border-b-0' : ''}`}>
+                        <td className="py-3 px-3 font-bold text-gray-500 text-base">
+                          {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : entry.rank}
+                        </td>
+                        <td className="py-3 px-3 text-[#0B1F3A] max-w-[120px] sm:max-w-none">
+                          <div className="truncate flex items-center gap-1.5">
+                            {entry.displayName}
+                            <span className="text-gray-300 text-xs">▾</span>
+                            <Link href={`/predictions/view/${entry.userId}`} onClick={e => e.stopPropagation()} className="ml-auto shrink-0 text-gray-300 hover:text-[#0B1F3A] transition-colors text-xs" title="View all predictions">👁</Link>
+                          </div>
+                          {isMe && <div className="text-xs text-blue-500 font-normal">{t('you')}</div>}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          {isComplete ? <span className="text-green-600 font-semibold text-xs">✅</span>
+                            : entry.predictionCount === 0 ? <span className="text-gray-300 text-xs">—</span>
+                            : <span className="text-orange-500 text-xs font-medium">{pctDone}%</span>}
+                        </td>
+                        <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.groupPts}</td>
+                        <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.advancementPts}</td>
+                        <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.knockoutPts}</td>
+                        <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
+                        <td className="py-3 px-2 hidden md:table-cell">
+                          <PredictedFinishCell positions={positions} lang={lang} />
                         </td>
                       </tr>
-                    )}
-                  </>
-                )
-              })}
-            </tbody>
-          </table>
-          <p className="text-xs text-gray-400 px-4 py-2 border-t border-gray-100">
-            {t('lb_footer', { n: String(PREDICTIONS_TOTAL) })}
-          </p>
-        </div>
-      )}
+
+                      {isExpanded && (
+                        <tr key={`${entry.userId}-breakdown`} className={`border-t-0 ${isMe ? 'bg-blue-50' : entry.rank === 1 ? 'bg-yellow-50' : ''}`}>
+                          <td colSpan={8} className="px-4 pb-4 pt-1">
+                            {loadingBreakdown === entry.userId ? (
+                              <div className="text-xs text-gray-400 py-2">Loading breakdown…</div>
+                            ) : bd ? (
+                              <>
+                                <div className="grid sm:grid-cols-3 gap-3 mt-1">
+                                  <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                                    <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">{t('lb_group_pts')} <span className="text-gray-400 font-normal ml-auto">{bd.groupTotal} {t('pts')}</span></div>
+                                    <div className="space-y-1 text-xs text-gray-600">
+                                      <div className="flex justify-between"><span>{t('lb_exact_x3')}</span><span className="font-semibold text-green-600">{bd.groupExact} × 3 = {bd.groupExact * 3}</span></div>
+                                      <div className="flex justify-between"><span>{t('lb_gd_x2')}</span><span className="font-semibold text-blue-600">{bd.groupGD} × 2 = {bd.groupGD * 2}</span></div>
+                                      <div className="flex justify-between"><span>{t('lb_outcome_x1')}</span><span className="font-semibold text-gray-600">{bd.groupOutcome} × 1 = {bd.groupOutcome}</span></div>
+                                    </div>
+                                  </div>
+                                  <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                                    <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">{t('lb_advancement')} <span className="text-gray-400 font-normal ml-auto">{bd.advTotal} {t('pts')}</span></div>
+                                    <p className="text-xs text-gray-500 leading-relaxed">{t('lb_adv_desc')}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                                    <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1">{t('lb_playoff_pts')} <span className="text-gray-400 font-normal ml-auto">{bd.koTotal} {t('pts')}</span></div>
+                                    {bd.koExact + bd.koGD + bd.koOutcome === 0 ? (
+                                      <p className="text-xs text-gray-400 italic">{t('lb_no_playoff')}</p>
+                                    ) : (
+                                      <div className="space-y-1 text-xs text-gray-600">
+                                        <div className="flex justify-between"><span>{t('lb_exact_x3')}</span><span className="font-semibold text-green-600">{bd.koExact} × 3 = {bd.koExact * 3}</span></div>
+                                        <div className="flex justify-between"><span>{t('lb_gd_x2')}</span><span className="font-semibold text-blue-600">{bd.koGD} × 2 = {bd.koGD * 2}</span></div>
+                                        <div className="flex justify-between"><span>{t('lb_outcome_x1')}</span><span className="font-semibold text-gray-600">{bd.koOutcome} × 1 = {bd.koOutcome}</span></div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Predicted finish in expanded row */}
+                                {positions?.some(Boolean) && (
+                                  <div className="mt-3 bg-white rounded-xl border border-yellow-100 p-3 shadow-sm">
+                                    <div className="text-xs font-bold text-[#0B1F3A] mb-2">🏆 Predicted Tournament Finish</div>
+                                    <div className="flex flex-wrap gap-3">
+                                      {(['🥇', '🥈', '🥉', '4️⃣'] as const).map((medal, i) => positions[i] ? (
+                                        <div key={i} className="flex items-center gap-1.5 bg-gray-50 rounded-lg px-2 py-1 border border-gray-100">
+                                          <span className="text-sm">{medal}</span>
+                                          <img src={flagUrl((positions[i] as any).fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />
+                                          <span className="text-xs font-medium text-[#0B1F3A]">{getTeamName((positions[i] as any).fifa_code, lang) ?? (positions[i] as any).name}</span>
+                                        </div>
+                                      ) : null)}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* H2H section */}
+                                {!isMe && currentUserId && bd.h2h && (
+                                  <div className="mt-3 bg-white rounded-xl border border-[#0B1F3A]/20 p-3 shadow-sm">
+                                    <div className="text-xs font-bold text-[#0B1F3A] mb-3 flex items-center gap-1">
+                                      {t('lb_vs_you')}
+                                      <span className="text-gray-400 font-normal ml-auto text-[11px]">{t('lb_on_scored')}</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                                      <div className="rounded-lg bg-green-50 border border-green-100 p-2 text-center">
+                                        <div className="text-lg font-bold text-green-600">{bd.h2h.bothRight}</div>
+                                        <div className="text-[10px] text-green-700 font-medium">{t('lb_both_correct')}</div>
+                                      </div>
+                                      <div className="rounded-lg bg-red-50 border border-red-100 p-2 text-center">
+                                        <div className="text-lg font-bold text-red-500">{bd.h2h.rivalOnly}</div>
+                                        <div className="text-[10px] text-red-600 font-medium">{t('lb_rival_only')}</div>
+                                      </div>
+                                      <div className="rounded-lg bg-blue-50 border border-blue-100 p-2 text-center">
+                                        <div className="text-lg font-bold text-blue-500">{bd.h2h.youOnly}</div>
+                                        <div className="text-[10px] text-blue-600 font-medium">{t('lb_you_only')}</div>
+                                      </div>
+                                      <div className="rounded-lg bg-gray-50 border border-gray-100 p-2 text-center">
+                                        <div className="text-lg font-bold text-gray-400">{bd.h2h.neither}</div>
+                                        <div className="text-[10px] text-gray-500 font-medium">{t('lb_neither')}</div>
+                                      </div>
+                                    </div>
+                                    <div className={`text-xs font-semibold text-center py-1 px-3 rounded-full inline-block ${bd.h2h.rivalPtsLead > 0 ? 'bg-red-50 text-red-600' : bd.h2h.rivalPtsLead < 0 ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-500'}`}>
+                                      {bd.h2h.rivalPtsLead === 0 ? t('lb_tied') : bd.h2h.rivalPtsLead > 0 ? t('lb_rival_leads', { pts: String(bd.h2h.rivalPtsLead) }) : t('lb_you_lead', { pts: String(Math.abs(bd.h2h.rivalPtsLead)) })}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="mt-3 text-right">
+                                  <Link href={`/predictions/view/${entry.userId}`} className="text-xs text-[#0B1F3A] font-semibold hover:underline inline-flex items-center gap-1">
+                                    👁 View all predictions →
+                                  </Link>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-xs text-gray-400 py-2">{t('lb_no_scored')}</div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )
+                })}
+              </tbody>
+            </table>
+            <p className="text-xs text-gray-400 px-4 py-2 border-t border-gray-100">
+              {t('lb_footer', { n: String(PREDICTIONS_TOTAL) })}
+            </p>
+          </div>
+        )}
+
+        {/* Last day recap in Overview */}
+        <OverviewRecap leagueId={selectedLeagueId} leagueName={leagueName} lang={lang} entries={visibleEntries} />
       </>}
     </div>
   )

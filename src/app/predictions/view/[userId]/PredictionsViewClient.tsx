@@ -258,7 +258,7 @@ export default function PredictionsViewClient({ userId }: { userId: string }) {
     Promise.all([
       supabase.from('users').select('display_name').eq('id', userId).single(),
       supabase.from('matches')
-        .select('id, stage, group_letter, bracket_slot, ko_stage, kickoff_at, actual_home_score, actual_away_score, home_team_id, away_team_id, home_team:teams!matches_home_team_id_fkey(id,name,fifa_code,group_letter,flag_emoji), away_team:teams!matches_away_team_id_fkey(id,name,fifa_code,group_letter,flag_emoji)')
+        .select('id, stage, group_letter, bracket_slot, ko_stage, kickoff_at, actual_home_score, actual_away_score, home_team_id, away_team_id')
         .order('kickoff_at'),
       supabase.from('teams').select('id, name, fifa_code, group_letter, flag_emoji'),
       fetch('/api/userpreds', {
@@ -270,8 +270,14 @@ export default function PredictionsViewClient({ userId }: { userId: string }) {
       const rawName = (userRes.data as any)?.display_name ?? 'Unknown player'
       setDisplayName(transliterateName(rawName))
 
-      const matchData = (matchRes.data ?? []) as MatchRow[]
       const teamData = (teamsRes.data ?? []) as Team[]
+      const tById = new Map(teamData.map(t => [t.id, t]))
+      // Join team info client-side to avoid PostgREST join ambiguity with anon client
+      const matchData = (matchRes.data ?? []).map((m: any) => ({
+        ...m,
+        home_team: m.home_team_id ? (tById.get(m.home_team_id) ?? null) : null,
+        away_team: m.away_team_id ? (tById.get(m.away_team_id) ?? null) : null,
+      })) as MatchRow[]
       const gp: GroupPred[] = predsData.groupPreds ?? []
       const kp: KOPred[] = predsData.koPreds ?? []
 
