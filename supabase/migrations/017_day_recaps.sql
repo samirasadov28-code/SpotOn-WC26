@@ -6,7 +6,15 @@ create table if not exists day_recaps (
   created_at timestamptz default now()
 );
 
--- Service role can read/write; public can only read
 alter table day_recaps enable row level security;
+
+-- Anyone authenticated can read recaps
+drop policy if exists "recaps_public_read" on day_recaps;
 create policy "recaps_public_read" on day_recaps for select using (true);
-create policy "recaps_service_write" on day_recaps for all using (auth.role() = 'service_role');
+
+-- Service role can insert and update (upsert)
+drop policy if exists "recaps_service_write" on day_recaps;
+drop policy if exists "recaps_service_insert" on day_recaps;
+drop policy if exists "recaps_service_update" on day_recaps;
+create policy "recaps_service_insert" on day_recaps for insert with check (true);
+create policy "recaps_service_update" on day_recaps for update using (true);
