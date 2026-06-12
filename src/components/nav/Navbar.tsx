@@ -103,6 +103,15 @@ export default function Navbar() {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Mobile More button — top right */}
+              <button
+                onClick={() => setMoreOpen(o => !o)}
+                className={`md:hidden flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${moreOpen ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
+                aria-label="More"
+              >
+                <span className="text-xl leading-none">☰</span>
+              </button>
+
               {/* Language selector */}
               <div className="relative hidden md:block">
                 <button
@@ -161,21 +170,13 @@ export default function Navbar() {
             <span>{tab.label}</span>
           </Link>
         ))}
-        {/* More tab */}
-        <button
-          onClick={() => setMoreOpen(o => !o)}
-          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors text-[10px] ${moreOpen ? 'text-green-400' : 'text-white/60 hover:text-white'}`}
-        >
-          <span className="text-xl leading-none">☰</span>
-          <span>More</span>
-        </button>
       </div>
 
-      {/* More slide-up drawer */}
+      {/* More dropdown (mobile top-right) */}
       {moreOpen && (
         <>
           <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMoreOpen(false)} />
-          <div className="fixed bottom-16 left-0 right-0 z-50 md:hidden bg-[#0B1F3A] rounded-t-2xl border-t border-white/10 p-4 flex flex-col gap-1">
+          <div className="fixed top-16 right-0 w-72 z-50 md:hidden bg-[#0B1F3A] rounded-bl-2xl border-l border-b border-white/10 p-4 flex flex-col gap-1 shadow-xl">
             {MORE_LINKS.map(link => (
               <Link
                 key={link.href}

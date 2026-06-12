@@ -13,6 +13,7 @@
     "db:seed": "npx ts-node -r tsconfig-paths/register scripts/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
     "@supabase/ssr": "^0.4.0",
     "@supabase/supabase-js": "^2.44.2",
     "clsx": "^2.1.1",

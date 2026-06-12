@@ -22,7 +22,7 @@ function LoginForm() {
 
   const joinLeagueAndRedirect = async (supabase: ReturnType<typeof createClient>, userId: string) => {
     if (!leagueCode) {
-      window.location.href = '/predictions'
+      window.location.href = '/leaderboard'
       return
     }
     const { data: league } = await supabase
@@ -109,7 +109,7 @@ function LoginForm() {
         if (signInData.session) {
           await joinLeagueAndRedirect(supabase, signInData.session.user.id)
         } else {
-          window.location.href = '/predictions'
+          window.location.href = '/leaderboard'
         }
       }
     }

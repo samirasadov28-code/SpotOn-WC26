@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { transliterateName } from '@/lib/transliterate'
+import { flagUrl } from '@/lib/flag-map'
 
 const PREDICTIONS_TOTAL = 104 // 72 group + 32 knockout
 
@@ -77,14 +78,23 @@ function PredCell({ ph, pa, ah, aa }: { ph: number|null; pa: number|null; ah: nu
   return <span className={`text-xs font-mono px-1.5 py-0.5 rounded font-semibold ${cls}`}>{ph}–{pa} <span className="opacity-60">({pts})</span></span>
 }
 
-function DayView({ entries, currentUserId }: { entries: LeaderboardEntry[]; currentUserId: string | null }) {
+function DayView({ entries, currentUserId, leagueId, leagueName }: {
+  entries: LeaderboardEntry[]
+  currentUserId: string | null
+  leagueId: string
+  leagueName: string
+}) {
   const supabase = createClient()
   const { lang } = useTranslation()
   const [allDays, setAllDays] = useState<string[]>([])
   const [selectedDay, setSelectedDay] = useState('')
   const [dayMatches, setDayMatches] = useState<DayMatch[]>([])
   const [predsMap, setPredsMap] = useState<Map<string, Map<string, { h: number; a: number }>>>(new Map())
+  const [champMap, setChampMap] = useState<Map<string, { name: string; fifa_code: string } | null>>(new Map())
   const [loading, setLoading] = useState(true)
+  const [recap, setRecap] = useState<string | null>(null)
+  const [recapLoading, setRecapLoading] = useState(false)
+  const [showRecap, setShowRecap] = useState(false)
 
   useEffect(() => {
     supabase.from('matches').select('kickoff_at').eq('stage', 'group').order('kickoff_at').then(({ data }) => {
@@ -92,38 +102,100 @@ function DayView({ entries, currentUserId }: { entries: LeaderboardEntry[]; curr
       const days = [...new Set(data.map((m: any) => toCDTDate(m.kickoff_at)))]
       setAllDays(days)
       const todayCDT = toCDTDate(new Date().toISOString())
-      setSelectedDay(days.find(d => d >= todayCDT) ?? days[days.length - 1] ?? '')
+      // Prefer today or most-recent past day with results
+      const pastDays = days.filter((d: string) => d <= todayCDT)
+      setSelectedDay(pastDays[pastDays.length - 1] ?? days[0] ?? '')
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedDay) return
     setLoading(true)
+    setRecap(null)
     const start = new Date(selectedDay + 'T06:00:00Z')
     const end   = new Date(start.getTime() + 24 * 3600_000)
-    Promise.all([
-      supabase.from('matches')
-        .select('*, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
-        .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
-        .eq('stage', 'group').order('kickoff_at'),
-      (supabase as any).from('predictions_group').select('user_id,match_id,pred_home_score,pred_away_score'),
-    ]).then(([matchRes, predRes]) => {
-      const matches = (matchRes.data ?? []) as DayMatch[]
-      const matchIds = new Set(matches.map(m => m.id))
-      const map = new Map<string, Map<string, { h: number; a: number }>>()
-      for (const p of (predRes.data ?? []) as any[]) {
-        if (!matchIds.has(p.match_id)) continue
-        if (!map.has(p.user_id)) map.set(p.user_id, new Map())
-        map.get(p.user_id)!.set(p.match_id, { h: p.pred_home_score, a: p.pred_away_score })
-      }
-      setDayMatches(matches)
-      setPredsMap(map)
-      setLoading(false)
-    })
+
+    supabase.from('matches')
+      .select('id, kickoff_at, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
+      .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
+      .eq('stage', 'group').order('kickoff_at')
+      .then(({ data: matchData }) => {
+        const matches = (matchData ?? []) as DayMatch[]
+        const matchIds = matches.map(m => m.id)
+        if (!matchIds.length) { setDayMatches([]); setPredsMap(new Map()); setLoading(false); return }
+
+        // Fetch predictions filtered to these match IDs only
+        Promise.all([
+          (supabase as any).from('predictions_group')
+            .select('user_id,match_id,pred_home_score,pred_away_score')
+            .in('match_id', matchIds)
+            .limit(5000),
+          // Fetch predicted champions (Final = bracket_slot 32) with team info
+          (supabase as any).from('predictions_knockout')
+            .select('user_id, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
+            .eq('bracket_slot', 32)
+            .limit(500),
+          (supabase as any).from('teams').select('id, name, fifa_code'),
+        ]).then(([predRes, champRes, teamsRes]: any[]) => {
+          const teamById = new Map<string, { name: string; fifa_code: string }>((teamsRes.data ?? []).map((t: any) => [t.id, t]))
+
+          const map = new Map<string, Map<string, { h: number; a: number }>>()
+          for (const p of (predRes.data ?? [])) {
+            if (!map.has(p.user_id)) map.set(p.user_id, new Map())
+            map.get(p.user_id)!.set(p.match_id, { h: p.pred_home_score, a: p.pred_away_score })
+          }
+
+          const cmap = new Map<string, { name: string; fifa_code: string } | null>()
+          for (const c of (champRes.data ?? [])) {
+            // Winner = team with higher predicted score; tie = home team wins (penalties assumed)
+            let winnerId: string | null = null
+            if (c.pred_home_score != null && c.pred_away_score != null) {
+              winnerId = c.pred_home_score >= c.pred_away_score ? c.pred_home_team_id : c.pred_away_team_id
+            } else if (c.pred_home_team_id) {
+              winnerId = c.pred_home_team_id
+            }
+            const team = winnerId ? teamById.get(winnerId) ?? null : null
+            cmap.set(c.user_id, team ? { name: team.name, fifa_code: team.fifa_code } : null)
+          }
+
+          setDayMatches(matches)
+          setPredsMap(map)
+          setChampMap(cmap)
+          setLoading(false)
+        })
+      })
   }, [selectedDay]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadRecap = async () => {
+    setShowRecap(true)
+    if (recap) return
+    setRecapLoading(true)
+    try {
+      const res = await fetch('/api/recap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          day: selectedDay,
+          leagueId: leagueId === 'global' ? null : leagueId,
+          leagueName,
+          playerNames: entries.map(e => e.displayName),
+        }),
+      })
+      const data = await res.json()
+      setRecap(data.recap ?? 'Could not generate recap.')
+    } catch {
+      setRecap('Failed to load recap — check your connection.')
+    }
+    setRecapLoading(false)
+  }
+
+  const dayLabel = selectedDay
+    ? new Date(selectedDay + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+    : ''
 
   return (
     <div>
+      {/* Day picker */}
       <div className="flex gap-1.5 flex-wrap mb-4">
         {allDays.map(day => (
           <button key={day} onClick={() => setSelectedDay(day)}
@@ -139,6 +211,17 @@ function DayView({ entries, currentUserId }: { entries: LeaderboardEntry[]; curr
         <div className="text-center text-gray-400 py-10 text-sm">No group matches on this day</div>
       ) : (
         <>
+          {/* Recap button */}
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-gray-400">{dayLabel} · {dayMatches.length} matches</p>
+            <button
+              onClick={loadRecap}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow"
+            >
+              📰 Day Recap
+            </button>
+          </div>
+
           <div className="overflow-x-auto -mx-4 px-4">
             <table className="min-w-full text-xs border-collapse">
               <thead>
@@ -146,17 +229,26 @@ function DayView({ entries, currentUserId }: { entries: LeaderboardEntry[]; curr
                   <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">Player</th>
                   <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">Pts</th>
                   {dayMatches.map(m => (
-                    <th key={m.id} className="py-2 px-2 text-center font-normal min-w-[96px]">
-                      <div className="font-semibold text-[11px]">
-                        {m.home_team?.flag_emoji} {m.home_team?.fifa_code} · {m.away_team?.fifa_code} {m.away_team?.flag_emoji}
+                    <th key={m.id} className="py-2 px-2 text-center font-normal min-w-[100px]">
+                      <div className="flex items-center justify-center gap-1">
+                        {m.home_team?.fifa_code && (
+                          <img src={flagUrl(m.home_team.fifa_code, 40)} alt={m.home_team.fifa_code} className="w-5 h-auto rounded-sm" />
+                        )}
+                        <span className="font-semibold text-[11px]">{m.home_team?.fifa_code}</span>
+                        <span className="text-white/40">v</span>
+                        <span className="font-semibold text-[11px]">{m.away_team?.fifa_code}</span>
+                        {m.away_team?.fifa_code && (
+                          <img src={flagUrl(m.away_team.fifa_code, 40)} alt={m.away_team.fifa_code} className="w-5 h-auto rounded-sm" />
+                        )}
                       </div>
                       <div className="text-[10px] opacity-70 mt-0.5">
                         {m.actual_home_score !== null
-                          ? <span className="font-bold opacity-100">{m.actual_home_score}–{m.actual_away_score} FT</span>
+                          ? <span className="font-bold opacity-100 text-green-300">{m.actual_home_score}–{m.actual_away_score} FT</span>
                           : m.kickoff_at ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC' : 'TBD'}
                       </div>
                     </th>
                   ))}
+                  <th className="py-2 px-2 text-center font-normal min-w-[80px] text-yellow-300 text-[11px]">🏆 Champion</th>
                 </tr>
               </thead>
               <tbody>
@@ -170,6 +262,7 @@ function DayView({ entries, currentUserId }: { entries: LeaderboardEntry[]; curr
                     if (p) todayPts += predPts(p.h, p.a, m.actual_home_score!, m.actual_away_score!)
                   }
                   const rowBg = isMe ? 'bg-blue-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'
+                  const champ = champMap.get(entry.userId)
                   return (
                     <tr key={entry.userId} className={`border-t border-gray-100 ${rowBg}`}>
                       <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg}`}>
@@ -184,7 +277,7 @@ function DayView({ entries, currentUserId }: { entries: LeaderboardEntry[]; curr
                       </td>
                       <td className="py-2 px-3 text-center whitespace-nowrap">
                         <span className="font-bold text-[#0B1F3A]">{entry.totalPts}</span>
-                        {todayPts > 0 && <span className="text-green-600 ml-1">+{todayPts}</span>}
+                        {todayPts > 0 && <span className="text-green-600 ml-1 font-medium">+{todayPts}</span>}
                       </td>
                       {dayMatches.map(m => {
                         const p = userPreds?.get(m.id)
@@ -194,6 +287,16 @@ function DayView({ entries, currentUserId }: { entries: LeaderboardEntry[]; curr
                           </td>
                         )
                       })}
+                      <td className="py-2 px-2 text-center">
+                        {champ ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <img src={flagUrl(champ.fifa_code, 40)} alt={champ.fifa_code} className="w-4 h-auto rounded-sm" />
+                            <span className="text-[10px] font-semibold text-gray-700">{champ.fifa_code}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-300 text-[10px]">—</span>
+                        )}
+                      </td>
                     </tr>
                   )
                 })}
@@ -208,6 +311,29 @@ function DayView({ entries, currentUserId }: { entries: LeaderboardEntry[]; curr
             <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-medium">gray = pending</span>
           </div>
         </>
+      )}
+
+      {/* Recap popup */}
+      {showRecap && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={() => setShowRecap(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-[#0B1F3A]">📰 Day Recap</h2>
+                <p className="text-xs text-gray-400">{dayLabel} · {leagueName}</p>
+              </div>
+              <button onClick={() => setShowRecap(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">✕</button>
+            </div>
+            {recapLoading ? (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <div className="w-8 h-8 border-3 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-gray-500">Generating recap with AI…</p>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{recap}</div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
@@ -271,7 +397,7 @@ export default function LeaderboardPage() {
   const [leagueError, setLeagueError] = useState<string | null>(null)
   const [inviteLeague, setInviteLeague] = useState<UserLeague | null>(null)
   const [copiedLeagueId, setCopiedLeagueId] = useState<string | null>(null)
-  const [lbTab, setLbTab] = useState<'overview' | 'dayview'>('overview')
+  const [lbTab, setLbTab] = useState<'overview' | 'dayview'>('dayview')
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
@@ -589,7 +715,7 @@ export default function LeaderboardPage() {
         <button onClick={() => setLbTab('dayview')} className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === 'dayview' ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Day View</button>
       </div>
 
-      {lbTab === 'dayview' && <DayView entries={visibleEntries} currentUserId={currentUserId} />}
+      {lbTab === 'dayview' && <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={selectedLeagueId === 'global' ? 'Global' : (userLeagues.find(l => l.id === selectedLeagueId)?.name ?? 'League')} />}
 
       {lbTab === 'overview' && <>
       {/* Scoring legend */}
