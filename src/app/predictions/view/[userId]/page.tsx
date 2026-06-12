@@ -45,9 +45,15 @@ interface KOPred {
 }
 
 const KO_STAGE_ORDER = ['r32', 'r16', 'qf', 'sf', 'third', 'final']
-const KO_STAGE_LABEL: Record<string, string> = {
-  r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-Finals',
-  sf: 'Semi-Finals', third: '3rd Place', final: 'Final',
+const KO_STAGE_KEY: Record<string, string> = {
+  r32: 'pv_ko_r32', r16: 'pv_ko_r16', qf: 'pv_ko_qf',
+  sf: 'pv_ko_sf', third: 'pv_ko_third', final: 'pv_ko_final',
+}
+
+const LANG_TO_LOCALE: Record<string, string> = {
+  en: 'en-GB', uk: 'uk', az: 'az', fr: 'fr-FR', es: 'es-ES', de: 'de-DE',
+  pt: 'pt-BR', it: 'it-IT', nl: 'nl-NL', tr: 'tr-TR', zh: 'zh-CN',
+  ar: 'ar-SA', hi: 'hi-IN', ru: 'ru-RU', bn: 'bn-BD', ja: 'ja-JP', id: 'id-ID',
 }
 
 function toCDTDate(iso: string) {
@@ -77,7 +83,7 @@ function TeamFlag({ team, size = 24, lang }: { team: Team | null; size?: number;
   )
 }
 
-function MatchCard({ m, pred, lang }: { m: MatchRow; pred: GroupPred | undefined; lang: string }) {
+function MatchCard({ m, pred, lang, noPick }: { m: MatchRow; pred: GroupPred | undefined; lang: string; noPick: string }) {
   const hasPred = pred && pred.pred_home_score !== null
   const hasResult = m.actual_home_score !== null && m.actual_away_score !== null
   const ph = hasPred ? pred.pred_home_score! : null
@@ -111,7 +117,7 @@ function MatchCard({ m, pred, lang }: { m: MatchRow; pred: GroupPred | undefined
               {ph}–{pa}{pts !== null && <PtsChip pts={pts} />}
             </span>
           ) : (
-            <span className="text-[10px] text-gray-300 italic">no pick</span>
+            <span className="text-[10px] text-gray-300 italic">{noPick}</span>
           )}
         </div>
 
@@ -139,12 +145,13 @@ interface GroupStanding {
   pts: number
 }
 
-function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang }: {
+function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, groupTableLabel }: {
   groupLetter: string
   matches: MatchRow[]
   preds: Map<string, GroupPred>
   teamById: Map<string, Team>
   lang: string
+  groupTableLabel: string
 }) {
   const standings = new Map<string, GroupStanding>()
   const teams = new Set<string>()
@@ -181,7 +188,7 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang }: {
     <div className="mb-5">
       <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-2">
         <span className="border-b border-gray-200 flex-1" />
-        <span>Group {groupLetter} — Predicted Table</span>
+        <span>{groupTableLabel.replace('{g}', groupLetter)}</span>
         <span className="border-b border-gray-200 flex-1" />
       </div>
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -224,7 +231,7 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang }: {
   )
 }
 
-function KOMatchCard({ m, pred, teamById, lang }: { m: MatchRow; pred: KOPred | undefined; teamById: Map<string, Team>; lang: string }) {
+function KOMatchCard({ m, pred, teamById, lang, noPick }: { m: MatchRow; pred: KOPred | undefined; teamById: Map<string, Team>; lang: string; noPick: string }) {
   const homeTeam = pred?.pred_home_team_id ? teamById.get(pred.pred_home_team_id) ?? m.home_team : m.home_team
   const awayTeam = pred?.pred_away_team_id ? teamById.get(pred.pred_away_team_id) ?? m.away_team : m.away_team
   const hasPred = pred && pred.pred_home_score !== null
@@ -248,13 +255,13 @@ function KOMatchCard({ m, pred, teamById, lang }: { m: MatchRow; pred: KOPred | 
           {hasResult ? (
             <span className="font-black text-base text-[#0B1F3A]">{m.actual_home_score} – {m.actual_away_score}</span>
           ) : (
-            <span className="text-[10px] text-gray-400">{m.kickoff_at ? new Date(m.kickoff_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'TBD'}</span>
+            <span className="text-[10px] text-gray-400">{m.kickoff_at ? new Date(m.kickoff_at).toLocaleDateString(LANG_TO_LOCALE[lang] ?? 'en-GB', { day: 'numeric', month: 'short' }) : 'TBD'}</span>
           )}
           {hasPred ? (
             <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${hasResult ? (pts === 3 ? 'bg-green-100 text-green-700' : pts === 2 ? 'bg-blue-100 text-blue-700' : pts === 1 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600') : 'bg-gray-100 text-gray-500'}`}>
               {ph}–{pa}{pts !== null && <PtsChip pts={pts} />}
             </span>
-          ) : <span className="text-[10px] text-gray-300 italic">no pick</span>}
+          ) : <span className="text-[10px] text-gray-300 italic">{noPick}</span>}
         </div>
         <div className="flex-1 flex items-center gap-1.5 min-w-0">
           {awayTeam?.fifa_code && <img src={flagUrl(awayTeam.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
@@ -269,7 +276,7 @@ function KOMatchCard({ m, pred, teamById, lang }: { m: MatchRow; pred: KOPred | 
 
 export default function UserPredictionsPage() {
   const { userId } = useParams<{ userId: string }>()
-  const { lang } = useTranslation()
+  const { lang, t } = useTranslation()
   const [displayName, setDisplayName] = useState<string | null>(null)
   const [matches, setMatches] = useState<MatchRow[]>([])
   const [groupPreds, setGroupPreds] = useState<Map<string, GroupPred>>(new Map())
@@ -286,14 +293,18 @@ export default function UserPredictionsPage() {
       supabase.from('matches')
         .select('id, stage, group_letter, bracket_slot, ko_stage, kickoff_at, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*)')
         .order('kickoff_at'),
-      supabase.from('predictions_group').select('match_id, pred_home_score, pred_away_score').eq('user_id', userId),
-      (supabase as any).from('predictions_knockout').select('bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score').eq('user_id', userId),
+      // Use service-role API route so predictions load regardless of RLS
+      fetch('/api/userpreds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      }).then(r => r.json()),
       supabase.from('teams').select('id, name, fifa_code, group_letter, flag_emoji'),
-    ]).then(([userRes, matchRes, gpRes, kpRes, teamsRes]) => {
+    ]).then(([userRes, matchRes, predsData, teamsRes]) => {
       setDisplayName(transliterateName((userRes.data as any)?.display_name ?? 'Unknown player'))
       setMatches((matchRes.data as MatchRow[]) ?? [])
-      setGroupPreds(new Map((gpRes.data ?? []).map((p: GroupPred) => [p.match_id, p])))
-      setKoPreds(new Map((kpRes.data ?? []).map((p: KOPred) => [p.bracket_slot, p])))
+      setGroupPreds(new Map((predsData.groupPreds ?? []).map((p: GroupPred) => [p.match_id, p])))
+      setKoPreds(new Map((predsData.koPreds ?? []).map((p: KOPred) => [p.bracket_slot, p])))
       setTeamById(new Map(((teamsRes.data ?? []) as Team[]).map(t => [t.id, t])))
       setLoading(false)
     })
@@ -334,15 +345,15 @@ export default function UserPredictionsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 pb-24">
-      <Link href="/leaderboard" className="text-sm text-gray-400 hover:text-gray-600 mb-4 inline-block">← Leaderboard</Link>
+      <Link href="/leaderboard" className="text-sm text-gray-400 hover:text-gray-600 mb-4 inline-block">{t('pv_back')}</Link>
 
       <div className="mb-5">
-        <h1 className="text-2xl font-bold text-[#0B1F3A]">{displayName}&apos;s Predictions</h1>
+        <h1 className="text-2xl font-bold text-[#0B1F3A]">{displayName} — {t('pv_predictions')}</h1>
         <div className="flex flex-wrap items-center gap-2 mt-1">
-          <span className="text-sm text-gray-400">{groupPredCount} group picks · {koPredCount} knockout picks</span>
+          <span className="text-sm text-gray-400">{groupPredCount} {t('pv_group_picks')} · {koPredCount} {t('pv_ko_picks')}</span>
           {champTeam && (
             <span className="inline-flex items-center gap-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-semibold px-2.5 py-1 rounded-full">
-              🏆 Predicted champion:
+              {t('pv_predicted_champ')}:
               <img src={flagUrl(champTeam.fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />
               {getTeamName(champTeam.fifa_code, lang) ?? champTeam.name}
             </span>
@@ -353,9 +364,9 @@ export default function UserPredictionsPage() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200 mb-5">
         {[
-          { key: 'groups', label: '⚽ Group Matches' },
-          { key: 'standings', label: '📊 Predicted Groups' },
-          { key: 'knockout', label: '🏆 Knockout' },
+          { key: 'groups', label: t('pv_tab_groups') },
+          { key: 'standings', label: t('pv_tab_standings') },
+          { key: 'knockout', label: t('pv_tab_knockout') },
         ].map(({ key, label }) => (
           <button key={key} onClick={() => setTab(key as any)}
             className={`pb-3 px-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${tab === key ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-400 hover:text-gray-700'}`}>
@@ -366,10 +377,10 @@ export default function UserPredictionsPage() {
 
       {/* Legend */}
       <div className="flex flex-wrap gap-2 text-[10px] mb-5">
-        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">3pts — exact score</span>
-        <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">2pts — goal diff</span>
-        <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">1pt — outcome</span>
-        <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">0pts — wrong</span>
+        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">{t('pv_legend_exact')}</span>
+        <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{t('pv_legend_gd')}</span>
+        <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">{t('pv_legend_outcome')}</span>
+        <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">{t('pv_legend_wrong')}</span>
       </div>
 
       {/* Group matches by CDT day */}
@@ -377,7 +388,8 @@ export default function UserPredictionsPage() {
         <div className="flex flex-col gap-6">
           {days.map(day => {
             const dayMatchList = byDay.get(day)!
-            const dateLabel = new Date(day + 'T12:00:00Z').toLocaleDateString('en-GB', {
+            const locale = LANG_TO_LOCALE[lang] ?? 'en-GB'
+            const dateLabel = new Date(day + 'T12:00:00Z').toLocaleDateString(locale, {
               weekday: 'long', day: 'numeric', month: 'long',
             })
             return (
@@ -389,7 +401,7 @@ export default function UserPredictionsPage() {
                 </div>
                 <div className="flex flex-col gap-2">
                   {dayMatchList.map(m => (
-                    <MatchCard key={m.id} m={m} pred={groupPreds.get(m.id)} lang={lang} />
+                    <MatchCard key={m.id} m={m} pred={groupPreds.get(m.id)} lang={lang} noPick={t('pv_no_pick')} />
                   ))}
                 </div>
               </div>
@@ -402,7 +414,7 @@ export default function UserPredictionsPage() {
       {tab === 'standings' && (
         <div>
           <p className="text-xs text-gray-400 mb-4 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-            These standings are calculated from this player&apos;s predictions — top 2 (highlighted green) are who they predict will advance.
+            {t('pv_standings_note')}
           </p>
           {groupLetters.map(g => {
             const gMatches = groupMatches.filter(m => m.group_letter === g)
@@ -414,6 +426,7 @@ export default function UserPredictionsPage() {
                 preds={groupPreds}
                 teamById={teamById}
                 lang={lang}
+                groupTableLabel={t('pv_group_table')}
               />
             )
           })}
@@ -424,7 +437,7 @@ export default function UserPredictionsPage() {
       {tab === 'knockout' && (
         <div className="flex flex-col gap-1">
           {koMatches.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-10">Knockout matches not scheduled yet</p>
+            <p className="text-sm text-gray-400 text-center py-10">{t('pv_ko_none')}</p>
           ) : (() => {
             const stageGroups = new Map<string, MatchRow[]>()
             for (const m of koMatches) {
@@ -436,12 +449,12 @@ export default function UserPredictionsPage() {
               <div key={stage} className="mb-5">
                 <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                   <span className="border-b border-gray-200 flex-1" />
-                  <span className="shrink-0">{KO_STAGE_LABEL[stage]}</span>
+                  <span className="shrink-0">{t(KO_STAGE_KEY[stage] ?? stage)}</span>
                   <span className="border-b border-gray-200 flex-1" />
                 </div>
                 <div className="flex flex-col gap-2">
                   {stageGroups.get(stage)!.map(m => (
-                    <KOMatchCard key={m.id} m={m} pred={koPreds.get(m.bracket_slot!)} teamById={teamById} lang={lang} />
+                    <KOMatchCard key={m.id} m={m} pred={koPreds.get(m.bracket_slot!)} teamById={teamById} lang={lang} noPick={t('pv_no_pick')} />
                   ))}
                 </div>
               </div>
