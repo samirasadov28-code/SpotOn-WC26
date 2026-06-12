@@ -14,6 +14,7 @@ const MORE_LINKS: { href: string; label: string }[] = []
 
 export default function Navbar() {
   const [displayName, setDisplayName] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [timeToLock, setTimeToLock] = useState<string | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const [langOpen, setLangOpen] = useState(false)
@@ -43,11 +44,12 @@ export default function Navbar() {
       if (user) {
         const { data } = await supabase
           .from('users')
-          .select('display_name')
+          .select('display_name, is_admin')
           .eq('id', user.id)
           .single()
         const name = (data as any)?.display_name
         setDisplayName(name || user.email?.split('@')[0] || 'Player')
+        setIsAdmin(!!(data as any)?.is_admin)
       }
     }
     getUser()
@@ -128,6 +130,11 @@ export default function Navbar() {
 
               {displayName ? (
                 <div className="hidden md:flex items-center gap-2">
+                  {isAdmin && (
+                    <Link href="/admin" className="text-xs bg-yellow-500 hover:bg-yellow-400 text-black font-bold px-2 py-1 rounded transition-colors">
+                      ⚙ Admin
+                    </Link>
+                  )}
                   <Link href="/profile" className="text-sm text-white/70 hover:text-white transition-colors">{displayName}</Link>
                   <button onClick={handleSignOut} className="text-sm text-red-400 hover:text-red-300">{t('nav_signout')}</button>
                 </div>
@@ -196,9 +203,16 @@ export default function Navbar() {
               </div>
               <div className="border-t border-white/10 mt-2 pt-3">
                 {displayName ? (
-                  <div className="flex items-center justify-between px-4">
-                    <Link href="/profile" onClick={() => setMoreOpen(false)} className="text-sm text-white/60 hover:text-white transition-colors">{displayName}</Link>
-                    <button onClick={handleSignOut} className="text-sm text-red-400 hover:text-red-300">{t('nav_signout')}</button>
+                  <div className="flex flex-col gap-2 px-4">
+                    {isAdmin && (
+                      <Link href="/admin" onClick={() => setMoreOpen(false)} className="text-sm font-bold text-yellow-400 hover:text-yellow-300">
+                        ⚙ Admin — Enter Results
+                      </Link>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <Link href="/profile" onClick={() => setMoreOpen(false)} className="text-sm text-white/60 hover:text-white transition-colors">{displayName}</Link>
+                      <button onClick={handleSignOut} className="text-sm text-red-400 hover:text-red-300">{t('nav_signout')}</button>
+                    </div>
                   </div>
                 ) : (
                   <Link href="/auth/login" onClick={() => setMoreOpen(false)} className="block py-3 px-4 text-sm font-medium text-green-400 hover:text-green-300">
