@@ -162,14 +162,20 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
           setPredsMap(map)
           setChampMap(cmap)
           setLoading(false)
+
+          // Auto-popup recap once per league+day if matches are finished
+          const hasResults = matches.some((m: DayMatch) => m.actual_home_score !== null)
+          const seenKey = `spoton_recap_seen_${leagueId}_${selectedDay}`
+          if (hasResults && !localStorage.getItem(seenKey)) {
+            localStorage.setItem(seenKey, '1')
+            setShowRecap(true)
+            setRecapLoading(true)
+          }
         })
       })
-  }, [selectedDay]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedDay, leagueId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadRecap = async () => {
-    setShowRecap(true)
-    if (recap) return
-    setRecapLoading(true)
+  const fetchRecap = async () => {
     try {
       const res = await fetch('/api/recap', {
         method: 'POST',
@@ -187,6 +193,17 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
       setRecap('Failed to load recap — check your connection.')
     }
     setRecapLoading(false)
+  }
+
+  // Fires when auto-popup sets recapLoading, or when user manually clicks
+  useEffect(() => {
+    if (recapLoading && !recap) fetchRecap()
+  }, [recapLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadRecap = () => {
+    setShowRecap(true)
+    if (recap) return
+    setRecapLoading(true)
   }
 
   const dayLabel = selectedDay

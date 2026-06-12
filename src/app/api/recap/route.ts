@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
+import Groq from 'groq-sdk'
 import { createClient } from '@supabase/supabase-js'
 
 function getServiceClient() {
@@ -25,8 +25,8 @@ export async function POST(request: NextRequest) {
     .single()
   if (cached?.recap_text) return NextResponse.json({ recap: cached.recap_text })
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ recap: 'Recap feature requires ANTHROPIC_API_KEY to be configured.' })
+  if (!process.env.GROQ_API_KEY) {
+    return NextResponse.json({ recap: 'Recap feature requires GROQ_API_KEY to be configured.' })
   }
 
   // Fetch match data for the day
@@ -112,9 +112,9 @@ export async function POST(request: NextRequest) {
 
   const promptData = JSON.stringify({ date: day, matches: matchSummaries, dayRanking }, null, 2)
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  const message = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+  const completion = await groq.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
     max_tokens: 1024,
     messages: [{
       role: 'user',
@@ -135,7 +135,7 @@ ${promptData}`,
     }],
   })
 
-  const recapText = (message.content[0] as any).text ?? ''
+  const recapText = completion.choices[0]?.message?.content ?? ''
 
   // Cache it
   await (supabase as any).from('day_recaps').upsert(
