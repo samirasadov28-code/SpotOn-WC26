@@ -48,6 +48,171 @@ interface ScoreBreakdown {
   h2h?: H2HStats
 }
 
+function toCDTDate(iso: string) {
+  return new Date(new Date(iso).getTime() - 6 * 3600_000).toISOString().slice(0, 10)
+}
+
+function predPts(ph: number, pa: number, ah: number, aa: number) {
+  if (ph === ah && pa === aa) return 3
+  if ((ph - pa) === (ah - aa)) return 2
+  if (Math.sign(ph - pa) === Math.sign(ah - aa)) return 1
+  return 0
+}
+
+interface DayMatch {
+  id: string
+  kickoff_at: string | null
+  actual_home_score: number | null
+  actual_away_score: number | null
+  home_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
+  away_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
+}
+
+function PredCell({ ph, pa, ah, aa }: { ph: number|null; pa: number|null; ah: number|null; aa: number|null }) {
+  if (ph === null || pa === null) return <span className="text-gray-300">—</span>
+  if (ah === null || aa === null)
+    return <span className="text-xs font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{ph}–{pa}</span>
+  const pts = predPts(ph, pa, ah, aa)
+  const cls = pts===3 ? 'bg-green-100 text-green-800' : pts===2 ? 'bg-blue-100 text-blue-800' : pts===1 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-600'
+  return <span className={`text-xs font-mono px-1.5 py-0.5 rounded font-semibold ${cls}`}>{ph}–{pa} <span className="opacity-60">({pts})</span></span>
+}
+
+function DayView({ entries, currentUserId }: { entries: LeaderboardEntry[]; currentUserId: string | null }) {
+  const supabase = createClient()
+  const { lang } = useTranslation()
+  const [allDays, setAllDays] = useState<string[]>([])
+  const [selectedDay, setSelectedDay] = useState('')
+  const [dayMatches, setDayMatches] = useState<DayMatch[]>([])
+  const [predsMap, setPredsMap] = useState<Map<string, Map<string, { h: number; a: number }>>>(new Map())
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.from('matches').select('kickoff_at').eq('stage', 'group').order('kickoff_at').then(({ data }) => {
+      if (!data) return
+      const days = [...new Set(data.map((m: any) => toCDTDate(m.kickoff_at)))]
+      setAllDays(days)
+      const todayCDT = toCDTDate(new Date().toISOString())
+      setSelectedDay(days.find(d => d >= todayCDT) ?? days[days.length - 1] ?? '')
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!selectedDay) return
+    setLoading(true)
+    const start = new Date(selectedDay + 'T06:00:00Z')
+    const end   = new Date(start.getTime() + 24 * 3600_000)
+    Promise.all([
+      supabase.from('matches')
+        .select('*, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
+        .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
+        .eq('stage', 'group').order('kickoff_at'),
+      (supabase as any).from('predictions_group').select('user_id,match_id,pred_home_score,pred_away_score'),
+    ]).then(([matchRes, predRes]) => {
+      const matches = (matchRes.data ?? []) as DayMatch[]
+      const matchIds = new Set(matches.map(m => m.id))
+      const map = new Map<string, Map<string, { h: number; a: number }>>()
+      for (const p of (predRes.data ?? []) as any[]) {
+        if (!matchIds.has(p.match_id)) continue
+        if (!map.has(p.user_id)) map.set(p.user_id, new Map())
+        map.get(p.user_id)!.set(p.match_id, { h: p.pred_home_score, a: p.pred_away_score })
+      }
+      setDayMatches(matches)
+      setPredsMap(map)
+      setLoading(false)
+    })
+  }, [selectedDay]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div>
+      <div className="flex gap-1.5 flex-wrap mb-4">
+        {allDays.map(day => (
+          <button key={day} onClick={() => setSelectedDay(day)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
+              selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
+            }`}>
+            {new Date(day + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+          </button>
+        ))}
+      </div>
+
+      {loading ? <div className="text-center text-gray-400 py-10 text-sm">Loading…</div> : dayMatches.length === 0 ? (
+        <div className="text-center text-gray-400 py-10 text-sm">No group matches on this day</div>
+      ) : (
+        <>
+          <div className="overflow-x-auto -mx-4 px-4">
+            <table className="min-w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-[#0B1F3A] text-white">
+                  <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">Player</th>
+                  <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">Pts</th>
+                  {dayMatches.map(m => (
+                    <th key={m.id} className="py-2 px-2 text-center font-normal min-w-[96px]">
+                      <div className="font-semibold text-[11px]">
+                        {m.home_team?.flag_emoji} {m.home_team?.fifa_code} · {m.away_team?.fifa_code} {m.away_team?.flag_emoji}
+                      </div>
+                      <div className="text-[10px] opacity-70 mt-0.5">
+                        {m.actual_home_score !== null
+                          ? <span className="font-bold opacity-100">{m.actual_home_score}–{m.actual_away_score} FT</span>
+                          : m.kickoff_at ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC' : 'TBD'}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry, idx) => {
+                  const isMe = entry.userId === currentUserId
+                  const userPreds = predsMap.get(entry.userId)
+                  let todayPts = 0
+                  for (const m of dayMatches) {
+                    if (m.actual_home_score === null) continue
+                    const p = userPreds?.get(m.id)
+                    if (p) todayPts += predPts(p.h, p.a, m.actual_home_score!, m.actual_away_score!)
+                  }
+                  const rowBg = isMe ? 'bg-blue-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'
+                  return (
+                    <tr key={entry.userId} className={`border-t border-gray-100 ${rowBg}`}>
+                      <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg}`}>
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="text-gray-400 text-[10px] w-4 shrink-0">{entry.rank}</span>
+                          <Link href={`/predictions/view/${entry.userId}`}
+                            className="font-semibold text-[#0B1F3A] hover:underline truncate max-w-[100px]" title={entry.displayName}>
+                            {entry.displayName}
+                          </Link>
+                          {isMe && <span className="text-[10px] text-blue-400 shrink-0">you</span>}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-center whitespace-nowrap">
+                        <span className="font-bold text-[#0B1F3A]">{entry.totalPts}</span>
+                        {todayPts > 0 && <span className="text-green-600 ml-1">+{todayPts}</span>}
+                      </td>
+                      {dayMatches.map(m => {
+                        const p = userPreds?.get(m.id)
+                        return (
+                          <td key={m.id} className="py-2 px-2 text-center">
+                            <PredCell ph={p?.h ?? null} pa={p?.a ?? null} ah={m.actual_home_score} aa={m.actual_away_score} />
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3 text-[10px]">
+            <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded font-medium">3pts exact</span>
+            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-medium">2pts goal diff</span>
+            <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded font-medium">1pt outcome</span>
+            <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium">0pts wrong</span>
+            <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-medium">gray = pending</span>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function getMatchPts(pred_home: number, pred_away: number, actual_home: number, actual_away: number): number {
   if (pred_home === actual_home && pred_away === actual_away) return 3
   const predGD = pred_home - pred_away, actualGD = actual_home - actual_away
@@ -106,6 +271,7 @@ export default function LeaderboardPage() {
   const [leagueError, setLeagueError] = useState<string | null>(null)
   const [inviteLeague, setInviteLeague] = useState<UserLeague | null>(null)
   const [copiedLeagueId, setCopiedLeagueId] = useState<string | null>(null)
+  const [lbTab, setLbTab] = useState<'overview' | 'dayview'>('overview')
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
@@ -417,6 +583,15 @@ export default function LeaderboardPage() {
         </div>
       )}
 
+      {/* Tab switcher */}
+      <div className="flex gap-1 mb-5 border-b border-gray-200">
+        <button onClick={() => setLbTab('overview')} className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === 'overview' ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Overview</button>
+        <button onClick={() => setLbTab('dayview')} className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === 'dayview' ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Day View</button>
+      </div>
+
+      {lbTab === 'dayview' && <DayView entries={visibleEntries} currentUserId={currentUserId} />}
+
+      {lbTab === 'overview' && <>
       {/* Scoring legend */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-xs text-amber-900 flex flex-wrap gap-x-5 gap-y-1.5">
         <span className="font-bold text-amber-800">{t('lb_how_points')}</span>
@@ -457,7 +632,7 @@ export default function LeaderboardPage() {
                     <tr
                       key={entry.userId}
                       onClick={() => handleRowClick(entry)}
-                      className={`border-t border-gray-100 cursor-pointer transition-colors hover:bg-blue-50/50 ${
+                      className={`border-t border-gray-100 cursor-pointer transition-colors hover:bg-blue-50/50 active:bg-blue-100 select-none ${
                         isMe ? 'bg-blue-50 font-semibold' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'
                       } ${isExpanded ? 'border-b-0' : ''}`}
                     >
@@ -468,6 +643,7 @@ export default function LeaderboardPage() {
                         <div className="truncate flex items-center gap-1.5">
                           {entry.displayName}
                           <span className="text-gray-300 text-xs">▾</span>
+                          <Link href={`/predictions/view/${entry.userId}`} onClick={e => e.stopPropagation()} className="ml-auto shrink-0 text-gray-300 hover:text-[#0B1F3A] transition-colors text-xs" title="View all predictions">👁</Link>
                         </div>
                         {isMe && <div className="text-xs text-blue-500 font-normal">{t('you')}</div>}
                       </td>
@@ -584,6 +760,7 @@ export default function LeaderboardPage() {
           </p>
         </div>
       )}
+      </>}
     </div>
   )
 }

@@ -14,31 +14,38 @@ interface TickerMatch {
   away_team: { name: string; flag_emoji: string | null; fifa_code: string | null } | null
 }
 
-function formatDate(iso: string) {
+// CDT = UTC-6. All "match days" are grouped by Central Daylight Time.
+function toCDTDate(isoStr: string): string {
+  const d = new Date(new Date(isoStr).getTime() - 6 * 60 * 60 * 1000)
+  return d.toISOString().slice(0, 10)
+}
+
+function formatKickoff(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' UTC'
 }
 
 export default function ScoreTicker() {
-  const { t, lang } = useTranslation()
+  const { lang } = useTranslation()
   const [matches, setMatches] = useState<TickerMatch[]>([])
   const [loading, setLoading] = useState(true)
 
   async function fetchMatches() {
     const supabase = createClient()
 
-    // First try: today's matches with scores (live/recent results)
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const todayEnd = new Date()
-    todayEnd.setHours(23, 59, 59, 999)
+    // Current CDT "today"
+    const nowCDT = toCDTDate(new Date().toISOString())
+
+    // Try today's CDT match day first (may span two UTC days)
+    const cdtDayStart = new Date(nowCDT + 'T06:00:00Z') // CDT midnight = UTC 06:00
+    const cdtDayEnd   = new Date(new Date(cdtDayStart).getTime() + 24 * 60 * 60 * 1000)
 
     const { data: todayData } = await supabase
       .from('matches')
       .select('*, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
-      .gte('kickoff_at', todayStart.toISOString())
-      .lte('kickoff_at', todayEnd.toISOString())
+      .gte('kickoff_at', cdtDayStart.toISOString())
+      .lt('kickoff_at', cdtDayEnd.toISOString())
       .order('kickoff_at')
 
     if (todayData && todayData.length > 0) {
@@ -47,7 +54,7 @@ export default function ScoreTicker() {
       return
     }
 
-    // Fallback: next upcoming match day
+    // Fallback: find next upcoming match and show all games on that CDT day
     const { data: nextData } = await supabase
       .from('matches')
       .select('kickoff_at')
@@ -57,16 +64,15 @@ export default function ScoreTicker() {
 
     if (!nextData || nextData.length === 0) { setLoading(false); return }
 
-    const nextDay = new Date(nextData[0].kickoff_at)
-    nextDay.setHours(0, 0, 0, 0)
-    const nextDayEnd = new Date(nextDay)
-    nextDayEnd.setHours(23, 59, 59, 999)
+    const nextCDTDay = toCDTDate(nextData[0].kickoff_at!)
+    const nextStart = new Date(nextCDTDay + 'T06:00:00Z')
+    const nextEnd   = new Date(nextStart.getTime() + 24 * 60 * 60 * 1000)
 
     const { data } = await supabase
       .from('matches')
       .select('*, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
-      .gte('kickoff_at', nextDay.toISOString())
-      .lte('kickoff_at', nextDayEnd.toISOString())
+      .gte('kickoff_at', nextStart.toISOString())
+      .lt('kickoff_at', nextEnd.toISOString())
       .order('kickoff_at')
 
     if (data) setMatches(data as unknown as TickerMatch[])
@@ -75,41 +81,29 @@ export default function ScoreTicker() {
 
   useEffect(() => {
     fetchMatches()
-
     const supabase = createClient()
     const channel = supabase
       .channel('score-ticker')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, () => {
-        fetchMatches()
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, fetchMatches)
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading) return null
+  if (loading || matches.length === 0) return null
 
-  const items: string[] = matches.map(m => {
+  const items = matches.map(m => {
     const hFlag = m.home_team?.flag_emoji ?? ''
     const aFlag = m.away_team?.flag_emoji ?? ''
     const hName = m.home_team ? (getTeamName(m.home_team.fifa_code, lang) ?? m.home_team.name) : '?'
     const aName = m.away_team ? (getTeamName(m.away_team.fifa_code, lang) ?? m.away_team.name) : '?'
-    const when = m.kickoff_at ? formatDate(m.kickoff_at) : ''
     if (m.actual_home_score !== null && m.actual_away_score !== null) {
       return `${hFlag} ${hName} ${m.actual_home_score}–${m.actual_away_score} ${aName} ${aFlag}`
     }
+    const when = m.kickoff_at ? formatKickoff(m.kickoff_at) : ''
     return `🔜 ${hFlag} ${hName} vs ${aName} ${aFlag} · ${when}`
   })
 
-  if (items.length === 0) return null
-
-  // Lock = 2 hours before first match kickoff, same format as game times
-  const firstKickoff = matches[0]?.kickoff_at ? new Date(matches[0].kickoff_at) : new Date('2026-06-11T15:00:00Z')
-  const lockDate = new Date(firstKickoff.getTime() - 2 * 3600 * 1000)
-  const lockTime = lockDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-  const lockDay = lockDate.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })
-  const lockReminder = `🔒 ${t('predictions_lock_warning', { time: `${lockDay} · ${lockTime}` })}`
-  const tickerText = [lockReminder, ...items].join('  ·  ')
+  const tickerText = items.join('     ·     ')
 
   return (
     <>
@@ -121,14 +115,20 @@ export default function ScoreTicker() {
         .ticker-track {
           display: inline-block;
           white-space: nowrap;
-          animation: ticker 70s linear infinite;
+          animation: ticker 25s linear infinite;
+        }
+        @media (min-width: 768px) {
+          .ticker-track { animation-duration: 45s; }
         }
         .ticker-wrap:hover .ticker-track {
           animation-play-state: paused;
         }
+        .ticker-wrap:active .ticker-track {
+          animation-play-state: paused;
+        }
       `}</style>
       <div
-        className="ticker-wrap bg-[#0B1F3A] text-white h-8 overflow-hidden flex items-center w-full"
+        className="ticker-wrap bg-[#0B1F3A] text-white h-8 overflow-hidden flex items-center w-full select-none"
         aria-label="Live score ticker"
       >
         <span className="ticker-track text-sm font-medium tracking-wide px-4">

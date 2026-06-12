@@ -189,6 +189,11 @@ export default function ResultsPage() {
   )
 }
 
+function toCDTDate(isoStr: string): string {
+  const d = new Date(new Date(isoStr).getTime() - 6 * 60 * 60 * 1000)
+  return d.toISOString().slice(0, 10)
+}
+
 // ── By Day tab ───────────────────────────────────────────────────────────────
 
 function ByDayTab({ matches }: { matches: MatchRow[] }) {
@@ -196,15 +201,15 @@ function ByDayTab({ matches }: { matches: MatchRow[] }) {
 
   const byDay = new Map<string, MatchRow[]>()
   for (const m of matches) {
-    const day = m.kickoff_at ? m.kickoff_at.slice(0, 10) : 'unknown'
+    const day = m.kickoff_at ? toCDTDate(m.kickoff_at) : 'unknown'
     if (!byDay.has(day)) byDay.set(day, [])
     byDay.get(day)!.push(m)
   }
   const days = Array.from(byDay.keys()).sort()
 
-  // Auto-scroll: find today or nearest upcoming day
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const activeDayDefault = days.find(d => d >= todayStr) ?? days[days.length - 1] ?? ''
+  // Auto-scroll: find today (CDT) or nearest upcoming day
+  const todayCDT = toCDTDate(new Date().toISOString())
+  const activeDayDefault = days.find(d => d >= todayCDT) ?? days[days.length - 1] ?? ''
   const [activeDay, setActiveDay] = useState(activeDayDefault)
 
   const dayMatches = byDay.get(activeDay) ?? []
@@ -217,7 +222,7 @@ function ByDayTab({ matches }: { matches: MatchRow[] }) {
         {days.map(day => {
           const dayMatches = byDay.get(day)!
           const allPlayed = dayMatches.every(m => m.actual_home_score !== null)
-          const someToday = day === todayStr
+          const someToday = day === todayCDT
           const label = new Date(day + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
           return (
             <button key={day} onClick={() => setActiveDay(day)}
