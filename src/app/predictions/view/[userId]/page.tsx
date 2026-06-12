@@ -16,7 +16,7 @@ export default async function UserPredictionsPage({ params }: { params: { userId
   const [userRes, matchRes, gpRes, kpRes, teamsRes] = await Promise.all([
     supabase.from('users').select('display_name').eq('id', userId).single(),
     supabase.from('matches')
-      .select('id, stage, group_letter, bracket_slot, ko_stage, kickoff_at, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(id,name,fifa_code,group_letter,flag_emoji), away_team:teams!matches_away_team_id_fkey(id,name,fifa_code,group_letter,flag_emoji)')
+      .select('id, stage, group_letter, bracket_slot, ko_stage, kickoff_at, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(id,name,fifa_code,flag_emoji), away_team:teams!matches_away_team_id_fkey(id,name,fifa_code,flag_emoji)')
       .order('kickoff_at'),
     supabase.from('predictions_group')
       .select('match_id, pred_home_score, pred_away_score')

@@ -47,25 +47,25 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Champion predictions (bracket_slot=32) — paginate
-  const champs: any[] = []
-  let offset = 0
+  // Final (slot 32) + 3rd place (slot 31) — for top-4 widget
+  const finals: any[] = []
+  let foffset = 0
   while (true) {
     const { data } = await supabase
       .from('predictions_knockout')
-      .select('user_id,pred_home_team_id,pred_away_team_id,pred_home_score,pred_away_score')
-      .eq('bracket_slot', 32)
-      .range(offset, offset + 999)
+      .select('user_id,bracket_slot,pred_home_team_id,pred_away_team_id,pred_home_score,pred_away_score')
+      .in('bracket_slot', [31, 32])
+      .range(foffset, foffset + 999)
     if (!data?.length) break
-    champs.push(...data)
+    finals.push(...data)
     if (data.length < 1000) break
-    offset += 1000
+    foffset += 1000
   }
 
   const { data: teams } = await supabase.from('teams').select('id,name,fifa_code')
 
   const filteredPreds = memberIds ? preds.filter(p => memberIds!.includes(p.user_id)) : preds
-  const filteredChamps = memberIds ? champs.filter(c => memberIds!.includes(c.user_id)) : champs
+  const filteredFinals = memberIds ? finals.filter(f => memberIds!.includes(f.user_id)) : finals
 
-  return NextResponse.json({ preds: filteredPreds, champs: filteredChamps, teams: teams ?? [] })
+  return NextResponse.json({ preds: filteredPreds, finals: filteredFinals, teams: teams ?? [] })
 }

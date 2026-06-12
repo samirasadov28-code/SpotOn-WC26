@@ -98,6 +98,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
   const [dayMatches, setDayMatches] = useState<DayMatch[]>([])
   const [predsMap, setPredsMap] = useState<Map<string, Map<string, { h: number; a: number }>>>(new Map())
   const [champMap, setChampMap] = useState<Map<string, { name: string; fifa_code: string } | null>>(new Map())
+  const [top4, setTop4] = useState<Array<Array<{ team: { name: string; fifa_code: string }; votes: number }>>>([[], [], [], []])
   const [loading, setLoading] = useState(true)
   const [recap, setRecap] = useState<string | null>(null)
   const [recapLoading, setRecapLoading] = useState(false)
@@ -155,20 +156,56 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
       const teamById = new Map<string, { name: string; fifa_code: string }>(
         (apiData.teams ?? []).map((t: any) => [t.id, t])
       )
+
+      // Build per-user champ map (slot 32 = Final winner)
       const cmap = new Map<string, { name: string; fifa_code: string } | null>()
-      for (const c of (apiData.champs ?? [])) {
-        let winnerId: string | null = null
-        if (c.pred_home_score != null && c.pred_away_score != null) {
-          winnerId = c.pred_home_score >= c.pred_away_score ? c.pred_home_team_id : c.pred_away_team_id
-        } else if (c.pred_home_team_id) {
-          winnerId = c.pred_home_team_id
+
+      // Build top-4 vote tallies: positions 1,2,3,4
+      const posVotes: [Map<string, number>, Map<string, number>, Map<string, number>, Map<string, number>] = [
+        new Map(), new Map(), new Map(), new Map(),
+      ]
+
+      for (const f of (apiData.finals ?? [])) {
+        const home = f.pred_home_team_id as string | null
+        const away = f.pred_away_team_id as string | null
+        if (!home && !away) continue
+
+        let winner: string | null = null
+        let loser: string | null = null
+        if (f.pred_home_score != null && f.pred_away_score != null) {
+          winner = f.pred_home_score >= f.pred_away_score ? home : away
+          loser  = f.pred_home_score >= f.pred_away_score ? away : home
+        } else {
+          winner = home; loser = away
         }
-        const team = winnerId ? teamById.get(winnerId) ?? null : null
-        cmap.set(c.user_id, team ? { name: team.name, fifa_code: team.fifa_code } : null)
+
+        if (f.bracket_slot === 32) {
+          // champion per user
+          const team = winner ? teamById.get(winner) ?? null : null
+          cmap.set(f.user_id, team ? { name: team.name, fifa_code: team.fifa_code } : null)
+          // 1st and 2nd
+          if (winner) posVotes[0].set(winner, (posVotes[0].get(winner) ?? 0) + 1)
+          if (loser)  posVotes[1].set(loser,  (posVotes[1].get(loser)  ?? 0) + 1)
+        } else if (f.bracket_slot === 31) {
+          // 3rd and 4th
+          if (winner) posVotes[2].set(winner, (posVotes[2].get(winner) ?? 0) + 1)
+          if (loser)  posVotes[3].set(loser,  (posVotes[3].get(loser)  ?? 0) + 1)
+        }
       }
+
+      // Top 3 teams per position
+      const top4computed: Array<Array<{ team: { name: string; fifa_code: string }; votes: number }>> = posVotes.map(vm =>
+        [...vm.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([id, votes]) => ({ team: teamById.get(id)!, votes }))
+          .filter(x => x.team)
+      )
+
       setDayMatches(matches)
       setPredsMap(map)
       setChampMap(cmap)
+      setTop4(top4computed)
       setLoading(false)
 
       const hasResults = matches.some((m: DayMatch) => m.actual_home_score !== null)
@@ -263,6 +300,33 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
         ))}
       </div>
 
+      {/* Top 4 Predictions widget */}
+      {top4.some(arr => arr.length > 0) && (
+        <div className="mb-4 bg-gradient-to-br from-[#0B1F3A]/5 to-yellow-50/50 rounded-xl p-3 border border-[#0B1F3A]/10">
+          <div className="text-xs font-bold text-[#0B1F3A] mb-2 flex items-center gap-1.5">
+            🏆 <span>Predicted Top 4</span>
+          </div>
+          {(['🥇', '🥈', '🥉', '4️⃣'] as const).map((medal, pos) => (
+            top4[pos]?.length > 0 ? (
+              <div key={pos} className="flex items-center gap-2 py-1 border-t border-[#0B1F3A]/5 first:border-t-0">
+                <span className="text-base shrink-0 w-6 text-center">{medal}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {top4[pos].map(({ team, votes }, j) => (
+                    <span key={team.fifa_code} className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+                      j === 0 ? 'bg-[#0B1F3A] text-white font-semibold' : 'bg-white text-gray-600 border border-gray-200'
+                    }`}>
+                      <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-3.5 h-auto rounded-sm" />
+                      {getTeamName(team.fifa_code, lang) ?? team.fifa_code}
+                      <span className="opacity-60 text-[10px]">×{votes}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null
+          ))}
+        </div>
+      )}
+
       {loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : dayMatches.length === 0 ? (
         <div className="text-center text-gray-400 py-10 text-sm">{t('dv_no_matches')}</div>
       ) : (
@@ -281,12 +345,12 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                 <tr className="bg-[#0B1F3A] text-white">
                   <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">{t('leaderboard_player')}</th>
                   {dayMatches.map(m => (
-                    <th key={m.id} className="py-2 px-2 text-center font-normal min-w-[110px]">
+                    <th key={m.id} className="py-2 px-2 text-center font-normal min-w-[100px]">
                       <div className="flex items-center justify-center gap-1">
                         {m.home_team?.fifa_code && <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />}
-                        <span className="font-semibold text-[11px]">{m.home_team ? (getTeamName(m.home_team.fifa_code, lang) ?? m.home_team.fifa_code) : '?'}</span>
+                        <span className="font-semibold text-[11px]">{m.home_team?.fifa_code}</span>
                         <span className="text-white/40 text-[10px]">v</span>
-                        <span className="font-semibold text-[11px]">{m.away_team ? (getTeamName(m.away_team.fifa_code, lang) ?? m.away_team.fifa_code) : '?'}</span>
+                        <span className="font-semibold text-[11px]">{m.away_team?.fifa_code}</span>
                         {m.away_team?.fifa_code && <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />}
                       </div>
                       <div className="text-[10px] opacity-70 mt-0.5">
@@ -376,10 +440,12 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                 <p className="text-sm text-gray-500">{t('dv_generating_recap')}</p>
               </div>
             ) : (
-              <div className="text-sm text-gray-700 leading-relaxed space-y-3">
-                {(recap ?? '').split(/\n\n+/).filter(Boolean).map((para, i) => (
-                  <p key={i}>{para.replace(/\n/g, ' ')}</p>
-                ))}
+              <div className="text-sm text-gray-700 leading-relaxed">
+                {(recap ?? '').split('\n').map((line, i) =>
+                  line.trim() === ''
+                    ? <div key={i} className="h-3" />
+                    : <p key={i} className="mb-1.5">{line}</p>
+                )}
               </div>
             )}
           </div>
@@ -531,6 +597,12 @@ export default function LeaderboardPage() {
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (selectedLeagueId === 'global') { setLeagueMembers(new Set()); return }
+    ;(supabase as any).from('league_members').select('user_id').eq('league_id', selectedLeagueId)
+      .then(({ data }: any) => setLeagueMembers(new Set((data ?? []).map((r: any) => r.user_id))))
+  }, [selectedLeagueId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadBreakdown = async (userId: string, advTotal: number, meId: string | null) => {
     if (breakdowns[userId]) return
