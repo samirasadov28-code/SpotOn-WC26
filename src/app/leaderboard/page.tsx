@@ -10,6 +10,12 @@ import { flagUrl } from '@/lib/flag-map'
 
 const PREDICTIONS_TOTAL = 104 // 72 group + 32 knockout
 
+const LANG_TO_LOCALE: Record<string, string> = {
+  en: 'en-GB', uk: 'uk', az: 'az', fr: 'fr-FR', es: 'es-ES', de: 'de-DE',
+  pt: 'pt-BR', it: 'it-IT', nl: 'nl-NL', tr: 'tr-TR', zh: 'zh-CN',
+  ar: 'ar-SA', hi: 'hi-IN', ru: 'ru-RU', bn: 'bn-BD', ja: 'ja-JP', id: 'id-ID',
+}
+
 interface UserLeague {
   id: string
   name: string
@@ -97,13 +103,22 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
   const [showRecap, setShowRecap] = useState(false)
 
   useEffect(() => {
+    // Reset recap when language changes
+    setRecap(null)
+  }, [lang])
+
+  useEffect(() => {
     supabase.from('matches').select('kickoff_at').eq('stage', 'group').order('kickoff_at').then(({ data }) => {
       if (!data) return
       const days = [...new Set(data.map((m: any) => toCDTDate(m.kickoff_at)))]
       setAllDays(days)
       const todayCDT = toCDTDate(new Date().toISOString())
       const pastDays = days.filter((d: string) => d <= todayCDT)
-      setSelectedDay(pastDays[pastDays.length - 1] ?? days[0] ?? '')
+      const defaultDay = pastDays[pastDays.length - 1] ?? days[0] ?? ''
+      // Restore saved day, but validate it's still a known past day
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('spoton_dayview_day') : null
+      const restoredDay = saved && pastDays.includes(saved) ? saved : defaultDay
+      setSelectedDay(restoredDay)
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -111,62 +126,58 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
     if (!selectedDay) return
     setLoading(true)
     setRecap(null)
+    // Save selected day so it's restored on next visit
+    if (typeof window !== 'undefined') localStorage.setItem('spoton_dayview_day', selectedDay)
+
     const start = new Date(selectedDay + 'T06:00:00Z')
     const end   = new Date(start.getTime() + 24 * 3600_000)
 
-    supabase.from('matches')
-      .select('id, kickoff_at, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
-      .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
-      .eq('stage', 'group').order('kickoff_at')
-      .then(({ data: matchData }) => {
-        const matches = (matchData ?? []) as DayMatch[]
-        const matchIds = matches.map(m => m.id)
-        if (!matchIds.length) { setDayMatches([]); setPredsMap(new Map()); setLoading(false); return }
+    Promise.all([
+      supabase.from('matches')
+        .select('id, kickoff_at, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
+        .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
+        .eq('stage', 'group').order('kickoff_at'),
+      fetch('/api/dayview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day: selectedDay, leagueId }),
+      }).then(r => r.json()),
+    ]).then(([matchRes, apiData]) => {
+      const matches = ((matchRes as any).data ?? []) as DayMatch[]
+      if (!matches.length) { setDayMatches([]); setPredsMap(new Map()); setChampMap(new Map()); setLoading(false); return }
 
-        Promise.all([
-          (supabase as any).from('predictions_group')
-            .select('user_id,match_id,pred_home_score,pred_away_score')
-            .in('match_id', matchIds).limit(5000),
-          (supabase as any).from('predictions_knockout')
-            .select('user_id,pred_home_team_id,pred_away_team_id,pred_home_score,pred_away_score')
-            .eq('bracket_slot', 32).limit(500),
-          (supabase as any).from('teams').select('id,name,fifa_code'),
-        ]).then(([predRes, champRes, teamsRes]: any[]) => {
-          const teamById = new Map<string, { name: string; fifa_code: string }>(
-            (teamsRes.data ?? []).map((t: any) => [t.id, t])
-          )
-          const map = new Map<string, Map<string, { h: number; a: number }>>()
-          for (const p of (predRes.data ?? [])) {
-            if (!map.has(p.user_id)) map.set(p.user_id, new Map())
-            map.get(p.user_id)!.set(p.match_id, { h: p.pred_home_score, a: p.pred_away_score })
-          }
-          const cmap = new Map<string, { name: string; fifa_code: string } | null>()
-          for (const c of (champRes.data ?? [])) {
-            let winnerId: string | null = null
-            if (c.pred_home_score != null && c.pred_away_score != null) {
-              winnerId = c.pred_home_score >= c.pred_away_score ? c.pred_home_team_id : c.pred_away_team_id
-            } else if (c.pred_home_team_id) {
-              winnerId = c.pred_home_team_id
-            }
-            const team = winnerId ? teamById.get(winnerId) ?? null : null
-            cmap.set(c.user_id, team ? { name: team.name, fifa_code: team.fifa_code } : null)
-          }
-          setDayMatches(matches)
-          setPredsMap(map)
-          setChampMap(cmap)
-          setLoading(false)
+      const map = new Map<string, Map<string, { h: number; a: number }>>()
+      for (const p of (apiData.preds ?? [])) {
+        if (!map.has(p.user_id)) map.set(p.user_id, new Map())
+        map.get(p.user_id)!.set(p.match_id, { h: p.pred_home_score, a: p.pred_away_score })
+      }
+      const teamById = new Map<string, { name: string; fifa_code: string }>(
+        (apiData.teams ?? []).map((t: any) => [t.id, t])
+      )
+      const cmap = new Map<string, { name: string; fifa_code: string } | null>()
+      for (const c of (apiData.champs ?? [])) {
+        let winnerId: string | null = null
+        if (c.pred_home_score != null && c.pred_away_score != null) {
+          winnerId = c.pred_home_score >= c.pred_away_score ? c.pred_home_team_id : c.pred_away_team_id
+        } else if (c.pred_home_team_id) {
+          winnerId = c.pred_home_team_id
+        }
+        const team = winnerId ? teamById.get(winnerId) ?? null : null
+        cmap.set(c.user_id, team ? { name: team.name, fifa_code: team.fifa_code } : null)
+      }
+      setDayMatches(matches)
+      setPredsMap(map)
+      setChampMap(cmap)
+      setLoading(false)
 
-          // Auto-popup once per league+day, only after a real successful recap
-          const hasResults = matches.some((m: DayMatch) => m.actual_home_score !== null)
-          const seenKey = `spoton_recap_seen_${leagueId}_${selectedDay}`
-          if (hasResults && !localStorage.getItem(seenKey)) {
-            setShowRecap(true)
-            // trigger fetch — seenKey only written on success inside fetchRecapInner
-            fetchRecapInner(selectedDay, leagueId, leagueName, entries, seenKey)
-              .then(text => { setRecap(text); setRecapLoading(false) })
-          }
-        })
-      })
+      const hasResults = matches.some((m: DayMatch) => m.actual_home_score !== null)
+      const seenKey = `spoton_recap_seen_${leagueId}_${selectedDay}`
+      if (hasResults && !localStorage.getItem(seenKey)) {
+        setShowRecap(true)
+        fetchRecapInner(selectedDay, leagueId, leagueName, entries, seenKey)
+          .then(text => { setRecap(text); setRecapLoading(false) })
+      }
+    })
   }, [selectedDay, leagueId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchRecapInner = async (
@@ -207,8 +218,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
     setRecapLoading(false)
   }
 
+  const locale = LANG_TO_LOCALE[lang] ?? 'en-GB'
   const dayLabel = selectedDay
-    ? new Date(selectedDay + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+    ? new Date(selectedDay + 'T12:00:00Z').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
     : ''
 
   // Compute day pts per user and sort descending
@@ -223,11 +235,16 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
     return { entry, dayPts }
   }).sort((a, b) => b.dayPts - a.dayPts || b.entry.totalPts - a.entry.totalPts)
 
-  // Assign day ranks (tied = same rank)
-  const dayRanked = withDayPts.map((row, i, arr) => ({
-    ...row,
-    dayRank: i === 0 ? 1 : row.dayPts < arr[i - 1].dayPts ? i + 1 : (arr[i - 1] as any).dayRank,
-  }))
+  // Assign day ranks (tied = same rank) — must use a for-loop, not .map(), so each
+  // row can reference the already-computed dayRank of the previous row
+  const dayRanked: Array<{ entry: LeaderboardEntry; dayPts: number; dayRank: number }> = []
+  for (let i = 0; i < withDayPts.length; i++) {
+    const row = withDayPts[i]
+    const dayRank = i === 0 ? 1
+      : row.dayPts < withDayPts[i - 1].dayPts ? i + 1
+      : dayRanked[i - 1].dayRank
+    dayRanked.push({ ...row, dayRank })
+  }
 
   const rankIcon = (r: number) => r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : String(r)
 
@@ -240,7 +257,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
               selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
             }`}>
-            {new Date(day + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+            {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
           </button>
         ))}
       </div>
@@ -411,7 +428,10 @@ export default function LeaderboardPage() {
   const [breakdowns, setBreakdowns] = useState<Record<string, ScoreBreakdown>>({})
   const [loadingBreakdown, setLoadingBreakdown] = useState<string | null>(null)
   const [userLeagues, setUserLeagues] = useState<UserLeague[]>([])
-  const [selectedLeagueId, setSelectedLeagueId] = useState<string>('global')
+  const [selectedLeagueId, setSelectedLeagueId] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'global'
+    return localStorage.getItem('spoton_league') ?? 'global'
+  })
   const [leagueMembers, setLeagueMembers] = useState<Set<string>>(new Set())
   const [leagueCounts, setLeagueCounts] = useState<Record<string, number>>({})
   const [showLeaguePanel, setShowLeaguePanel] = useState(false)
@@ -455,14 +475,15 @@ export default function LeaderboardPage() {
     const users: { id: string; display_name: string | null }[] = userRes.data ?? []
     const scores = new Map((scoreRes.data ?? []).map((s: any) => [s.user_id, s]))
 
-    // Count predictions per user with 2 bulk queries instead of N×2 individual ones
+    // Count predictions per user via service-role API (bypasses RLS + row limits)
     const predCounts = new Map<string, number>()
-    const [allGP, allKP] = await Promise.all([
-      (supabase as any).from('predictions_group').select('user_id').limit(50000),
-      (supabase as any).from('predictions_knockout').select('user_id').limit(10000),
-    ])
-    for (const p of (allGP.data ?? [])) predCounts.set(p.user_id, (predCounts.get(p.user_id) ?? 0) + 1)
-    for (const p of (allKP.data ?? [])) predCounts.set(p.user_id, (predCounts.get(p.user_id) ?? 0) + 1)
+    try {
+      const pcRes = await fetch('/api/predcounts')
+      if (pcRes.ok) {
+        const obj: Record<string, number> = await pcRes.json()
+        for (const [uid, cnt] of Object.entries(obj)) predCounts.set(uid, cnt)
+      }
+    } catch { /* non-fatal — counts just won't show */ }
 
 
     const built: Omit<LeaderboardEntry, 'rank'>[] = users.map((u) => {
@@ -591,6 +612,7 @@ export default function LeaderboardPage() {
 
   const handleLeagueChange = async (leagueId: string) => {
     setSelectedLeagueId(leagueId)
+    localStorage.setItem('spoton_league', leagueId)
     setExpandedId(null)
     if (leagueId === 'global') { setLeagueMembers(new Set()); return }
     const { data } = await (supabase as any)
