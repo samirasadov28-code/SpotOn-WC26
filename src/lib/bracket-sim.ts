@@ -168,6 +168,66 @@ export interface SimResult {
   fourth: TeamInfo | null
 }
 
+export type ExitRound = 'group' | 'r32' | 'r16' | 'qf' | 'sf' | 'fourth' | 'third' | 'second' | 'champion'
+
+export function simulateRounds(
+  groupPreds: GroupPreds,
+  koPreds: KOPreds,
+  allMatches: MatchInfo[],
+  allTeams: TeamInfo[]
+): Map<string, ExitRound> {
+  const exits = new Map<string, ExitRound>()
+  const qualified = calcQualified(allMatches, allTeams, groupPreds)
+  const qualifiedIds = new Set([...qualified.values()].map(t => t.id))
+
+  for (const team of allTeams) {
+    if (!qualifiedIds.has(team.id)) exits.set(team.id, 'group')
+  }
+
+  for (let slot = 1; slot <= 16; slot++) {
+    const { home, away } = getSlotTeams(slot, koPreds, qualified)
+    const pred = koPreds.get(slot)
+    if (!pred || pred.h === pred.a) continue
+    const loser = pred.h > pred.a ? away : home
+    if (loser) exits.set(loser.id, 'r32')
+  }
+
+  for (let slot = 17; slot <= 24; slot++) {
+    const loser = getLoserOfSlot(slot, koPreds, qualified)
+    if (loser) exits.set(loser.id, 'r16')
+  }
+
+  for (let slot = 25; slot <= 28; slot++) {
+    const loser = getLoserOfSlot(slot, koPreds, qualified)
+    if (loser) exits.set(loser.id, 'qf')
+  }
+
+  for (let slot = 29; slot <= 30; slot++) {
+    const loser = getLoserOfSlot(slot, koPreds, qualified)
+    if (loser) exits.set(loser.id, 'sf')
+  }
+
+  const thirdPred = koPreds.get(31)
+  if (thirdPred && thirdPred.h !== thirdPred.a) {
+    const { home: tHome, away: tAway } = getSlotTeams(31, koPreds, qualified)
+    const third = thirdPred.h > thirdPred.a ? tHome : tAway
+    const fourth = thirdPred.h > thirdPred.a ? tAway : tHome
+    if (third) exits.set(third.id, 'third')
+    if (fourth) exits.set(fourth.id, 'fourth')
+  }
+
+  const finalPred = koPreds.get(32)
+  if (finalPred && finalPred.h !== finalPred.a) {
+    const { home: fHome, away: fAway } = getSlotTeams(32, koPreds, qualified)
+    const champ = finalPred.h > finalPred.a ? fHome : fAway
+    const second = finalPred.h > finalPred.a ? fAway : fHome
+    if (champ) exits.set(champ.id, 'champion')
+    if (second) exits.set(second.id, 'second')
+  }
+
+  return exits
+}
+
 export function simulateBracket(
   groupPreds: GroupPreds,
   koPreds: KOPreds,

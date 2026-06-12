@@ -88,11 +88,19 @@ function MiniFlag({ team, lang }: { team: TeamRef; lang: string }) {
   )
 }
 
-function PredictedFinishCell({ positions, lang }: { positions: PositionRow | undefined; lang: string }) {
+function PredictedFinishCell({ positions, lang, mode = 'champ' }: { positions: PositionRow | undefined; lang: string; mode?: 'champ' | 'top4' }) {
   if (!positions) return <span className="text-gray-300 text-[10px]">—</span>
   const medals = ['🥇', '🥈', '🥉', '4️⃣']
-  const hasAny = positions.some(Boolean)
-  if (!hasAny) return <span className="text-gray-300 text-[10px]">—</span>
+  const champ = positions[0]
+  if (!champ) return <span className="text-gray-300 text-[10px]">—</span>
+  if (mode === 'champ') {
+    return (
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] w-4 shrink-0">🥇</span>
+        <MiniFlag team={champ} lang={lang} />
+      </div>
+    )
+  }
   return (
     <div className="flex flex-col gap-0.5 min-w-[90px]">
       {positions.map((team, i) => team ? (
@@ -105,14 +113,31 @@ function PredictedFinishCell({ positions, lang }: { positions: PositionRow | und
   )
 }
 
+function FinishToggle({ mode, onChange }: { mode: 'champ' | 'top4'; onChange: (m: 'champ' | 'top4') => void }) {
+  return (
+    <div className="flex rounded-lg overflow-hidden border border-yellow-400/40 text-[10px] font-semibold shrink-0">
+      <button onClick={() => onChange('champ')}
+        className={`px-2 py-1 transition-colors ${mode === 'champ' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
+        🥇
+      </button>
+      <button onClick={() => onChange('top4')}
+        className={`px-2 py-1 transition-colors ${mode === 'top4' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
+        Top4
+      </button>
+    </div>
+  )
+}
+
 // ── DayView ──────────────────────────────────────────────────────────────────
 
-function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser }: {
+function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser, finishMode, setFinishMode }: {
   entries: LeaderboardEntry[]
   currentUserId: string | null
   leagueId: string
   leagueName: string
   positionsByUser: Record<string, PositionRow>
+  finishMode: 'champ' | 'top4'
+  setFinishMode: (m: 'champ' | 'top4') => void
 }) {
   const supabase = createClient()
   const { lang, t } = useTranslation()
@@ -293,7 +318,12 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                       </div>
                     </th>
                   ))}
-                  <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[100px]">🏆 Predicted Finish</th>
+                  <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[100px]">
+                    <div className="flex flex-col items-center gap-1">
+                      <span>🏆 Predicted</span>
+                      <FinishToggle mode={finishMode} onChange={setFinishMode} />
+                    </div>
+                  </th>
                   <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{sortMode === 'day' ? t('pts') : '∑ ' + t('pts')}</th>
                 </tr>
               </thead>
@@ -324,7 +354,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                         )
                       })}
                       <td className="py-2 px-2">
-                        <PredictedFinishCell positions={positions} lang={lang} />
+                        <PredictedFinishCell positions={positions} lang={lang} mode={finishMode} />
                       </td>
                       <td className="py-2 px-3 text-center">
                         {sortMode === 'total'
@@ -382,16 +412,46 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
 
 // ── Stats View ────────────────────────────────────────────────────────────────
 
-function StatsView({ top4, entries, positionsByUser, lang, leagueId, leagueName }: {
+interface StatsData {
+  roundExits: Record<string, Array<{ fifaCode: string; name: string; count: number }>>
+  topScores: Array<{ score: string; count: number }>
+  goalStats: {
+    mostGoals: { name: string; total: number } | null
+    leastGoals: { name: string; total: number } | null
+    highestAvg: { name: string; avg: number } | null
+    boldestDiff: { name: string; maxDiffScore: string; maxDiff: number } | null
+    mostMatchGoals: { name: string; maxGoalScore: string; maxMatch: number } | null
+  }
+  totalUsers: number
+}
+
+const ROUND_LABELS: Record<string, string> = {
+  group: 'Group Stage', r32: 'Round of 32', r16: 'Round of 16',
+  qf: 'Quarter-Final', sf: 'Semi-Final', fourth: '4th Place', third: '3rd Place',
+  second: 'Runner-Up', champion: 'Champion',
+}
+
+function StatsView({ top4, positionsByUser, lang, leagueId }: {
   top4: Array<Array<{ team: TeamRef & {}; votes: number }>>
-  entries: LeaderboardEntry[]
   positionsByUser: Record<string, PositionRow>
   lang: string
   leagueId: string
-  leagueName: string
 }) {
-  const { t } = useTranslation()
-  const locale = LANG_TO_LOCALE[lang] ?? 'en-GB'
+  const [statsData, setStatsData] = useState<StatsData | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+
+  useEffect(() => {
+    setStatsData(null)
+    setStatsLoading(true)
+    fetch('/api/stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leagueId: leagueId === 'global' ? null : leagueId }),
+    }).then(r => r.json()).then(data => {
+      setStatsData(data)
+      setStatsLoading(false)
+    }).catch(() => setStatsLoading(false))
+  }, [leagueId])
 
   // Champion distribution
   const champCounts = new Map<string, { team: TeamRef & {}; count: number }>()
@@ -405,15 +465,6 @@ function StatsView({ top4, entries, positionsByUser, lang, leagueId, leagueName 
   }
   const champList = [...champCounts.values()].sort((a, b) => b.count - a.count)
   const totalWithChamp = champList.reduce((s, c) => s + c.count, 0)
-
-  // Prediction completeness
-  const complete = entries.filter(e => e.predictionCount >= PREDICTIONS_TOTAL).length
-  const partial = entries.filter(e => e.predictionCount > 0 && e.predictionCount < PREDICTIONS_TOTAL).length
-  const none = entries.filter(e => e.predictionCount === 0).length
-
-  // Top scorers snapshot
-  const top5 = entries.slice(0, 5)
-
   const hasTop4 = top4.some(arr => arr.length > 0)
 
   return (
@@ -468,62 +519,104 @@ function StatsView({ top4, entries, positionsByUser, lang, leagueId, leagueName 
         </div>
       )}
 
-      {/* Prediction completeness */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-        <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">📊 Prediction Completeness</h3>
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="text-center bg-green-50 rounded-lg p-3 border border-green-100">
-            <div className="text-2xl font-bold text-green-600">{complete}</div>
-            <div className="text-[11px] text-green-700 font-medium mt-0.5">✅ Complete</div>
-          </div>
-          <div className="text-center bg-orange-50 rounded-lg p-3 border border-orange-100">
-            <div className="text-2xl font-bold text-orange-500">{partial}</div>
-            <div className="text-[11px] text-orange-600 font-medium mt-0.5">⏳ Partial</div>
-          </div>
-          <div className="text-center bg-gray-50 rounded-lg p-3 border border-gray-100">
-            <div className="text-2xl font-bold text-gray-400">{none}</div>
-            <div className="text-[11px] text-gray-500 font-medium mt-0.5">— None</div>
-          </div>
+      {statsLoading && (
+        <div className="flex items-center gap-2 py-6 justify-center text-gray-400 text-sm">
+          <div className="w-5 h-5 border-2 border-gray-300 border-t-[#0B1F3A] rounded-full animate-spin" />
+          Loading prediction stats…
         </div>
-        <div className="space-y-1.5">
-          {entries.filter(e => e.predictionCount > 0).sort((a, b) => b.predictionCount - a.predictionCount).slice(0, 10).map(e => {
-            const pct = Math.min(100, Math.round((e.predictionCount / PREDICTIONS_TOTAL) * 100))
-            const done = e.predictionCount >= PREDICTIONS_TOTAL
-            return (
-              <div key={e.userId} className="flex items-center gap-2">
-                <span className="text-xs text-gray-600 w-24 truncate shrink-0">{e.displayName}</span>
-                <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${done ? 'bg-green-500' : 'bg-orange-400'}`} style={{ width: `${pct}%` }} />
-                </div>
-                <span className="text-[10px] text-gray-500 w-8 text-right shrink-0">{done ? '✅' : `${pct}%`}</span>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+      )}
 
-      {/* Score distribution */}
-      {entries.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">📈 Points Distribution</h3>
-          <div className="space-y-1.5">
-            {entries.slice(0, 12).map((e, i) => {
-              const maxPts = entries[0].totalPts || 1
-              const pct = Math.round((e.totalPts / maxPts) * 100)
-              const medals: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
-              return (
-                <div key={e.userId} className="flex items-center gap-2">
-                  <span className="text-[11px] w-5 text-center shrink-0">{medals[e.rank] ?? e.rank}</span>
-                  <span className="text-xs text-gray-600 w-20 truncate shrink-0">{e.displayName}</span>
-                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-[#0B1F3A] to-blue-400 rounded-full" style={{ width: `${pct}%` }} />
+      {statsData && (
+        <>
+          {/* Round exits */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">🔮 Predicted Round Exits</h3>
+            <p className="text-[11px] text-gray-400 mb-3">Where do people think teams get knocked out?</p>
+            <div className="space-y-3">
+              {(['group', 'r32', 'r16', 'qf', 'sf', 'fourth', 'third', 'second', 'champion'] as const).map(round => {
+                const teams = statsData.roundExits[round] ?? []
+                if (teams.length === 0) return null
+                const maxCount = teams[0].count
+                return (
+                  <div key={round}>
+                    <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">{ROUND_LABELS[round]}</div>
+                    <div className="space-y-1">
+                      {teams.map(({ fifaCode, name, count }) => (
+                        <div key={fifaCode} className="flex items-center gap-2">
+                          <img src={flagUrl(fifaCode, 40)} alt="" className="w-4 h-auto rounded-sm shrink-0" />
+                          <span className="text-xs text-[#0B1F3A] w-20 truncate shrink-0">{getTeamName(fifaCode, lang) ?? name}</span>
+                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#0B1F3A]/70 rounded-full" style={{ width: `${Math.round((count / maxCount) * 100)}%` }} />
+                          </div>
+                          <span className="text-[10px] text-gray-400 w-8 text-right shrink-0">{count}×</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <span className="text-xs font-bold text-[#0B1F3A] w-8 text-right shrink-0">{e.totalPts}</span>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
-        </div>
+
+          {/* Goal stats */}
+          {statsData.goalStats.mostGoals && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">⚽ Goal Prediction Stats</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {statsData.goalStats.mostGoals && (
+                  <div className="bg-green-50 border border-green-100 rounded-lg p-3">
+                    <div className="text-[10px] text-green-600 font-bold uppercase tracking-wide mb-1">Most Goals Predicted</div>
+                    <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.mostGoals.name}</div>
+                    <div className="text-xs text-gray-500">{statsData.goalStats.mostGoals.total} total goals</div>
+                  </div>
+                )}
+                {statsData.goalStats.leastGoals && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                    <div className="text-[10px] text-blue-600 font-bold uppercase tracking-wide mb-1">Fewest Goals Predicted</div>
+                    <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.leastGoals.name}</div>
+                    <div className="text-xs text-gray-500">{statsData.goalStats.leastGoals.total} total goals</div>
+                  </div>
+                )}
+                {statsData.goalStats.highestAvg && (
+                  <div className="bg-orange-50 border border-orange-100 rounded-lg p-3">
+                    <div className="text-[10px] text-orange-600 font-bold uppercase tracking-wide mb-1">Highest Avg Goals/Match</div>
+                    <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.highestAvg.name}</div>
+                    <div className="text-xs text-gray-500">{statsData.goalStats.highestAvg.avg.toFixed(2)} goals/match</div>
+                  </div>
+                )}
+                {statsData.goalStats.boldestDiff && (
+                  <div className="bg-purple-50 border border-purple-100 rounded-lg p-3">
+                    <div className="text-[10px] text-purple-600 font-bold uppercase tracking-wide mb-1">Boldest Goal Diff</div>
+                    <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.boldestDiff.name}</div>
+                    <div className="text-xs text-gray-500">{statsData.goalStats.boldestDiff.maxDiffScore} ({statsData.goalStats.boldestDiff.maxDiff} goal diff)</div>
+                  </div>
+                )}
+                {statsData.goalStats.mostMatchGoals && (
+                  <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-3 col-span-2">
+                    <div className="text-[10px] text-yellow-700 font-bold uppercase tracking-wide mb-1">Most Goals in a Single Match</div>
+                    <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.mostMatchGoals.name}</div>
+                    <div className="text-xs text-gray-500">{statsData.goalStats.mostMatchGoals.maxGoalScore} ({statsData.goalStats.mostMatchGoals.maxMatch} goals)</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Top predicted scores */}
+          {statsData.topScores.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">🎯 Most Popular Predicted Scores</h3>
+              <div className="grid grid-cols-2 gap-1.5">
+                {statsData.topScores.map(({ score, count }, i) => (
+                  <div key={score} className={`flex items-center justify-between rounded-lg px-3 py-2 ${i === 0 ? 'bg-[#0B1F3A] text-white' : 'bg-gray-50 border border-gray-100'}`}>
+                    <span className={`font-mono font-bold text-sm ${i === 0 ? 'text-white' : 'text-[#0B1F3A]'}`}>{score}</span>
+                    <span className={`text-xs ${i === 0 ? 'text-white/70' : 'text-gray-400'}`}>{count}×</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -667,6 +760,7 @@ export default function LeaderboardPage() {
   const [lbTab, setLbTab] = useState<'overview' | 'dayview' | 'stats'>('dayview')
   const [top4, setTop4] = useState<Array<Array<{ team: TeamRef & {}; votes: number }>>>([[], [], [], []])
   const [positionsByUser, setPositionsByUser] = useState<Record<string, PositionRow>>({})
+  const [finishMode, setFinishMode] = useState<'champ' | 'top4'>('champ')
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
@@ -976,12 +1070,12 @@ export default function LeaderboardPage() {
 
       {/* Day View tab */}
       {lbTab === 'dayview' && (
-        <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} />
+        <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} finishMode={finishMode} setFinishMode={setFinishMode} />
       )}
 
       {/* Stats tab */}
       {lbTab === 'stats' && (
-        <StatsView top4={top4 as any} entries={visibleEntries} positionsByUser={positionsByUser} lang={lang} leagueId={selectedLeagueId} leagueName={leagueName} />
+        <StatsView top4={top4 as any} positionsByUser={positionsByUser} lang={lang} leagueId={selectedLeagueId} />
       )}
 
       {/* Overview tab */}
@@ -1010,7 +1104,12 @@ export default function LeaderboardPage() {
                   <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_advance_col')}</th>
                   <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_playoff_col')}</th>
                   <th className="py-3 px-3 text-right font-bold">{t('lb_total')}</th>
-                  <th className="py-3 px-3 text-left text-yellow-300 text-xs hidden md:table-cell min-w-[110px]">🏆 Predicted</th>
+                  <th className="py-3 px-3 text-left text-yellow-300 text-xs hidden md:table-cell min-w-[110px]">
+                    <div className="flex flex-col gap-1">
+                      <span>🏆 Predicted</span>
+                      <FinishToggle mode={finishMode} onChange={setFinishMode} />
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1047,7 +1146,7 @@ export default function LeaderboardPage() {
                         <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.knockoutPts}</td>
                         <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
                         <td className="py-3 px-2 hidden md:table-cell">
-                          <PredictedFinishCell positions={positions} lang={lang} />
+                          <PredictedFinishCell positions={positions} lang={lang} mode={finishMode} />
                         </td>
                       </tr>
 

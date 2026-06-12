@@ -2,11 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
 import { getTeamName } from '@/lib/team-name'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
-import { transliterateName } from '@/lib/transliterate'
 import { simulateBracket } from '@/lib/bracket-sim'
 import type { TeamInfo, MatchInfo } from '@/lib/bracket-sim'
 
@@ -253,60 +251,43 @@ export default function PredictionsViewClient({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (!userId) return
-    const supabase = createClient()
+    fetch('/api/userpreds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    }).then(r => r.json()).then(data => {
+      setDisplayName(data.displayName ?? 'Unknown player')
 
-    Promise.all([
-      supabase.from('users').select('display_name').eq('id', userId).single(),
-      supabase.from('matches')
-        .select('id, stage, group_letter, bracket_slot, ko_stage, kickoff_at, actual_home_score, actual_away_score, home_team_id, away_team_id')
-        .order('kickoff_at'),
-      supabase.from('teams').select('id, name, fifa_code, group_letter, flag_emoji'),
-      fetch('/api/userpreds', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
-      }).then(r => r.json()),
-    ]).then(([userRes, matchRes, teamsRes, predsData]) => {
-      const rawName = (userRes.data as any)?.display_name ?? 'Unknown player'
-      setDisplayName(transliterateName(rawName))
-
-      const teamData = (teamsRes.data ?? []) as Team[]
-      const tById = new Map(teamData.map(t => [t.id, t]))
-      // Join team info client-side to avoid PostgREST join ambiguity with anon client
-      const matchData = (matchRes.data ?? []).map((m: any) => ({
+      const teamData = (data.teams ?? []) as Team[]
+      const tById = new Map(teamData.map((t: Team) => [t.id, t]))
+      const matchData = (data.matches ?? []).map((m: any) => ({
         ...m,
         home_team: m.home_team_id ? (tById.get(m.home_team_id) ?? null) : null,
         away_team: m.away_team_id ? (tById.get(m.away_team_id) ?? null) : null,
       })) as MatchRow[]
-      const gp: GroupPred[] = predsData.groupPreds ?? []
-      const kp: KOPred[] = predsData.koPreds ?? []
+      const gp: GroupPred[] = data.groupPreds ?? []
+      const kp: KOPred[] = data.koPreds ?? []
 
       setMatches(matchData)
       setTeams(teamData)
       setGroupPreds(gp)
       setKoPreds(kp)
 
-      // Simulate bracket for champion
       try {
         const groupMatchInfos = matchData
           .filter(m => m.stage === 'group')
           .map(m => ({ id: m.id, group_letter: m.group_letter, home_team_id: m.home_team_id, away_team_id: m.away_team_id }))
-
         const teamInfos = teamData.map(t => ({
           id: t.id, name: t.name, fifa_code: t.fifa_code, group_letter: t.group_letter, flag_emoji: t.flag_emoji,
         }))
-
         const gpMap = new Map(gp.filter(p => p.pred_home_score !== null).map(p => [p.match_id, { h: p.pred_home_score!, a: p.pred_away_score! }]))
         const kpMap = new Map(kp.filter(p => p.pred_home_score !== null).map(p => [p.bracket_slot, { h: p.pred_home_score!, a: p.pred_away_score! }]))
-
         const result = simulateBracket(gpMap, kpMap, groupMatchInfos, teamInfos)
         if (result.champion) {
           const fullTeam = teamData.find(t => t.fifa_code === result.champion!.fifa_code) ?? null
           setChampTeam(fullTeam)
         }
-      } catch (e) {
-        // simulation failed — champion stays null
-      }
+      } catch (_) { /* simulation failed */ }
 
       setLoading(false)
     }).catch(() => setLoading(false))
