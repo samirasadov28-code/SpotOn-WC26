@@ -85,7 +85,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
   leagueName: string
 }) {
   const supabase = createClient()
-  const { lang } = useTranslation()
+  const { lang, t } = useTranslation()
   const [allDays, setAllDays] = useState<string[]>([])
   const [selectedDay, setSelectedDay] = useState('')
   const [dayMatches, setDayMatches] = useState<DayMatch[]>([])
@@ -183,6 +183,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
           leagueId: lgId === 'global' ? null : lgId,
           leagueName: lgName,
           playerNames: ents.map(e => e.displayName),
+          lang,
         }),
       })
       const data = await res.json()
@@ -244,15 +245,15 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
         ))}
       </div>
 
-      {loading ? <div className="text-center text-gray-400 py-10 text-sm">Loading…</div> : dayMatches.length === 0 ? (
-        <div className="text-center text-gray-400 py-10 text-sm">No group matches on this day</div>
+      {loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : dayMatches.length === 0 ? (
+        <div className="text-center text-gray-400 py-10 text-sm">{t('dv_no_matches')}</div>
       ) : (
         <>
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-gray-400">{dayLabel} · {dayMatches.length} matches</p>
             <button onClick={loadRecap}
               className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow">
-              📰 Day Recap
+              📰 {t('dv_recap_btn')}
             </button>
           </div>
 
@@ -260,7 +261,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
             <table className="min-w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-[#0B1F3A] text-white">
-                  <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">Player</th>
+                  <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">{t('leaderboard_player')}</th>
                   {dayMatches.map(m => (
                     <th key={m.id} className="py-2 px-2 text-center font-normal min-w-[100px]">
                       <div className="flex items-center justify-center gap-1">
@@ -277,8 +278,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
                       </div>
                     </th>
                   ))}
-                  <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[76px]">🏆 Champ</th>
-                  <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">Pts</th>
+                  <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[76px]">🏆 {t('dv_champ')}</th>
+                  <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{t('pts')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -327,11 +328,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
             </table>
           </div>
           <div className="flex flex-wrap gap-2 mt-3 text-[10px]">
-            <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded font-medium">3pts exact</span>
-            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-medium">2pts goal diff</span>
-            <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded font-medium">1pt outcome</span>
-            <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium">0pts wrong</span>
-            <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-medium">gray = pending</span>
+            <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded font-medium">{t('dv_pts_exact')}</span>
+            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-medium">{t('dv_pts_gd')}</span>
+            <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded font-medium">{t('dv_pts_outcome')}</span>
+            <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium">{t('dv_pts_wrong')}</span>
+            <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-medium">{t('dv_pts_pending')}</span>
           </div>
         </>
       )}
@@ -342,7 +343,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-lg font-bold text-[#0B1F3A]">📰 Day Recap</h2>
+                <h2 className="text-lg font-bold text-[#0B1F3A]">📰 {t('dv_day_recap_title')}</h2>
                 <p className="text-xs text-gray-400">{dayLabel} · {leagueName}</p>
               </div>
               <button onClick={() => setShowRecap(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">✕</button>
@@ -350,7 +351,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName }: {
             {recapLoading ? (
               <div className="flex flex-col items-center gap-3 py-8">
                 <div className="w-8 h-8 border-[3px] border-purple-600 border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-gray-500">Generating recap…</p>
+                <p className="text-sm text-gray-500">{t('dv_generating_recap')}</p>
               </div>
             ) : (
               <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{recap}</div>
@@ -454,22 +455,21 @@ export default function LeaderboardPage() {
     const users: { id: string; display_name: string | null }[] = userRes.data ?? []
     const scores = new Map((scoreRes.data ?? []).map((s: any) => [s.user_id, s]))
 
-    // Count predictions per user via individual queries — avoids row-limit issues entirely
+    // Count predictions per user with 2 bulk queries instead of N×2 individual ones
     const predCounts = new Map<string, number>()
-    await Promise.all(users.map(async (u) => {
-      const [gRes, kRes] = await Promise.all([
-        supabase.from('predictions_group').select('match_id', { count: 'exact', head: true }).eq('user_id', u.id),
-        supabase.from('predictions_knockout').select('bracket_slot', { count: 'exact', head: true }).eq('user_id', u.id),
-      ])
-      predCounts.set(u.id, (gRes.count ?? 0) + (kRes.count ?? 0))
-    }))
+    const [allGP, allKP] = await Promise.all([
+      (supabase as any).from('predictions_group').select('user_id').limit(50000),
+      (supabase as any).from('predictions_knockout').select('user_id').limit(10000),
+    ])
+    for (const p of (allGP.data ?? [])) predCounts.set(p.user_id, (predCounts.get(p.user_id) ?? 0) + 1)
+    for (const p of (allKP.data ?? [])) predCounts.set(p.user_id, (predCounts.get(p.user_id) ?? 0) + 1)
 
 
     const built: Omit<LeaderboardEntry, 'rank'>[] = users.map((u) => {
       const s = scores.get(u.id)
       return {
         userId: u.id,
-        displayName: transliterateName(u.display_name ?? `User ${u.id.slice(0, 6)}`),
+        displayName: transliterateName(u.display_name ?? 'Anonymous'),
         groupPts: s?.group_pts ?? 0,
         advancementPts: s?.advancement_pts ?? 0,
         knockoutPts: s?.knockout_match_pts ?? 0,
@@ -734,8 +734,8 @@ export default function LeaderboardPage() {
 
       {/* Tab switcher */}
       <div className="flex gap-1 mb-5 border-b border-gray-200">
-        <button onClick={() => setLbTab('overview')} className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === 'overview' ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Overview</button>
-        <button onClick={() => setLbTab('dayview')} className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === 'dayview' ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Day View</button>
+        <button onClick={() => setLbTab('overview')} className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === 'overview' ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{t('lb_tab_overview')}</button>
+        <button onClick={() => setLbTab('dayview')} className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === 'dayview' ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{t('lb_tab_dayview')}</button>
       </div>
 
       {lbTab === 'dayview' && <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={selectedLeagueId === 'global' ? 'Global' : (userLeagues.find(l => l.id === selectedLeagueId)?.name ?? 'League')} />}

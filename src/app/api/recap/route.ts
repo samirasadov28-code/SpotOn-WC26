@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import Groq from 'groq-sdk'
 import { createClient } from '@supabase/supabase-js'
+import { transliterateName } from '@/lib/transliterate'
 
 function getServiceClient() {
   return createClient(
@@ -10,18 +11,26 @@ function getServiceClient() {
   )
 }
 
+const LANG_NAMES: Record<string, string> = {
+  en: 'English', uk: 'Ukrainian', az: 'Azerbaijani', fr: 'French', es: 'Spanish',
+  de: 'German', pt: 'Portuguese', it: 'Italian', nl: 'Dutch', tr: 'Turkish',
+  zh: 'Chinese (Simplified)', ar: 'Arabic', hi: 'Hindi', ru: 'Russian',
+  bn: 'Bengali', ja: 'Japanese', id: 'Indonesian',
+}
+
 export async function POST(request: NextRequest) {
-  const { day, leagueId, leagueName, playerNames } = await request.json()
+  const { day, leagueId, leagueName, playerNames, lang = 'en' } = await request.json()
   if (!day) return NextResponse.json({ error: 'Missing day' }, { status: 400 })
 
   const supabase = getServiceClient()
+  const baseCacheKey = `${leagueId ?? 'global'}:${day}`
+  const langCacheKey = lang === 'en' ? baseCacheKey : `${baseCacheKey}:${lang}`
 
-  // Check cache
-  const cacheKey = `${leagueId ?? 'global'}:${day}`
+  // Check cache for requested language
   const { data: cached } = await (supabase as any)
     .from('day_recaps')
     .select('recap_text')
-    .eq('cache_key', cacheKey)
+    .eq('cache_key', langCacheKey)
     .single()
   if (cached?.recap_text) return NextResponse.json({ recap: cached.recap_text })
 
@@ -29,11 +38,54 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ recap: 'Recap feature requires GROQ_API_KEY to be configured.' })
   }
 
-  // Fetch match data for the day
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+
+  // For non-English: get or generate English recap first, then translate
+  if (lang !== 'en') {
+    let englishRecap = ''
+    const { data: enCached } = await (supabase as any)
+      .from('day_recaps').select('recap_text').eq('cache_key', baseCacheKey).single()
+    if (enCached?.recap_text) {
+      englishRecap = enCached.recap_text
+    } else {
+      // Generate English recap (will be cached below)
+      englishRecap = await generateEnglishRecap(supabase, groq, day, leagueId, leagueName, baseCacheKey)
+    }
+
+    if (!englishRecap) return NextResponse.json({ recap: 'No results yet — check back after the matches!' })
+
+    // Translate
+    const langName = LANG_NAMES[lang] ?? lang
+    const translation = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 1200,
+      messages: [{
+        role: 'user',
+        content: `Translate the following football prediction contest recap into ${langName}. Keep all names, scores, and emojis exactly as-is. Only translate the surrounding text.\n\n${englishRecap}`,
+      }],
+    })
+    const translatedText = translation.choices[0]?.message?.content ?? englishRecap
+
+    await (supabase as any).from('day_recaps').upsert(
+      { cache_key: langCacheKey, league_id: null, day_date: day, recap_text: translatedText, created_at: new Date().toISOString() },
+      { onConflict: 'cache_key' }
+    )
+    return NextResponse.json({ recap: translatedText })
+  }
+
+  // English: generate fresh recap
+  const recapText = await generateEnglishRecap(supabase, groq, day, leagueId, leagueName, baseCacheKey)
+  return NextResponse.json({ recap: recapText || 'No results yet — check back after the matches!' })
+}
+
+async function generateEnglishRecap(
+  supabase: any, groq: Groq, day: string,
+  leagueId: string | null, leagueName: string, cacheKey: string
+): Promise<string> {
   const start = new Date(day + 'T06:00:00Z')
   const end   = new Date(start.getTime() + 24 * 3600_000)
 
-  const { data: matches } = await (supabase as any)
+  const { data: matches } = await supabase
     .from('matches')
     .select('id, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,fifa_code), away_team:teams!matches_away_team_id_fkey(name,fifa_code)')
     .gte('kickoff_at', start.toISOString())
@@ -41,29 +93,31 @@ export async function POST(request: NextRequest) {
     .eq('stage', 'group')
     .order('kickoff_at')
 
-  if (!matches?.length) return NextResponse.json({ recap: 'No matches found for this day.' })
+  if (!matches?.length) return ''
 
   const finishedMatches = matches.filter((m: any) => m.actual_home_score !== null)
-  if (!finishedMatches.length) return NextResponse.json({ recap: 'No results yet — check back after the matches!' })
+  if (!finishedMatches.length) return ''
 
-  // Fetch predictions for those matches
   const matchIds = matches.map((m: any) => m.id)
-  const { data: users } = await (supabase as any).from('users').select('id, display_name')
-  const { data: preds } = await (supabase as any)
+  const { data: users } = await supabase.from('users').select('id, display_name')
+  const { data: preds } = await supabase
     .from('predictions_group')
     .select('user_id, match_id, pred_home_score, pred_away_score')
     .in('match_id', matchIds)
     .limit(5000)
 
-  // Filter to league members if applicable
   let relevantUserIds: Set<string> | null = null
   if (leagueId) {
-    const { data: members } = await (supabase as any)
+    const { data: members } = await supabase
       .from('league_members').select('user_id').eq('league_id', leagueId)
     relevantUserIds = new Set((members ?? []).map((m: any) => m.user_id))
   }
 
-  const userMap = new Map((users ?? []).map((u: any) => [u.id, u.display_name ?? u.id.slice(0, 6)]))
+  // Transliterate all names to English
+  const userMap = new Map((users ?? []).map((u: any) => [
+    u.id,
+    transliterateName(u.display_name ?? 'Anonymous'),
+  ]))
 
   function pts(ph: number, pa: number, ah: number, aa: number) {
     if (ph === ah && pa === aa) return 3
@@ -72,7 +126,6 @@ export async function POST(request: NextRequest) {
     return 0
   }
 
-  // Build per-match prediction summaries
   const matchSummaries = finishedMatches.map((m: any) => {
     const home = m.home_team?.name ?? '?'
     const away = m.away_team?.name ?? '?'
@@ -98,7 +151,6 @@ export async function POST(request: NextRequest) {
     }
   })
 
-  // Build day leaderboard
   const dayPts = new Map<string, number>()
   for (const p of (preds ?? []).filter((p: any) => !relevantUserIds || relevantUserIds.has(p.user_id))) {
     const m = finishedMatches.find((fm: any) => fm.id === p.match_id)
@@ -112,13 +164,12 @@ export async function POST(request: NextRequest) {
 
   const promptData = JSON.stringify({ date: day, matches: matchSummaries, dayRanking }, null, 2)
 
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
   const completion = await groq.chat.completions.create({
     model: 'llama-3.3-70b-versatile',
     max_tokens: 1024,
     messages: [{
       role: 'user',
-      content: `You are the hilarious, enthusiastic commentator for a friend-group World Cup prediction contest called SpotOn WC26. Write a fun, punchy Day Recap for the league "${leagueName}" based on today's match results and predictions.
+      content: `You are the hilarious, enthusiastic commentator for a friend-group World Cup prediction contest called SpotOn WC26. Write a fun, punchy Day Recap for the league "${leagueName}" based on today's match results and predictions. Write ONLY in English.
 
 Rules:
 - Start with a 1-sentence hook about the day's drama
@@ -137,11 +188,10 @@ ${promptData}`,
 
   const recapText = completion.choices[0]?.message?.content ?? ''
 
-  // Cache it
-  await (supabase as any).from('day_recaps').upsert(
+  await supabase.from('day_recaps').upsert(
     { cache_key: cacheKey, league_id: leagueId ?? null, day_date: day, recap_text: recapText, created_at: new Date().toISOString() },
     { onConflict: 'cache_key' }
   )
 
-  return NextResponse.json({ recap: recapText })
+  return recapText
 }
