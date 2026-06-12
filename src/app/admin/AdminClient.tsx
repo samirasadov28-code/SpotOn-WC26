@@ -61,37 +61,34 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
     }
 
     setSaving((s) => new Set([...s, match.id]))
-    setErrors((e) => {
-      const next = { ...e }
-      delete next[match.id]
-      return next
-    })
+    setErrors((e) => { const next = { ...e }; delete next[match.id]; return next })
 
-    const resp = await fetch('/api/admin/result', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        matchId: match.id,
-        homeScore: home,
-        awayScore: away,
-        decidedBy: res.decidedBy,
-        winnerId: res.winnerId || null,
-      }),
-    })
+    try {
+      const resp = await fetch('/api/admin/result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId: match.id,
+          homeScore: home,
+          awayScore: away,
+          decidedBy: res.decidedBy,
+          winnerId: res.winnerId || null,
+        }),
+      })
 
-    setSaving((s) => {
-      const next = new Set(s)
-      next.delete(match.id)
-      return next
-    })
-
-    if (resp.ok) {
-      setSaved((s) => new Set([...s, match.id]))
-      setToast('✅ Saved!')
-      setTimeout(() => setToast(null), 2000)
-    } else {
-      const data = await resp.json()
-      setErrors((e) => ({ ...e, [match.id]: data.error ?? 'Failed to save' }))
+      if (resp.ok) {
+        setSaved((s) => new Set([...s, match.id]))
+        setToast('✅ Saved!')
+        setTimeout(() => setToast(null), 2000)
+      } else {
+        let msg = 'Failed to save'
+        try { const data = await resp.json(); msg = data.error ?? msg } catch {}
+        setErrors((e) => ({ ...e, [match.id]: `Error ${resp.status}: ${msg}` }))
+      }
+    } catch (err) {
+      setErrors((e) => ({ ...e, [match.id]: `Network error: ${err instanceof Error ? err.message : String(err)}` }))
+    } finally {
+      setSaving((s) => { const next = new Set(s); next.delete(match.id); return next })
     }
   }
 
