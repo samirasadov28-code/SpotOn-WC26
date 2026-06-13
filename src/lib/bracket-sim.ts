@@ -270,3 +270,29 @@ export function simulateBracket(
 
   return { champion, second, third, fourth }
 }
+
+export interface SlotMatchup {
+  slot: number
+  stage: string
+  home: TeamInfo | null
+  away: TeamInfo | null
+}
+
+export function simulateAllMatchups(
+  groupPreds: GroupPreds,
+  koPreds: KOPreds,
+  allMatches: MatchInfo[],
+  allTeams: TeamInfo[]
+): SlotMatchup[] {
+  const qualified = calcQualified(allMatches, allTeams, groupPreds)
+  const result: SlotMatchup[] = []
+  for (const def of R32_DEFS) {
+    const { home, away } = getSlotTeams(def.slot, koPreds, qualified)
+    result.push({ slot: def.slot, stage: 'r32', home, away })
+  }
+  for (const def of LATER_DEFS) {
+    const { home, away } = getSlotTeams(def.slot, koPreds, qualified)
+    result.push({ slot: def.slot, stage: def.stage, home, away })
+  }
+  return result
+}
