@@ -63,31 +63,48 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
     setSaving((s) => new Set([...s, match.id]))
     setErrors((e) => { const next = { ...e }; delete next[match.id]; return next })
 
+    // Safety timeout — always clear saving state after 15s
+    const safetyTimer = setTimeout(() => {
+      setSaving((s) => { const next = new Set(s); next.delete(match.id); return next })
+    }, 15000)
+
     try {
-      const resp = await fetch('/api/admin/result', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          matchId: match.id,
-          homeScore: home,
-          awayScore: away,
-          decidedBy: res.decidedBy,
-          winnerId: res.winnerId || null,
-        }),
-      })
+      const controller = new AbortController()
+      const fetchTimer = setTimeout(() => controller.abort(), 12000)
+      let resp: Response
+      try {
+        resp = await fetch('/api/admin/result', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            matchId: match.id,
+            homeScore: home,
+            awayScore: away,
+            decidedBy: res.decidedBy,
+            winnerId: res.winnerId || null,
+          }),
+          signal: controller.signal,
+        })
+      } finally {
+        clearTimeout(fetchTimer)
+      }
 
       if (resp.ok) {
         setSaved((s) => new Set([...s, match.id]))
         setToast('✅ Saved!')
-        setTimeout(() => setToast(null), 2000)
+        setTimeout(() => setToast(null), 2500)
+        // Reset back to 'Save' after 4s so user can re-save if needed
+        setTimeout(() => setSaved((s) => { const next = new Set(s); next.delete(match.id); return next }), 4000)
       } else {
         let msg = 'Failed to save'
         try { const data = await resp.json(); msg = data.error ?? msg } catch {}
         setErrors((e) => ({ ...e, [match.id]: `Error ${resp.status}: ${msg}` }))
       }
     } catch (err) {
-      setErrors((e) => ({ ...e, [match.id]: `Network error: ${err instanceof Error ? err.message : String(err)}` }))
+      const msg = err instanceof Error && err.name === 'AbortError' ? 'Request timed out' : `Network error: ${err instanceof Error ? err.message : String(err)}`
+      setErrors((e) => ({ ...e, [match.id]: msg }))
     } finally {
+      clearTimeout(safetyTimer)
       setSaving((s) => { const next = new Set(s); next.delete(match.id); return next })
     }
   }
