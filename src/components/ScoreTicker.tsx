@@ -36,13 +36,13 @@ function TickerItem({ m, lang }: { m: TickerMatch; lang: string }) {
     : <span className="text-white/50">{m.kickoff_at ? formatKickoff(m.kickoff_at) : '—'}</span>
 
   return (
-    <span className="inline-flex items-center gap-2 px-1">
+    <span className="inline-flex items-center gap-1.5 px-1">
       {hCode && <img src={flagUrl(hCode, 40)} alt={hCode} className="h-3.5 w-auto rounded-sm" />}
       <span className="font-medium">{hName}</span>
-      <span className="text-white/25 text-[10px] mx-0.5">vs</span>
+      <span className="text-white/30 text-[10px]">vs</span>
       {aCode && <img src={flagUrl(aCode, 40)} alt={aCode} className="h-3.5 w-auto rounded-sm" />}
       <span className="font-medium">{aName}</span>
-      <span className="text-white/20 mx-2">·</span>
+      <span className="text-white/40 mx-1 text-[10px]">·</span>
       {scoreOrTime}
     </span>
   )
@@ -108,7 +108,7 @@ export default function ScoreTicker() {
 
   if (loading || matches.length === 0) return null
 
-  const separator = <span className="text-white/25 mx-5 text-sm select-none">┃</span>
+  const separator = <span className="text-white/40 mx-6 text-base select-none font-thin">|</span>
 
   return (
     <>
@@ -121,10 +121,10 @@ export default function ScoreTicker() {
           display: inline-flex;
           align-items: center;
           white-space: nowrap;
-          animation: ticker 25s linear infinite;
+          animation: ticker 35s linear infinite;
         }
         @media (min-width: 768px) {
-          .ticker-track { animation-duration: 45s; }
+          .ticker-track { animation-duration: 55s; }
         }
         .ticker-wrap:hover .ticker-track,
         .ticker-wrap:active .ticker-track {

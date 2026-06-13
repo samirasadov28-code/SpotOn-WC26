@@ -264,15 +264,35 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
 
   return (
     <div>
-      {/* Day picker */}
-      <div className="flex gap-1.5 flex-wrap mb-4">
-        {allDays.map(day => (
-          <button key={day} onClick={() => setSelectedDay(day)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-            {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-          </button>
-        ))}
-      </div>
+      {/* Day picker — current ±2 days inline, rest in scrollable row */}
+      {(() => {
+        const todayCDT = toCDTDate(new Date().toISOString())
+        const nearDays = allDays.filter(d => Math.abs(allDays.indexOf(d) - allDays.indexOf(selectedDay || todayCDT)) <= 2 || (d >= toCDTDate(new Date(Date.now() - 2 * 86400_000).toISOString()) && d <= toCDTDate(new Date(Date.now() + 2 * 86400_000).toISOString())))
+        const nearSet = new Set(nearDays)
+        const otherDays = allDays.filter(d => !nearSet.has(d))
+        return (
+          <div className="mb-4 space-y-1.5">
+            <div className="flex gap-1.5 flex-wrap">
+              {nearDays.map(day => (
+                <button key={day} onClick={() => setSelectedDay(day)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                  {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                </button>
+              ))}
+            </div>
+            {otherDays.length > 0 && (
+              <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {otherDays.map(day => (
+                  <button key={day} onClick={() => setSelectedDay(day)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                    {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : dayMatches.length === 0 ? (
         <div className="text-center text-gray-400 py-10 text-sm">{t('dv_no_matches')}</div>
@@ -303,13 +323,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 <tr className="bg-[#0B1F3A] text-white">
                   <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">{t('leaderboard_player')}</th>
                   {dayMatches.map(m => (
-                    <th key={m.id} className="py-2 px-2 text-center font-normal min-w-[100px]">
-                      <div className="flex items-center justify-center gap-1">
-                        {m.home_team?.fifa_code && <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />}
-                        <span className="font-semibold text-[11px]">{m.home_team?.fifa_code}</span>
-                        <span className="text-white/40 text-[10px]">v</span>
-                        <span className="font-semibold text-[11px]">{m.away_team?.fifa_code}</span>
-                        {m.away_team?.fifa_code && <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />}
+                    <th key={m.id} className="py-2 px-1 text-center font-normal min-w-[80px]">
+                      <div className="flex items-center justify-center gap-0.5">
+                        {m.home_team?.fifa_code && <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                        <span className="font-semibold text-[10px]">{m.home_team?.fifa_code}</span>
+                        <span className="text-white/40 text-[9px]">v</span>
+                        <span className="font-semibold text-[10px]">{m.away_team?.fifa_code}</span>
+                        {m.away_team?.fifa_code && <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
                       </div>
                       <div className="text-[10px] opacity-70 mt-0.5">
                         {m.actual_home_score !== null
@@ -1000,7 +1020,7 @@ export default function LeaderboardPage() {
         </span>
         <button onClick={() => setShowLeaguePanel(o => !o)}
           className="ml-auto text-xs bg-[#0B1F3A] text-white px-3 py-2 rounded-lg hover:bg-blue-900 transition-colors shrink-0">
-          {showLeaguePanel ? '✕ Close' : '+ ' + t('lb_manage')}
+          {showLeaguePanel ? '✕ Close' : t('lb_manage')}
         </button>
       </div>
 
