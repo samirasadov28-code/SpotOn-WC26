@@ -168,7 +168,7 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
               {match.home_team?.name ?? 'TBD'}
             </span>
             {homeFlagSrc
-              ? <img src={homeFlagSrc} alt="" className="w-7 h-auto rounded-sm flex-shrink-0" />
+              ? <span className="inline-block w-7 h-5 overflow-hidden rounded-sm flex-shrink-0"><img src={homeFlagSrc} alt="" className="w-full h-full object-cover" /></span>
               : <span className="w-7 h-5 bg-gray-100 rounded-sm flex-shrink-0" />}
           </div>
 
@@ -202,7 +202,7 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
           {/* Away team */}
           <div className="flex-1 flex items-center gap-2 min-w-0">
             {awayFlagSrc
-              ? <img src={awayFlagSrc} alt="" className="w-7 h-auto rounded-sm flex-shrink-0" />
+              ? <span className="inline-block w-7 h-5 overflow-hidden rounded-sm flex-shrink-0"><img src={awayFlagSrc} alt="" className="w-full h-full object-cover" /></span>
               : <span className="w-7 h-5 bg-gray-100 rounded-sm flex-shrink-0" />}
             <span className="font-bold text-sm text-[#0B1F3A] dark:text-white truncate">
               {match.away_team?.name ?? 'TBD'}
@@ -250,7 +250,7 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
                   }
                   className="accent-[#0B1F3A]"
                 />
-                {homeFlagSrc && <img src={homeFlagSrc} alt="" className="w-4 h-auto rounded-sm" />}
+                {homeFlagSrc && <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm"><img src={homeFlagSrc} alt="" className="w-full h-full object-cover" /></span>}
                 <span className="font-medium text-[#0B1F3A] dark:text-white">{match.home_team?.name}</span>
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer">
@@ -264,7 +264,7 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
                   }
                   className="accent-[#0B1F3A]"
                 />
-                {awayFlagSrc && <img src={awayFlagSrc} alt="" className="w-4 h-auto rounded-sm" />}
+                {awayFlagSrc && <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm"><img src={awayFlagSrc} alt="" className="w-full h-full object-cover" /></span>}
                 <span className="font-medium text-[#0B1F3A] dark:text-white">{match.away_team?.name}</span>
               </label>
             </div>

@@ -82,7 +82,9 @@ function MiniFlag({ team, lang }: { team: TeamRef; lang: string }) {
   if (!team) return <span className="text-gray-300 text-[10px]">?</span>
   return (
     <span className="inline-flex items-center gap-0.5">
-      <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-3.5 h-auto rounded-sm" />
+      <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
+        <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+      </span>
       <span className="text-[10px] font-medium text-gray-700">{getTeamName(team.fifa_code, lang) ?? team.fifa_code}</span>
     </span>
   )
@@ -160,9 +162,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       setAllDays(days)
       const todayCDT = toCDTDate(new Date().toISOString())
       const pastDays = days.filter((d: string) => d <= todayCDT)
-      const defaultDay = pastDays[pastDays.length - 1] ?? days[0] ?? ''
+      const futureDays = days.filter((d: string) => d > todayCDT)
+      // Default: last completed matchday, or next upcoming if none done yet
+      const defaultDay = pastDays[pastDays.length - 1] ?? futureDays[0] ?? days[0] ?? ''
       const saved = typeof window !== 'undefined' ? localStorage.getItem('spoton_dayview_day') : null
-      const restoredDay = saved && pastDays.includes(saved) ? saved : defaultDay
+      const restoredDay = saved && days.includes(saved) ? saved : defaultDay
       setSelectedDay(restoredDay)
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -264,35 +268,15 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
 
   return (
     <div>
-      {/* Day picker — current ±2 days inline, rest in scrollable row */}
-      {(() => {
-        const todayCDT = toCDTDate(new Date().toISOString())
-        const nearDays = allDays.filter(d => Math.abs(allDays.indexOf(d) - allDays.indexOf(selectedDay || todayCDT)) <= 2 || (d >= toCDTDate(new Date(Date.now() - 2 * 86400_000).toISOString()) && d <= toCDTDate(new Date(Date.now() + 2 * 86400_000).toISOString())))
-        const nearSet = new Set(nearDays)
-        const otherDays = allDays.filter(d => !nearSet.has(d))
-        return (
-          <div className="mb-4 space-y-1.5">
-            <div className="flex gap-1.5 flex-wrap">
-              {nearDays.map(day => (
-                <button key={day} onClick={() => setSelectedDay(day)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                  {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-                </button>
-              ))}
-            </div>
-            {otherDays.length > 0 && (
-              <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                {otherDays.map(day => (
-                  <button key={day} onClick={() => setSelectedDay(day)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                    {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })()}
+      {/* Day picker — single scrollable row */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4" style={{ scrollbarWidth: 'none' }}>
+        {allDays.map(day => (
+          <button key={day} onClick={() => setSelectedDay(day)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+            {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+          </button>
+        ))}
+      </div>
 
       {loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : dayMatches.length === 0 ? (
         <div className="text-center text-gray-400 py-10 text-sm">{t('dv_no_matches')}</div>
@@ -323,13 +307,21 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 <tr className="bg-[#0B1F3A] text-white">
                   <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">{t('leaderboard_player')}</th>
                   {dayMatches.map(m => (
-                    <th key={m.id} className="py-2 px-1 text-center font-normal min-w-[80px]">
+                    <th key={m.id} className="py-2 px-1 text-center font-normal min-w-[72px]">
                       <div className="flex items-center justify-center gap-0.5">
-                        {m.home_team?.fifa_code && <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
-                        <span className="font-semibold text-[10px]">{m.home_team?.fifa_code}</span>
-                        <span className="text-white/40 text-[9px]">v</span>
-                        <span className="font-semibold text-[10px]">{m.away_team?.fifa_code}</span>
-                        {m.away_team?.fifa_code && <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />}
+                        {m.home_team?.fifa_code && (
+                          <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
+                            <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                          </span>
+                        )}
+                        <span className="font-semibold text-[9px]">{m.home_team?.fifa_code}</span>
+                        <span className="text-white/40 text-[8px]">v</span>
+                        <span className="font-semibold text-[9px]">{m.away_team?.fifa_code}</span>
+                        {m.away_team?.fifa_code && (
+                          <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
+                            <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] opacity-70 mt-0.5">
                         {m.actual_home_score !== null
@@ -394,6 +386,16 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium">{t('dv_pts_wrong')}</span>
             <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-medium">{t('dv_pts_pending')}</span>
           </div>
+          {/* Qualified teams pill — shown after the last group matchday */}
+          {allDays.length > 0 && selectedDay >= allDays[allDays.length - 1] && (
+            <div className="mt-4 flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+              <span className="text-lg">✅</span>
+              <div>
+                <p className="text-xs font-bold text-green-800">32 teams qualified for Round of 32</p>
+                <p className="text-[10px] text-green-600">Group stage complete · Knockout bracket begins</p>
+              </div>
+            </div>
+          )}
         </>
       )}
 

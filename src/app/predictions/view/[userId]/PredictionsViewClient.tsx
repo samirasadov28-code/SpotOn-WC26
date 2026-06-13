@@ -5,8 +5,8 @@ import Link from 'next/link'
 import { flagUrl } from '@/lib/flag-map'
 import { getTeamName } from '@/lib/team-name'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
-import { simulateBracket } from '@/lib/bracket-sim'
-import type { TeamInfo, MatchInfo } from '@/lib/bracket-sim'
+import { simulateBracket, simulateAllMatchups } from '@/lib/bracket-sim'
+import type { TeamInfo, MatchInfo, SlotMatchup } from '@/lib/bracket-sim'
 
 interface Team extends TeamInfo {
   flag_emoji: string | null
@@ -51,6 +51,15 @@ const LANG_TO_LOCALE: Record<string, string> = {
   ar: 'ar-SA', hi: 'hi-IN', ru: 'ru-RU', bn: 'bn-BD', ja: 'ja-JP', id: 'id-ID',
 }
 
+function Flag({ code }: { code: string | null | undefined }) {
+  if (!code) return null
+  return (
+    <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0 align-middle">
+      <img src={flagUrl(code, 40)} alt={code} className="w-full h-full object-cover" />
+    </span>
+  )
+}
+
 function toCDTDate(iso: string) {
   return new Date(new Date(iso).getTime() - 6 * 3600_000).toISOString().slice(0, 10)
 }
@@ -83,7 +92,7 @@ function MatchCard({ m, pred, lang, noPick }: { m: MatchRow; pred: GroupPred | u
           <span className="font-semibold text-xs text-[#0B1F3A] truncate">
             {m.home_team ? (getTeamName(m.home_team.fifa_code, lang) ?? m.home_team.name) : 'TBD'}
           </span>
-          {m.home_team?.fifa_code && <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
+          <Flag code={m.home_team?.fifa_code} />
         </div>
         <div className="flex flex-col items-center min-w-[90px] gap-0.5 flex-shrink-0">
           {hasResult ? (
@@ -100,7 +109,7 @@ function MatchCard({ m, pred, lang, noPick }: { m: MatchRow; pred: GroupPred | u
           ) : <span className="text-[10px] text-gray-300 italic">{noPick}</span>}
         </div>
         <div className="flex-1 flex items-center gap-1.5 min-w-0">
-          {m.away_team?.fifa_code && <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
+          <Flag code={m.away_team?.fifa_code} />
           <span className="font-semibold text-xs text-[#0B1F3A] truncate">
             {m.away_team ? (getTeamName(m.away_team.fifa_code, lang) ?? m.away_team.name) : 'TBD'}
           </span>
@@ -174,7 +183,7 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, grou
                 <td className="py-1.5 px-3 text-gray-400">{i + 1}</td>
                 <td className="py-1.5 px-3">
                   <div className="flex items-center gap-1.5">
-                    <img src={flagUrl(s.team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm" />
+                    <Flag code={s.team.fifa_code} />
                     <span className="font-medium text-[#0B1F3A]">{getTeamName(s.team.fifa_code, lang) ?? s.team.name}</span>
                     {i < 2 && <span className="text-[9px] text-green-600 font-bold ml-1">ADV</span>}
                   </div>
@@ -194,33 +203,32 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, grou
   )
 }
 
-function KOMatchCard({ m, pred, teamById, lang, noPick }: { m: MatchRow; pred: KOPred | undefined; teamById: Map<string, Team>; lang: string; noPick: string }) {
-  const homeTeam = m.home_team
-  const awayTeam = m.away_team
+function SimKOMatchCard({ slot, home, away, pred, actualResult, lang, noPick }: {
+  slot: number; home: TeamInfo | null; away: TeamInfo | null
+  pred: KOPred | undefined; actualResult: { h: number; a: number } | null
+  lang: string; noPick: string
+}) {
   const hasPred = pred && pred.pred_home_score !== null
-  const hasResult = m.actual_home_score !== null && m.actual_away_score !== null
+  const hasResult = actualResult !== null
   const ph = hasPred ? pred.pred_home_score! : null
   const pa = hasPred ? pred.pred_away_score! : null
-  const pts = (hasPred && hasResult) ? matchPts(ph!, pa!, m.actual_home_score!, m.actual_away_score!) : null
+  const pts = (hasPred && hasResult) ? matchPts(ph!, pa!, actualResult.h, actualResult.a) : null
   const ptsBg = pts === 3 ? 'border-green-200 bg-green-50/50' : pts === 2 ? 'border-blue-200 bg-blue-50/50' : pts === 1 ? 'border-yellow-200 bg-yellow-50/50' : pts === 0 ? 'border-red-200 bg-red-50/30' : 'border-gray-100 bg-white'
+  const bothUnknown = !home && !away
 
   return (
-    <div className={`rounded-xl shadow-sm p-3 border ${ptsBg}`}>
+    <div className={`rounded-xl shadow-sm p-3 border ${ptsBg} ${bothUnknown ? 'opacity-40' : ''}`}>
       <div className="flex items-center gap-2">
         <div className="flex-1 flex items-center justify-end gap-1.5 min-w-0">
-          <span className="font-semibold text-xs text-[#0B1F3A] truncate">
-            {homeTeam ? (getTeamName(homeTeam.fifa_code, lang) ?? homeTeam.name) : 'TBD'}
+          <span className={`font-semibold text-xs truncate ${home ? 'text-[#0B1F3A]' : 'text-gray-400 italic'}`}>
+            {home ? (getTeamName(home.fifa_code, lang) ?? home.name) : '?'}
           </span>
-          {homeTeam?.fifa_code && <img src={flagUrl(homeTeam.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
+          <Flag code={home?.fifa_code} />
         </div>
         <div className="flex flex-col items-center min-w-[90px] gap-0.5 flex-shrink-0">
-          {hasResult ? (
-            <span className="font-black text-base text-[#0B1F3A]">{m.actual_home_score} – {m.actual_away_score}</span>
-          ) : (
-            <span className="text-[10px] text-gray-400">
-              {m.kickoff_at ? new Date(m.kickoff_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'TBD'}
-            </span>
-          )}
+          {hasResult
+            ? <span className="font-black text-base text-[#0B1F3A]">{actualResult.h} – {actualResult.a}</span>
+            : <span className="text-[10px] text-gray-400 font-medium">vs</span>}
           {hasPred ? (
             <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${hasResult ? (pts === 3 ? 'bg-green-100 text-green-700' : pts === 2 ? 'bg-blue-100 text-blue-700' : pts === 1 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600') : 'bg-gray-100 text-gray-500'}`}>
               {ph}–{pa}{pts !== null && <PtsChip pts={pts} />}
@@ -228,9 +236,9 @@ function KOMatchCard({ m, pred, teamById, lang, noPick }: { m: MatchRow; pred: K
           ) : <span className="text-[10px] text-gray-300 italic">{noPick}</span>}
         </div>
         <div className="flex-1 flex items-center gap-1.5 min-w-0">
-          {awayTeam?.fifa_code && <img src={flagUrl(awayTeam.fifa_code, 40)} alt="" className="w-6 h-auto rounded-sm flex-shrink-0" />}
-          <span className="font-semibold text-xs text-[#0B1F3A] truncate">
-            {awayTeam ? (getTeamName(awayTeam.fifa_code, lang) ?? awayTeam.name) : 'TBD'}
+          <Flag code={away?.fifa_code} />
+          <span className={`font-semibold text-xs truncate ${away ? 'text-[#0B1F3A]' : 'text-gray-400 italic'}`}>
+            {away ? (getTeamName(away.fifa_code, lang) ?? away.name) : '?'}
           </span>
         </div>
       </div>
@@ -256,6 +264,7 @@ export default function PredictionsViewClient({
   const { lang, t } = useTranslation()
   const [tab, setTab] = useState<'groups' | 'standings' | 'knockout'>('groups')
   const [champTeam, setChampTeam] = useState<Team | null>(null)
+  const [simMatchups, setSimMatchups] = useState<SlotMatchup[]>([])
 
   const displayName = initialDisplayName
   const matches = initialMatches
@@ -274,6 +283,7 @@ export default function PredictionsViewClient({
       const kpMap = new Map(koPreds.filter(p => p.pred_home_score !== null).map(p => [p.bracket_slot, { h: p.pred_home_score!, a: p.pred_away_score! }]))
       const result = simulateBracket(gpMap, kpMap, groupMatchInfos, teamInfos)
       if (result.champion) setChampTeam(teams.find(t => t.fifa_code === result.champion!.fifa_code) ?? null)
+      setSimMatchups(simulateAllMatchups(gpMap, kpMap, groupMatchInfos, teamInfos))
     } catch (_) { /* simulation failed */ }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -309,7 +319,7 @@ export default function PredictionsViewClient({
           {champTeam && (
             <span className="inline-flex items-center gap-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-semibold px-2.5 py-1 rounded-full">
               {t('pv_predicted_champ')}:
-              <img src={flagUrl(champTeam.fifa_code, 40)} alt="" className="w-4 h-auto rounded-sm" />
+              <Flag code={champTeam.fifa_code} />
               {getTeamName(champTeam.fifa_code, lang) ?? champTeam.name}
             </span>
           )}
@@ -379,14 +389,18 @@ export default function PredictionsViewClient({
 
       {tab === 'knockout' && (
         <div className="flex flex-col gap-1">
-          {koMatches.length === 0 ? (
+          {simMatchups.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-10">{t('pv_ko_none')}</p>
           ) : (() => {
-            const stageGroups = new Map<string, MatchRow[]>()
+            const koResultMap = new Map<number, { h: number; a: number }>()
             for (const m of koMatches) {
-              const s = m.ko_stage ?? 'other'
-              if (!stageGroups.has(s)) stageGroups.set(s, [])
-              stageGroups.get(s)!.push(m)
+              if (m.bracket_slot && m.actual_home_score !== null && m.actual_away_score !== null)
+                koResultMap.set(m.bracket_slot, { h: m.actual_home_score, a: m.actual_away_score })
+            }
+            const stageGroups = new Map<string, SlotMatchup[]>()
+            for (const mu of simMatchups) {
+              if (!stageGroups.has(mu.stage)) stageGroups.set(mu.stage, [])
+              stageGroups.get(mu.stage)!.push(mu)
             }
             return KO_STAGE_ORDER.filter(s => stageGroups.has(s)).map(stage => (
               <div key={stage} className="mb-5">
@@ -396,8 +410,17 @@ export default function PredictionsViewClient({
                   <span className="border-b border-gray-200 flex-1" />
                 </div>
                 <div className="flex flex-col gap-2">
-                  {stageGroups.get(stage)!.map(m => (
-                    <KOMatchCard key={m.id} m={m} pred={koPredsMap.get(m.bracket_slot!)} teamById={teamById} lang={lang} noPick={t('pv_no_pick')} />
+                  {stageGroups.get(stage)!.map(mu => (
+                    <SimKOMatchCard
+                      key={mu.slot}
+                      slot={mu.slot}
+                      home={mu.home}
+                      away={mu.away}
+                      pred={koPredsMap.get(mu.slot)}
+                      actualResult={koResultMap.get(mu.slot) ?? null}
+                      lang={lang}
+                      noPick={t('pv_no_pick')}
+                    />
                   ))}
                 </div>
               </div>
