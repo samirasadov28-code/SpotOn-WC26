@@ -8,6 +8,8 @@ import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { getTeamName } from '@/lib/team-name'
 
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000
+const LATE_ENTRY_EMAIL = 'jatindersinghgahra@gmail.com'
+const LATE_ENTRY_DEADLINE = new Date('2026-06-13T18:48:00Z')
 
 function isMatchLocked(kickoffAt: string | null | undefined): boolean {
   if (!kickoffAt) return false
@@ -127,13 +129,16 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
   const [teams, setTeams] = useState<Team[]>([])
   const [preds, setPreds] = useState<PredMap>({})
   const [userId, setUserId] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const [savedCount, setSavedCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [errorIds, setErrorIds] = useState<Set<string>>(new Set())
   const [dbError, setDbError] = useState<string | null>(null)
-  const isGloballyLocked = false
+  const isGloballyLocked = userEmail === LATE_ENTRY_EMAIL
+    ? new Date() >= LATE_ENTRY_DEADLINE
+    : userEmail !== null
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
 
@@ -198,6 +203,7 @@ export default function GroupPredictionsPage({ onCountChange }: { onCountChange?
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
       setUserId(user.id)
+      setUserEmail(user.email ?? null)
       userIdRef.current = user.id
 
       const [matchRes, teamRes, predRes] = await Promise.all([

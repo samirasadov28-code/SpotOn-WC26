@@ -8,7 +8,8 @@ import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { getTeamName } from '@/lib/team-name'
 import { getAnnexC, THIRD_SLOT_OPPONENT } from '@/lib/annex-c'
 
-const LOCK_AT = new Date('2026-07-04T00:00:00Z')
+const LATE_ENTRY_EMAIL = 'jatindersinghgahra@gmail.com'
+const LATE_ENTRY_DEADLINE = new Date('2026-06-13T18:48:00Z')
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
 
 type ViewMode = 'list' | 'bracket'
@@ -330,6 +331,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
   const [groupPreds, setGroupPreds] = useState<GroupPredMap>({})
   const [koPreds, setKoPreds] = useState<KOPredMap>({})
   const [userId, setUserId] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<ViewMode>('list')
   const [savingSlots, setSavingSlots] = useState<Set<number>>(new Set())
@@ -337,7 +339,9 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
   const [savedSlotCount, setSavedSlotCount] = useState(0)
   const [showWinner, setShowWinner] = useState(false)
   const [lastFilledSlot, setLastFilledSlot] = useState<number | null>(null)
-  const isLocked = new Date() >= LOCK_AT
+  const isLocked = userEmail === LATE_ENTRY_EMAIL
+    ? new Date() >= LATE_ENTRY_DEADLINE
+    : userEmail !== null
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const supabase = createClient()
@@ -366,6 +370,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
       setUserId(user.id)
+      setUserEmail(user.email ?? null)
       userIdRef.current = user.id
 
       const [matchRes, teamRes, gpRes, kpRes] = await Promise.all([
