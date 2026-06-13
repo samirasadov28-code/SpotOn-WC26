@@ -46,6 +46,28 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [filter, setFilter] = useState<FilterTab>('unscored')
   const [toast, setToast] = useState<string | null>(null)
+  const [lateEmail, setLateEmail] = useState('')
+  const [lateLoading, setLateLoading] = useState(false)
+  const [lateResult, setLateResult] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  const handleLateEntry = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLateLoading(true)
+    setLateResult(null)
+    try {
+      const res = await fetch('/api/admin/late-entry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: lateEmail }),
+      })
+      const data = await res.json()
+      setLateResult({ ok: res.ok, msg: res.ok ? `✅ ${data.message} · ${data.inserted} predictions inserted, ${data.skipped ?? 0} already existed` : `❌ ${data.error}` })
+    } catch (err) {
+      setLateResult({ ok: false, msg: `❌ Network error: ${String(err)}` })
+    } finally {
+      setLateLoading(false)
+    }
+  }
 
   const getResult = (matchId: string): ResultState =>
     results[matchId] ?? { homeScore: '', awayScore: '', decidedBy: 'ft', winnerId: '' }
@@ -332,6 +354,37 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
               </div>
             )
           })
+        )}
+      </div>
+
+      {/* Late Entry section */}
+      <div className="mb-10">
+        <h2 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-1">🕐 Late Entry</h2>
+        <p className="text-xs text-gray-400 mb-3">
+          Grants a late-joining player 0–0 predictions for all already-played group matches so they don't earn points for games they missed.
+          They can predict normally for all future (unlocked) matches.
+        </p>
+        <form onSubmit={handleLateEntry} className="flex gap-2 items-start flex-wrap">
+          <input
+            type="email"
+            required
+            placeholder="player@email.com"
+            value={lateEmail}
+            onChange={e => setLateEmail(e.target.value)}
+            className="flex-1 min-w-[220px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] bg-white"
+          />
+          <button
+            type="submit"
+            disabled={lateLoading}
+            className="bg-[#0B1F3A] hover:bg-blue-900 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            {lateLoading ? '…' : 'Grant Late Entry'}
+          </button>
+        </form>
+        {lateResult && (
+          <p className={`mt-2 text-sm font-medium ${lateResult.ok ? 'text-green-700' : 'text-red-600'}`}>
+            {lateResult.msg}
+          </p>
         )}
       </div>
 
