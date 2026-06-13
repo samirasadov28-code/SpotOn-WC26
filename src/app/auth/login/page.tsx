@@ -205,7 +205,19 @@ function LoginForm() {
       </form>
 
       <p className="text-center text-sm text-gray-500 mt-5">
-        Registration is closed — sign in to view your predictions.
+        {mode === 'signin' ? (
+          <>Don&apos;t have an account?{' '}
+            <button onClick={() => switchMode('signup')} className="text-[#0B1F3A] font-semibold hover:underline">
+              Sign up
+            </button>
+          </>
+        ) : (
+          <>Already have an account?{' '}
+            <button onClick={() => switchMode('signin')} className="text-[#0B1F3A] font-semibold hover:underline">
+              Sign in
+            </button>
+          </>
+        )}
       </p>
     </div>
   )
