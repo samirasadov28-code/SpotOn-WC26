@@ -8,7 +8,7 @@ import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { getTeamName } from '@/lib/team-name'
 import { getAnnexC, THIRD_SLOT_OPPONENT } from '@/lib/annex-c'
 
-const LOCK_AT = new Date('2026-06-12T19:18:00Z')
+const LOCK_AT = new Date('2026-07-04T00:00:00Z')
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
 
 type ViewMode = 'list' | 'bracket'
