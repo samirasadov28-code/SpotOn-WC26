@@ -144,6 +144,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const supabase = createClient()
   const { lang, t } = useTranslation()
   const [allDays, setAllDays] = useState<string[]>([])
+  const [koDateToStage, setKoDateToStage] = useState<Map<string, string>>(new Map())
   const [selectedDay, setSelectedDay] = useState('')
   const [dayMatches, setDayMatches] = useState<DayMatch[]>([])
   const [predsMap, setPredsMap] = useState<Map<string, Map<string, { h: number; a: number }>>>(new Map())
@@ -157,17 +158,29 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   useEffect(() => { setRecap(null) }, [lang])
 
   useEffect(() => {
-    supabase.from('matches').select('kickoff_at').eq('stage', 'group').order('kickoff_at').then(({ data }) => {
-      if (!data) return
-      const days = [...new Set(data.map((m: any) => toCDTDate(m.kickoff_at)))]
+    Promise.all([
+      supabase.from('matches').select('kickoff_at').eq('stage', 'group').order('kickoff_at'),
+      supabase.from('matches').select('kickoff_at, bracket_slot').eq('stage', 'knockout').not('kickoff_at', 'is', null),
+    ]).then(([groupRes, koRes]) => {
+      const days = [...new Set((groupRes.data ?? []).map((m: any) => toCDTDate(m.kickoff_at)))]
       setAllDays(days)
+
+      const koMap = new Map<string, string>()
+      for (const m of (koRes.data ?? []) as any[]) {
+        const day = toCDTDate(m.kickoff_at)
+        const slot = m.bracket_slot as number
+        const stage = slot <= 16 ? 'r32' : slot <= 24 ? 'r16' : slot <= 28 ? 'qf' : slot <= 30 ? 'sf' : slot === 32 ? 'final' : 'third'
+        if (!koMap.has(day)) koMap.set(day, stage)
+      }
+      setKoDateToStage(koMap)
+
+      const allKnown = new Set([...days, ...[...koMap.keys()]])
       const todayCDT = toCDTDate(new Date().toISOString())
       const pastDays = days.filter((d: string) => d <= todayCDT)
       const futureDays = days.filter((d: string) => d > todayCDT)
-      // Default: last completed matchday, or next upcoming if none done yet
       const defaultDay = pastDays[pastDays.length - 1] ?? futureDays[0] ?? days[0] ?? ''
       const saved = typeof window !== 'undefined' ? localStorage.getItem('spoton_dayview_day') : null
-      const restoredDay = saved && days.includes(saved) ? saved : defaultDay
+      const restoredDay = saved && allKnown.has(saved) ? saved : defaultDay
       setSelectedDay(restoredDay)
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -180,6 +193,20 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
 
     const start = new Date(selectedDay + 'T06:00:00Z')
     const end   = new Date(start.getTime() + 24 * 3600_000)
+
+    const isKoDay = koDateToStage.has(selectedDay)
+    if (isKoDay) {
+      supabase.from('matches')
+        .select('id, kickoff_at, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
+        .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
+        .eq('stage', 'knockout').order('kickoff_at')
+        .then(({ data }) => {
+          setDayMatches((data ?? []) as DayMatch[])
+          setPredsMap(new Map())
+          setLoading(false)
+        })
+      return
+    }
 
     Promise.all([
       supabase.from('matches')
@@ -212,7 +239,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           .then(text => { setRecap(text); setRecapLoading(false) })
       }
     })
-  }, [selectedDay, leagueId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedDay, leagueId, koDateToStage]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchRecapInner = async (day: string, lgId: string, lgName: string, ents: LeaderboardEntry[], seenKey: string): Promise<string> => {
     setRecapLoading(true)
@@ -239,6 +266,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   }
 
   const locale = LANG_TO_LOCALE[lang] ?? 'en-GB'
+  const isKoDay = koDateToStage.has(selectedDay)
   const dayLabel = selectedDay
     ? new Date(selectedDay + 'T12:00:00Z').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
     : ''
@@ -272,13 +300,22 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
     <div>
       {/* Day picker — single scrollable row with arrows */}
       {(() => {
-        const KO_STAGES = [
-          { key: 'r32', label: 'R32 ×32', color: 'bg-blue-100 text-blue-700' },
-          { key: 'r16', label: 'R16 ×16', color: 'bg-indigo-100 text-indigo-700' },
-          { key: 'qf',  label: 'QF ×8',  color: 'bg-purple-100 text-purple-700' },
-          { key: 'sf',  label: 'SF ×4',  color: 'bg-pink-100 text-pink-700' },
-          { key: 'final', label: '🏆 Final', color: 'bg-yellow-100 text-yellow-700' },
-        ]
+        const KO_STAGE_ORDER = ['r32', 'r16', 'qf', 'sf', 'final']
+        const KO_STAGE_INFO: Record<string, { label: string; idle: string; active: string }> = {
+          r32:   { label: 'R32',  idle: 'bg-blue-50 text-blue-700 border border-blue-200',    active: 'bg-blue-600 text-white shadow' },
+          r16:   { label: 'R16',  idle: 'bg-indigo-50 text-indigo-700 border border-indigo-200', active: 'bg-indigo-600 text-white shadow' },
+          qf:    { label: 'QF',   idle: 'bg-purple-50 text-purple-700 border border-purple-200', active: 'bg-purple-600 text-white shadow' },
+          sf:    { label: 'SF',   idle: 'bg-pink-50 text-pink-700 border border-pink-200',    active: 'bg-pink-600 text-white shadow' },
+          final: { label: '🏆',   idle: 'bg-yellow-50 text-yellow-700 border border-yellow-200', active: 'bg-yellow-500 text-white shadow' },
+        }
+        // Group KO days by stage, sorted
+        const koByStage = new Map<string, string[]>()
+        for (const [day, stage] of koDateToStage) {
+          if (!koByStage.has(stage)) koByStage.set(stage, [])
+          koByStage.get(stage)!.push(day)
+        }
+        for (const [, days] of koByStage) days.sort()
+
         return (
           <div className="flex items-center gap-1 mb-4">
             <button onClick={() => { dayScrollRef.current?.scrollBy({ left: -160, behavior: 'smooth' }) }}
@@ -290,11 +327,20 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                   {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                 </button>
               ))}
-              {allDays.length > 0 && KO_STAGES.map(s => (
-                <span key={s.key} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold shrink-0 cursor-default ${s.color}`}>
-                  {s.label}
-                </span>
-              ))}
+              {KO_STAGE_ORDER.filter(s => koByStage.has(s)).map(stage => {
+                const info = KO_STAGE_INFO[stage]
+                return (
+                  <>
+                    <span key={`lbl-${stage}`} className={`px-2 py-1.5 rounded-lg text-[9px] font-bold shrink-0 cursor-default ${info.idle}`}>{info.label}</span>
+                    {koByStage.get(stage)!.map(day => (
+                      <button key={day} onClick={() => setSelectedDay(day)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? info.active : info.idle + ' hover:opacity-80'}`}>
+                        {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                      </button>
+                    ))}
+                  </>
+                )
+              })}
             </div>
             <button onClick={() => { dayScrollRef.current?.scrollBy({ left: 160, behavior: 'smooth' }) }}
               className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition-colors">›</button>
@@ -309,10 +355,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           {/* Toolbar: [date label] [📰 Recap] flex-1 [Total|Day toggle] */}
           <div className="flex items-center gap-2 mb-3">
             <p className="text-xs text-gray-400 shrink-0">{dayLabel} · {dayMatches.length} matches</p>
-            <button onClick={loadRecap}
+            {!isKoDay && <button onClick={loadRecap}
               className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow mx-auto">
               📰 {t('dv_recap_btn')}
-            </button>
+            </button>}
+            {isKoDay && <span className="text-xs text-gray-400 mx-auto italic">Click a player name to see their KO bracket predictions</span>}
             <div className="flex rounded-lg overflow-hidden border border-gray-200 text-[10px] font-semibold shrink-0">
               <button onClick={() => setSortMode('total')}
                 className={`px-2.5 py-1.5 transition-colors ${sortMode === 'total' ? 'bg-[#0B1F3A] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
@@ -354,13 +401,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                       </div>
                     </th>
                   ))}
-                  <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[100px]">
+                  {!isKoDay && <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[100px]">
                     <div className="flex flex-col items-center gap-1">
                       <span>🏆 Predicted</span>
                       <FinishToggle mode={finishMode} onChange={setFinishMode} />
                     </div>
-                  </th>
-                  <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{sortMode === 'day' ? t('pts') : '∑ ' + t('pts')}</th>
+                  </th>}
+                  {!isKoDay && <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{sortMode === 'day' ? t('pts') : '∑ ' + t('pts')}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -389,14 +436,14 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                           </td>
                         )
                       })}
-                      <td className="py-2 px-2">
+                      {!isKoDay && <td className="py-2 px-2">
                         <PredictedFinishCell positions={positions} lang={lang} mode={finishMode} />
-                      </td>
-                      <td className="py-2 px-3 text-center">
+                      </td>}
+                      {!isKoDay && <td className="py-2 px-3 text-center">
                         {sortMode === 'total'
                           ? <span className="font-bold text-sm text-[#0B1F3A]">{entry.totalPts}</span>
                           : <span className={`font-bold text-sm ${dayPts > 0 ? 'text-green-600' : 'text-gray-400'}`}>{dayPts}</span>}
-                      </td>
+                      </td>}
                     </tr>
                   )
                 })}

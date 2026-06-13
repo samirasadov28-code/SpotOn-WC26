@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { flagUrl } from '@/lib/flag-map'
 import { getTeamName } from '@/lib/team-name'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
-import { simulateBracket, simulateAllMatchups } from '@/lib/bracket-sim'
+import { simulateBracket, simulateAllMatchups, getThirdQualifiers } from '@/lib/bracket-sim'
 import type { TeamInfo, MatchInfo, SlotMatchup } from '@/lib/bracket-sim'
 
 interface Team extends TeamInfo {
@@ -300,26 +300,20 @@ function BracketView({ simMatchups, koPredsMap, lang }: {
         <Col slots={[2, 5, 1, 3, 11, 12, 9, 10]} label="R32" />
         <Col slots={[17, 18, 21, 22]} label="R16" />
         <Col slots={[25, 26]} label="QF" />
+        <Col slots={[29]} label="SF" />
 
-        {/* Center: SF + Final + 3rd */}
+        {/* Center: Final + 3rd place */}
         <div className="flex flex-col shrink-0 w-[104px]">
-          <div className="text-[8px] text-gray-400 font-bold uppercase tracking-wider text-center mb-1">SF</div>
-          <div className="flex flex-col" style={{ height: BRACKET_H }}>
-            <div className="flex-1 flex items-center justify-center">
-              <BracketMatchCard slot={29} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
-            </div>
-            <div className="shrink-0 flex flex-col items-center gap-1 py-1">
-              <div className="text-[8px] font-bold text-yellow-700 text-center">🏆 FINAL</div>
-              <BracketMatchCard slot={32} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
-              <div className="text-[8px] text-gray-400 text-center mt-0.5">3rd place</div>
-              <BracketMatchCard slot={31} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
-            </div>
-            <div className="flex-1 flex items-center justify-center">
-              <BracketMatchCard slot={30} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
-            </div>
+          <div className="text-[8px] text-gray-400 font-bold uppercase tracking-wider text-center mb-1">Final</div>
+          <div className="flex flex-col justify-center items-center gap-2" style={{ height: BRACKET_H }}>
+            <div className="text-[8px] font-bold text-yellow-700 text-center">🏆 FINAL</div>
+            <BracketMatchCard slot={32} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
+            <div className="text-[8px] text-gray-400 text-center mt-2">3rd place</div>
+            <BracketMatchCard slot={31} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
           </div>
         </div>
 
+        <Col slots={[30]} label="SF" />
         {/* Right side */}
         <Col slots={[27, 28]} label="QF" />
         <Col slots={[19, 20, 23, 24]} label="R16" />
@@ -349,6 +343,7 @@ export default function PredictionsViewClient({
   const [champTeam, setChampTeam] = useState<Team | null>(null)
   const [simMatchups, setSimMatchups] = useState<SlotMatchup[]>([])
   const [koView, setKoView] = useState<'list' | 'bracket'>('list')
+  const [thirdQualifiers, setThirdQualifiers] = useState<TeamInfo[]>([])
 
   const displayName = initialDisplayName
   const matches = initialMatches
@@ -368,6 +363,7 @@ export default function PredictionsViewClient({
       const result = simulateBracket(gpMap, kpMap, groupMatchInfos, teamInfos)
       if (result.champion) setChampTeam(teams.find(t => t.fifa_code === result.champion!.fifa_code) ?? null)
       setSimMatchups(simulateAllMatchups(gpMap, kpMap, groupMatchInfos, teamInfos))
+      setThirdQualifiers(getThirdQualifiers(gpMap, groupMatchInfos, teamInfos))
     } catch (_) { /* simulation failed */ }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -468,6 +464,41 @@ export default function PredictionsViewClient({
               groupTableLabel={t('pv_group_table')}
             />
           ))}
+          {thirdQualifiers.length > 0 && (
+            <div className="mb-5">
+              <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                <span className="border-b border-gray-200 flex-1" />
+                <span>Best 3rd — advancing to R32</span>
+                <span className="border-b border-gray-200 flex-1" />
+              </div>
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                      <th className="py-1.5 px-3 text-left font-medium">#</th>
+                      <th className="py-1.5 px-3 text-left font-medium">Team</th>
+                      <th className="py-1.5 px-3 text-left font-medium">Group</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {thirdQualifiers.map((t, i) => (
+                      <tr key={t.id} className="border-t border-gray-50 bg-blue-50/30">
+                        <td className="py-1.5 px-3 text-gray-400">{i + 1}</td>
+                        <td className="py-1.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <Flag code={t.fifa_code} />
+                            <span className="font-medium text-[#0B1F3A]">{getTeamName(t.fifa_code, lang) ?? t.name}</span>
+                            <span className="text-[9px] text-blue-600 font-bold ml-1">ADV</span>
+                          </div>
+                        </td>
+                        <td className="py-1.5 px-3 text-gray-500">Group {t.group_letter}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
