@@ -278,6 +278,17 @@ export interface SlotMatchup {
   away: TeamInfo | null
 }
 
+export function getThirdQualifiers(
+  groupPreds: GroupPreds,
+  allMatches: MatchInfo[],
+  allTeams: TeamInfo[]
+): TeamInfo[] {
+  const qualified = calcQualified(allMatches, allTeams, groupPreds)
+  return ['3rd1','3rd2','3rd3','3rd4','3rd5','3rd6','3rd7','3rd8']
+    .map(k => qualified.get(k))
+    .filter((t): t is TeamInfo => !!t)
+}
+
 export function simulateAllMatchups(
   groupPreds: GroupPreds,
   koPreds: KOPreds,
