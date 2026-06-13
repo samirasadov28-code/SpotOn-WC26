@@ -300,22 +300,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
     <div>
       {/* Day picker — single scrollable row with arrows */}
       {(() => {
-        const KO_STAGE_ORDER = ['r32', 'r16', 'qf', 'sf', 'final']
-        const KO_STAGE_INFO: Record<string, { label: string; idle: string; active: string }> = {
-          r32:   { label: 'R32',  idle: 'bg-blue-50 text-blue-700 border border-blue-200',    active: 'bg-blue-600 text-white shadow' },
-          r16:   { label: 'R16',  idle: 'bg-indigo-50 text-indigo-700 border border-indigo-200', active: 'bg-indigo-600 text-white shadow' },
-          qf:    { label: 'QF',   idle: 'bg-purple-50 text-purple-700 border border-purple-200', active: 'bg-purple-600 text-white shadow' },
-          sf:    { label: 'SF',   idle: 'bg-pink-50 text-pink-700 border border-pink-200',    active: 'bg-pink-600 text-white shadow' },
-          final: { label: '🏆',   idle: 'bg-yellow-50 text-yellow-700 border border-yellow-200', active: 'bg-yellow-500 text-white shadow' },
-        }
-        // Group KO days by stage, sorted
-        const koByStage = new Map<string, string[]>()
-        for (const [day, stage] of koDateToStage) {
-          if (!koByStage.has(stage)) koByStage.set(stage, [])
-          koByStage.get(stage)!.push(day)
-        }
-        for (const [, days] of koByStage) days.sort()
-
+        const KO_STAGES = [
+          { key: 'r32', label: 'R32 ×32', color: 'bg-blue-100 text-blue-700' },
+          { key: 'r16', label: 'R16 ×16', color: 'bg-indigo-100 text-indigo-700' },
+          { key: 'qf',  label: 'QF ×8',  color: 'bg-purple-100 text-purple-700' },
+          { key: 'sf',  label: 'SF ×4',  color: 'bg-pink-100 text-pink-700' },
+          { key: 'final', label: '🏆 Final', color: 'bg-yellow-100 text-yellow-700' },
+        ]
         return (
           <div className="flex items-center gap-1 mb-4">
             <button onClick={() => { dayScrollRef.current?.scrollBy({ left: -160, behavior: 'smooth' }) }}
@@ -327,20 +318,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                   {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                 </button>
               ))}
-              {KO_STAGE_ORDER.filter(s => koByStage.has(s)).map(stage => {
-                const info = KO_STAGE_INFO[stage]
-                return (
-                  <>
-                    <span key={`lbl-${stage}`} className={`px-2 py-1.5 rounded-lg text-[9px] font-bold shrink-0 cursor-default ${info.idle}`}>{info.label}</span>
-                    {koByStage.get(stage)!.map(day => (
-                      <button key={day} onClick={() => setSelectedDay(day)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? info.active : info.idle + ' hover:opacity-80'}`}>
-                        {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-                      </button>
-                    ))}
-                  </>
-                )
-              })}
+              {allDays.length > 0 && KO_STAGES.map(s => (
+                <span key={s.key} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold shrink-0 cursor-default ${s.color}`}>
+                  {s.label}
+                </span>
+              ))}
             </div>
             <button onClick={() => { dayScrollRef.current?.scrollBy({ left: 160, behavior: 'smooth' }) }}
               className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition-colors">›</button>
@@ -355,11 +337,10 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           {/* Toolbar: [date label] [📰 Recap] flex-1 [Total|Day toggle] */}
           <div className="flex items-center gap-2 mb-3">
             <p className="text-xs text-gray-400 shrink-0">{dayLabel} · {dayMatches.length} matches</p>
-            {!isKoDay && <button onClick={loadRecap}
+            <button onClick={loadRecap}
               className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow mx-auto">
               📰 {t('dv_recap_btn')}
-            </button>}
-            {isKoDay && <span className="text-xs text-gray-400 mx-auto italic">Click a player name to see their KO bracket predictions</span>}
+            </button>
             <div className="flex rounded-lg overflow-hidden border border-gray-200 text-[10px] font-semibold shrink-0">
               <button onClick={() => setSortMode('total')}
                 className={`px-2.5 py-1.5 transition-colors ${sortMode === 'total' ? 'bg-[#0B1F3A] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
@@ -401,13 +382,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                       </div>
                     </th>
                   ))}
-                  {!isKoDay && <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[100px]">
+                  <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[100px]">
                     <div className="flex flex-col items-center gap-1">
                       <span>🏆 Predicted</span>
                       <FinishToggle mode={finishMode} onChange={setFinishMode} />
                     </div>
-                  </th>}
-                  {!isKoDay && <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{sortMode === 'day' ? t('pts') : '∑ ' + t('pts')}</th>}
+                  </th>
+                  <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{sortMode === 'day' ? t('pts') : '∑ ' + t('pts')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -436,14 +417,14 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                           </td>
                         )
                       })}
-                      {!isKoDay && <td className="py-2 px-2">
+                      <td className="py-2 px-2">
                         <PredictedFinishCell positions={positions} lang={lang} mode={finishMode} />
-                      </td>}
-                      {!isKoDay && <td className="py-2 px-3 text-center">
+                      </td>
+                      <td className="py-2 px-3 text-center">
                         {sortMode === 'total'
                           ? <span className="font-bold text-sm text-[#0B1F3A]">{entry.totalPts}</span>
                           : <span className={`font-bold text-sm ${dayPts > 0 ? 'text-green-600' : 'text-gray-400'}`}>{dayPts}</span>}
-                      </td>}
+                      </td>
                     </tr>
                   )
                 })}

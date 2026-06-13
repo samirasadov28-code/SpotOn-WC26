@@ -179,13 +179,14 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, grou
           </thead>
           <tbody>
             {sorted.map((s, i) => (
-              <tr key={s.team.id} className={`border-t border-gray-50 ${i < 2 ? 'bg-green-50/40' : ''}`}>
+              <tr key={s.team.id} className={`border-t border-gray-50 ${i < 2 ? 'bg-green-50/40' : i === 2 ? 'bg-blue-50/20' : ''}`}>
                 <td className="py-1.5 px-3 text-gray-400">{i + 1}</td>
                 <td className="py-1.5 px-3">
                   <div className="flex items-center gap-1.5">
                     <Flag code={s.team.fifa_code} />
                     <span className="font-medium text-[#0B1F3A]">{getTeamName(s.team.fifa_code, lang) ?? s.team.name}</span>
                     {i < 2 && <span className="text-[9px] text-green-600 font-bold ml-1">ADV</span>}
+                    {i === 2 && <span className="text-[9px] text-blue-500 font-bold ml-1">3rd</span>}
                   </div>
                 </td>
                 <td className="py-1.5 px-2 text-center text-gray-500">{s.played}</td>
@@ -257,8 +258,8 @@ function BracketMatchCard({ slot, simMatchups, koPredsMap, lang }: {
   const pa = pred?.pred_away_score ?? null
   const homeWins = ph !== null && pa !== null && ph > pa
   const awayWins = ph !== null && pa !== null && pa > ph
-  const hName = mu?.home ? (getTeamName(mu.home.fifa_code, lang) ?? mu.home.name) : '?'
-  const aName = mu?.away ? (getTeamName(mu.away.fifa_code, lang) ?? mu.away.name) : '?'
+  const hName = mu?.home?.fifa_code ?? (mu?.home?.name ?? '?')
+  const aName = mu?.away?.fifa_code ?? (mu?.away?.name ?? '?')
   const noTeams = !mu?.home && !mu?.away
 
   return (
