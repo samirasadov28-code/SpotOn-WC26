@@ -36,13 +36,13 @@ function TickerItem({ m, lang }: { m: TickerMatch; lang: string }) {
     : <span className="text-white/50">{m.kickoff_at ? formatKickoff(m.kickoff_at) : '—'}</span>
 
   return (
-    <span className="inline-flex items-center gap-1.5 mx-3">
+    <span className="inline-flex items-center gap-2 px-1">
       {hCode && <img src={flagUrl(hCode, 40)} alt={hCode} className="h-3.5 w-auto rounded-sm" />}
       <span className="font-medium">{hName}</span>
-      <span className="text-white/30 mx-0.5">vs</span>
+      <span className="text-white/25 text-[10px] mx-0.5">vs</span>
       {aCode && <img src={flagUrl(aCode, 40)} alt={aCode} className="h-3.5 w-auto rounded-sm" />}
       <span className="font-medium">{aName}</span>
-      <span className="text-white/30 mx-1">·</span>
+      <span className="text-white/20 mx-2">·</span>
       {scoreOrTime}
     </span>
   )
@@ -108,7 +108,7 @@ export default function ScoreTicker() {
 
   if (loading || matches.length === 0) return null
 
-  const separator = <span className="text-white/20 mx-2 text-base">|</span>
+  const separator = <span className="text-white/25 mx-5 text-sm select-none">┃</span>
 
   return (
     <>
