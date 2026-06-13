@@ -242,6 +242,7 @@ export default function PredictionsViewClient({ userId }: { userId: string }) {
   const { lang, t } = useTranslation()
   const [tab, setTab] = useState<'groups' | 'standings' | 'knockout'>('groups')
   const [loading, setLoading] = useState(true)
+  const [predsLoading, setPredsLoading] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [matches, setMatches] = useState<MatchRow[]>([])
   const [groupPreds, setGroupPreds] = useState<GroupPred[]>([])
@@ -249,48 +250,70 @@ export default function PredictionsViewClient({ userId }: { userId: string }) {
   const [teams, setTeams] = useState<Team[]>([])
   const [champTeam, setChampTeam] = useState<Team | null>(null)
 
+  // Step 1: load static match + team data (no user auth needed)
+  useEffect(() => {
+    fetch('/api/matchdata')
+      .then(r => r.json())
+      .then(data => {
+        const teamData = (data.teams ?? []) as Team[]
+        const tById = new Map(teamData.map((t: Team) => [t.id, t]))
+        const matchData = (data.matches ?? []).map((m: any) => ({
+          ...m,
+          home_team: m.home_team_id ? (tById.get(m.home_team_id) ?? null) : null,
+          away_team: m.away_team_id ? (tById.get(m.away_team_id) ?? null) : null,
+        })) as MatchRow[]
+        setMatches(matchData)
+        setTeams(teamData)
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Step 2: load this user's predictions (overlaid on top of match data from step 1)
   useEffect(() => {
     if (!userId) return
+    setPredsLoading(true)
     fetch('/api/userpreds', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId }),
-    }).then(r => r.json()).then(data => {
-      setDisplayName(data.displayName ?? 'Unknown player')
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.displayName) setDisplayName(data.displayName)
 
-      const teamData = (data.teams ?? []) as Team[]
-      const tById = new Map(teamData.map((t: Team) => [t.id, t]))
-      const matchData = (data.matches ?? []).map((m: any) => ({
-        ...m,
-        home_team: m.home_team_id ? (tById.get(m.home_team_id) ?? null) : null,
-        away_team: m.away_team_id ? (tById.get(m.away_team_id) ?? null) : null,
-      })) as MatchRow[]
-      const gp: GroupPred[] = data.groupPreds ?? []
-      const kp: KOPred[] = data.koPreds ?? []
+        const gp: GroupPred[] = data.groupPreds ?? []
+        const kp: KOPred[] = data.koPreds ?? []
+        setGroupPreds(gp)
+        setKoPreds(kp)
 
-      setMatches(matchData)
-      setTeams(teamData)
-      setGroupPreds(gp)
-      setKoPreds(kp)
+        // userpreds also returns matches+teams via service role — use them to
+        // ensure team join data is present regardless of which step succeeded
+        if (data.teams?.length && data.matches?.length) {
+          const teamData = data.teams as Team[]
+          const tById = new Map(teamData.map((t: Team) => [t.id, t]))
+          const matchData = (data.matches as any[]).map((m: any) => ({
+            ...m,
+            home_team: m.home_team_id ? (tById.get(m.home_team_id) ?? null) : null,
+            away_team: m.away_team_id ? (tById.get(m.away_team_id) ?? null) : null,
+          })) as MatchRow[]
+          setTeams(teamData)
+          setMatches(matchData)
 
-      try {
-        const groupMatchInfos = matchData
-          .filter(m => m.stage === 'group')
-          .map(m => ({ id: m.id, group_letter: m.group_letter, home_team_id: m.home_team_id, away_team_id: m.away_team_id }))
-        const teamInfos = teamData.map(t => ({
-          id: t.id, name: t.name, fifa_code: t.fifa_code, group_letter: t.group_letter, flag_emoji: t.flag_emoji,
-        }))
-        const gpMap = new Map(gp.filter(p => p.pred_home_score !== null).map(p => [p.match_id, { h: p.pred_home_score!, a: p.pred_away_score! }]))
-        const kpMap = new Map(kp.filter(p => p.pred_home_score !== null).map(p => [p.bracket_slot, { h: p.pred_home_score!, a: p.pred_away_score! }]))
-        const result = simulateBracket(gpMap, kpMap, groupMatchInfos, teamInfos)
-        if (result.champion) {
-          const fullTeam = teamData.find(t => t.fifa_code === result.champion!.fifa_code) ?? null
-          setChampTeam(fullTeam)
+          // Simulate bracket for champion badge
+          try {
+            const gpMap = new Map(gp.filter(p => p.pred_home_score !== null).map(p => [p.match_id, { h: p.pred_home_score!, a: p.pred_away_score! }]))
+            const kpMap = new Map(kp.filter(p => p.pred_home_score !== null).map(p => [p.bracket_slot, { h: p.pred_home_score!, a: p.pred_away_score! }]))
+            const groupMatchInfos = matchData.filter(m => m.stage === 'group').map(m => ({ id: m.id, group_letter: m.group_letter, home_team_id: m.home_team_id, away_team_id: m.away_team_id }))
+            const teamInfos = teamData.map(t => ({ id: t.id, name: t.name, fifa_code: t.fifa_code, group_letter: t.group_letter, flag_emoji: t.flag_emoji }))
+            const result = simulateBracket(gpMap, kpMap, groupMatchInfos, teamInfos)
+            if (result.champion) setChampTeam(teamData.find(t => t.fifa_code === result.champion!.fifa_code) ?? null)
+          } catch (_) { /* simulation failed */ }
         }
-      } catch (_) { /* simulation failed */ }
 
-      setLoading(false)
-    }).catch(() => setLoading(false))
+        setPredsLoading(false)
+      })
+      .catch(() => setPredsLoading(false))
   }, [userId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const groupPredsMap = new Map(groupPreds.map(p => [p.match_id, p]))
@@ -330,7 +353,10 @@ export default function PredictionsViewClient({ userId }: { userId: string }) {
       <div className="mb-5">
         <h1 className="text-2xl font-bold text-[#0B1F3A]">{displayName} — {t('pv_predictions')}</h1>
         <div className="flex flex-wrap items-center gap-2 mt-1">
-          <span className="text-sm text-gray-400">{groupPredCount} {t('pv_group_picks')} · {koPredCount} {t('pv_ko_picks')}</span>
+          {predsLoading
+            ? <span className="text-sm text-gray-400 flex items-center gap-1.5"><span className="w-3 h-3 border-2 border-gray-300 border-t-[#0B1F3A] rounded-full animate-spin inline-block" /> Loading predictions…</span>
+            : <span className="text-sm text-gray-400">{groupPredCount} {t('pv_group_picks')} · {koPredCount} {t('pv_ko_picks')}</span>
+          }
           {champTeam && (
             <span className="inline-flex items-center gap-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-semibold px-2.5 py-1 rounded-full">
               {t('pv_predicted_champ')}:

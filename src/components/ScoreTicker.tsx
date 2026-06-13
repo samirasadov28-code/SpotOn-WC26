@@ -31,19 +31,19 @@ function TickerItem({ m, lang }: { m: TickerMatch; lang: string }) {
   const hName = m.home_team ? (getTeamName(hCode, lang) ?? m.home_team.name) : '?'
   const aName = m.away_team ? (getTeamName(aCode, lang) ?? m.away_team.name) : '?'
 
+  const scoreOrTime = m.actual_home_score !== null && m.actual_away_score !== null
+    ? <span className="font-bold text-green-300">{m.actual_home_score}–{m.actual_away_score}</span>
+    : <span className="text-white/50">{m.kickoff_at ? formatKickoff(m.kickoff_at) : '—'}</span>
+
   return (
-    <span className="inline-flex items-center gap-1.5 mx-4">
-      {hCode && <img src={flagUrl(hCode, 40)} alt={hCode} className="h-3.5 w-auto rounded-sm inline-block" />}
-      <span>{hName}</span>
-      {m.actual_home_score !== null && m.actual_away_score !== null ? (
-        <span className="font-bold mx-0.5">{m.actual_home_score}–{m.actual_away_score}</span>
-      ) : (
-        <span className="text-white/50 mx-0.5">
-          {m.kickoff_at ? formatKickoff(m.kickoff_at) : 'vs'}
-        </span>
-      )}
-      <span>{aName}</span>
-      {aCode && <img src={flagUrl(aCode, 40)} alt={aCode} className="h-3.5 w-auto rounded-sm inline-block" />}
+    <span className="inline-flex items-center gap-1.5 mx-3">
+      {hCode && <img src={flagUrl(hCode, 40)} alt={hCode} className="h-3.5 w-auto rounded-sm" />}
+      <span className="font-medium">{hName}</span>
+      <span className="text-white/30 mx-0.5">vs</span>
+      {aCode && <img src={flagUrl(aCode, 40)} alt={aCode} className="h-3.5 w-auto rounded-sm" />}
+      <span className="font-medium">{aName}</span>
+      <span className="text-white/30 mx-1">·</span>
+      {scoreOrTime}
     </span>
   )
 }
@@ -108,7 +108,7 @@ export default function ScoreTicker() {
 
   if (loading || matches.length === 0) return null
 
-  const separator = <span className="text-white/30 mx-2">·</span>
+  const separator = <span className="text-white/20 mx-2 text-base">|</span>
 
   return (
     <>
