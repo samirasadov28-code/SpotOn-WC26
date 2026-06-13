@@ -15,17 +15,23 @@ interface TickerMatch {
   away_team: { name: string; fifa_code: string | null } | null
 }
 
+const LANG_TO_LOCALE: Record<string, string> = {
+  en: 'en-GB', uk: 'uk', az: 'az', fr: 'fr-FR', es: 'es-ES', de: 'de-DE',
+  pt: 'pt-BR', it: 'it-IT', nl: 'nl-NL', tr: 'tr-TR', zh: 'zh-CN',
+  ar: 'ar-SA', hi: 'hi-IN', ru: 'ru-RU', bn: 'bn-BD', ja: 'ja-JP', id: 'id-ID',
+}
+
 function toCDTDate(isoStr: string): string {
   return new Date(new Date(isoStr).getTime() - 6 * 3600_000).toISOString().slice(0, 10)
 }
 
-function formatKickoff(iso: string) {
+function formatKickoff(iso: string, locale: string) {
   const d = new Date(iso)
-  return d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }) +
+  return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' }) +
     ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' UTC'
 }
 
-function TickerItem({ m, lang }: { m: TickerMatch; lang: string }) {
+function TickerItem({ m, lang, locale }: { m: TickerMatch; lang: string; locale: string }) {
   const hCode = m.home_team?.fifa_code ?? null
   const aCode = m.away_team?.fifa_code ?? null
   const hName = m.home_team ? (getTeamName(hCode, lang) ?? m.home_team.name) : '?'
@@ -33,7 +39,7 @@ function TickerItem({ m, lang }: { m: TickerMatch; lang: string }) {
 
   const scoreOrTime = m.actual_home_score !== null && m.actual_away_score !== null
     ? <span className="font-bold text-green-300">{m.actual_home_score}–{m.actual_away_score}</span>
-    : <span className="text-white/50">{m.kickoff_at ? formatKickoff(m.kickoff_at) : '—'}</span>
+    : <span className="text-white/50">{m.kickoff_at ? formatKickoff(m.kickoff_at, locale) : '—'}</span>
 
   return (
     <span className="inline-flex items-center gap-1.5 px-1">
@@ -50,6 +56,7 @@ function TickerItem({ m, lang }: { m: TickerMatch; lang: string }) {
 
 export default function ScoreTicker() {
   const { lang } = useTranslation()
+  const locale = LANG_TO_LOCALE[lang] ?? 'en-GB'
   const [matches, setMatches] = useState<TickerMatch[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -139,7 +146,7 @@ export default function ScoreTicker() {
           {matches.map((m, i) => (
             <span key={m.id} className="inline-flex items-center">
               {i > 0 && separator}
-              <TickerItem m={m} lang={lang} />
+              <TickerItem m={m} lang={lang} locale={locale} />
             </span>
           ))}
         </span>

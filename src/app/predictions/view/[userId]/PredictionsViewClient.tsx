@@ -125,9 +125,10 @@ interface GroupStanding {
   gf: number; ga: number; pts: number
 }
 
-function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, groupTableLabel }: {
+function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, groupTableLabel, qualifiedThirdIds }: {
   groupLetter: string; matches: MatchRow[]; preds: Map<string, GroupPred>
   teamById: Map<string, Team>; lang: string; groupTableLabel: string
+  qualifiedThirdIds: Set<string>
 }) {
   const standings = new Map<string, GroupStanding>()
   const teams = new Set<string>()
@@ -186,7 +187,8 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, grou
                     <Flag code={s.team.fifa_code} />
                     <span className="font-medium text-[#0B1F3A]">{getTeamName(s.team.fifa_code, lang) ?? s.team.name}</span>
                     {i < 2 && <span className="text-[9px] text-green-600 font-bold ml-1">ADV</span>}
-                    {i === 2 && <span className="text-[9px] text-blue-500 font-bold ml-1">3rd</span>}
+                    {i === 2 && qualifiedThirdIds.has(s.team.id) && <span className="text-[9px] text-green-600 font-bold ml-1">ADV</span>}
+                    {i === 2 && !qualifiedThirdIds.has(s.team.id) && <span className="text-[9px] text-gray-400 font-bold ml-1">3rd</span>}
                   </div>
                 </td>
                 <td className="py-1.5 px-2 text-center text-gray-500">{s.played}</td>
@@ -258,8 +260,8 @@ function BracketMatchCard({ slot, simMatchups, koPredsMap, lang }: {
   const pa = pred?.pred_away_score ?? null
   const homeWins = ph !== null && pa !== null && ph > pa
   const awayWins = ph !== null && pa !== null && pa > ph
-  const hName = mu?.home?.fifa_code ?? (mu?.home?.name ?? '?')
-  const aName = mu?.away?.fifa_code ?? (mu?.away?.name ?? '?')
+  const hName = mu?.home ? (getTeamName(mu.home.fifa_code, lang) ?? mu.home.name) : '?'
+  const aName = mu?.away ? (getTeamName(mu.away.fifa_code, lang) ?? mu.away.name) : '?'
   const noTeams = !mu?.home && !mu?.away
 
   return (
@@ -458,13 +460,17 @@ export default function PredictionsViewClient({
           <p className="text-xs text-gray-400 mb-4 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
             {t('pv_standings_note')}
           </p>
-          {groupLetters.map(g => (
-            <GroupStandingsTable key={g} groupLetter={g}
-              matches={groupMatches.filter(m => m.group_letter === g)}
-              preds={groupPredsMap} teamById={teamById} lang={lang}
-              groupTableLabel={t('pv_group_table')}
-            />
-          ))}
+          {(() => {
+            const qualifiedThirdIds = new Set(thirdQualifiers.map(t => t.id))
+            return groupLetters.map(g => (
+              <GroupStandingsTable key={g} groupLetter={g}
+                matches={groupMatches.filter(m => m.group_letter === g)}
+                preds={groupPredsMap} teamById={teamById} lang={lang}
+                groupTableLabel={t('pv_group_table')}
+                qualifiedThirdIds={qualifiedThirdIds}
+              />
+            ))
+          })()}
           {thirdQualifiers.length > 0 && (
             <div className="mb-5">
               <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-2">

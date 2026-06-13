@@ -499,18 +499,20 @@ interface StatsData {
   totalUsers: number
 }
 
-const ROUND_LABELS: Record<string, string> = {
-  group: 'Group Stage', r32: 'Round of 32', r16: 'Round of 16',
-  qf: 'Quarter-Final', sf: 'Semi-Final', fourth: '4th Place', third: '3rd Place',
-  second: 'Runner-Up', champion: 'Champion',
+const ROUND_LABEL_KEYS: Record<string, string> = {
+  group: 'lb_round_group', r32: 'lb_round_r32', r16: 'lb_round_r16',
+  qf: 'lb_round_qf', sf: 'lb_round_sf', fourth: 'lb_round_fourth', third: 'lb_round_third',
+  second: 'lb_round_second', champion: 'lb_round_champion',
 }
 
 function StatsView({ top4, positionsByUser, lang, leagueId }: {
   top4: Array<Array<{ team: TeamRef & {}; votes: number }>>
   positionsByUser: Record<string, PositionRow>
   lang: string
+  // lang kept for team name translations
   leagueId: string
 }) {
+  const { t } = useTranslation()
   const [statsData, setStatsData] = useState<StatsData | null>(null)
   const [statsLoading, setStatsLoading] = useState(false)
 
@@ -546,7 +548,7 @@ function StatsView({ top4, positionsByUser, lang, leagueId }: {
       {/* Predicted Top 4 */}
       {hasTop4 && (
         <div className="bg-gradient-to-br from-[#0B1F3A]/5 to-yellow-50/50 rounded-xl p-4 border border-[#0B1F3A]/10">
-          <h3 className="text-sm font-bold text-[#0B1F3A] mb-3 flex items-center gap-1.5">🏆 Predicted Top 4 <span className="text-xs font-normal text-gray-400">(most predicted finish)</span></h3>
+          <h3 className="text-sm font-bold text-[#0B1F3A] mb-3 flex items-center gap-1.5">🏆 {t('lb_stats_top4')} <span className="text-xs font-normal text-gray-400">{t('lb_stats_top4_sub')}</span></h3>
           {(['🥇', '🥈', '🥉', '4️⃣'] as const).map((medal, pos) => (
             top4[pos]?.length > 0 ? (
               <div key={pos} className="flex items-center gap-2 py-1.5 border-t border-[#0B1F3A]/5 first:border-t-0">
@@ -570,8 +572,8 @@ function StatsView({ top4, positionsByUser, lang, leagueId }: {
       {champList.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <h3 className="text-sm font-bold text-[#0B1F3A] mb-3 flex items-center gap-1.5">
-            🏅 Champion Picks
-            <span className="text-xs font-normal text-gray-400 ml-1">{totalWithChamp} players have a predicted champion</span>
+            🏅 {t('lb_stats_champ_picks')}
+            <span className="text-xs font-normal text-gray-400 ml-1">{t('lb_stats_champ_count').replace('{count}', String(totalWithChamp))}</span>
           </h3>
           <div className="space-y-2">
             {champList.slice(0, 8).map(({ team, count }) => {
@@ -604,8 +606,8 @@ function StatsView({ top4, positionsByUser, lang, leagueId }: {
         <>
           {/* Round exits */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">🔮 Predicted Round Exits</h3>
-            <p className="text-[11px] text-gray-400 mb-3">Where do people think teams get knocked out?</p>
+            <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">🔮 {t('lb_stats_exits')}</h3>
+            <p className="text-[11px] text-gray-400 mb-3">{t('lb_stats_exits_desc')}</p>
             <div className="space-y-3">
               {(['group', 'r32', 'r16', 'qf', 'sf', 'fourth', 'third', 'second', 'champion'] as const).map(round => {
                 const teams = statsData.roundExits[round] ?? []
@@ -613,7 +615,7 @@ function StatsView({ top4, positionsByUser, lang, leagueId }: {
                 const maxCount = teams[0].count
                 return (
                   <div key={round}>
-                    <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">{ROUND_LABELS[round]}</div>
+                    <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">{t(ROUND_LABEL_KEYS[round] ?? round)}</div>
                     <div className="space-y-1">
                       {teams.map(({ fifaCode, name, count }) => (
                         <div key={fifaCode} className="flex items-center gap-2">
@@ -635,39 +637,39 @@ function StatsView({ top4, positionsByUser, lang, leagueId }: {
           {/* Goal stats */}
           {statsData.goalStats.mostGoals && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">⚽ Goal Prediction Stats</h3>
+              <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">⚽ {t('lb_stats_goals')}</h3>
               <div className="grid grid-cols-2 gap-2">
                 {statsData.goalStats.mostGoals && (
                   <div className="bg-green-50 border border-green-100 rounded-lg p-3">
-                    <div className="text-[10px] text-green-600 font-bold uppercase tracking-wide mb-1">Most Goals Predicted</div>
+                    <div className="text-[10px] text-green-600 font-bold uppercase tracking-wide mb-1">{t('lb_stats_most_goals')}</div>
                     <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.mostGoals.name}</div>
-                    <div className="text-xs text-gray-500">{statsData.goalStats.mostGoals.total} total goals</div>
+                    <div className="text-xs text-gray-500">{statsData.goalStats.mostGoals.total} {t('lb_stats_total_goals') || 'total goals'}</div>
                   </div>
                 )}
                 {statsData.goalStats.leastGoals && (
                   <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                    <div className="text-[10px] text-blue-600 font-bold uppercase tracking-wide mb-1">Fewest Goals Predicted</div>
+                    <div className="text-[10px] text-blue-600 font-bold uppercase tracking-wide mb-1">{t('lb_stats_fewest_goals')}</div>
                     <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.leastGoals.name}</div>
-                    <div className="text-xs text-gray-500">{statsData.goalStats.leastGoals.total} total goals</div>
+                    <div className="text-xs text-gray-500">{statsData.goalStats.leastGoals.total} {t('lb_stats_total_goals') || 'total goals'}</div>
                   </div>
                 )}
                 {statsData.goalStats.highestAvg && (
                   <div className="bg-orange-50 border border-orange-100 rounded-lg p-3">
-                    <div className="text-[10px] text-orange-600 font-bold uppercase tracking-wide mb-1">Highest Avg Goals/Match</div>
+                    <div className="text-[10px] text-orange-600 font-bold uppercase tracking-wide mb-1">{t('lb_stats_highest_avg')}</div>
                     <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.highestAvg.name}</div>
-                    <div className="text-xs text-gray-500">{statsData.goalStats.highestAvg.avg.toFixed(2)} goals/match</div>
+                    <div className="text-xs text-gray-500">{statsData.goalStats.highestAvg.avg.toFixed(2)} {t('lb_stats_goals_per_match') || 'goals/match'}</div>
                   </div>
                 )}
                 {statsData.goalStats.boldestDiff && (
                   <div className="bg-purple-50 border border-purple-100 rounded-lg p-3">
-                    <div className="text-[10px] text-purple-600 font-bold uppercase tracking-wide mb-1">Boldest Goal Diff</div>
+                    <div className="text-[10px] text-purple-600 font-bold uppercase tracking-wide mb-1">{t('lb_stats_boldest_diff')}</div>
                     <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.boldestDiff.name}</div>
-                    <div className="text-xs text-gray-500">{statsData.goalStats.boldestDiff.maxDiffScore} ({statsData.goalStats.boldestDiff.maxDiff} goal diff)</div>
+                    <div className="text-xs text-gray-500">{statsData.goalStats.boldestDiff.maxDiffScore} ({statsData.goalStats.boldestDiff.maxDiff} {t('lb_stats_goal_diff') || 'goal diff'})</div>
                   </div>
                 )}
                 {statsData.goalStats.mostMatchGoals && (
                   <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-3 col-span-2">
-                    <div className="text-[10px] text-yellow-700 font-bold uppercase tracking-wide mb-1">Most Goals in a Single Match</div>
+                    <div className="text-[10px] text-yellow-700 font-bold uppercase tracking-wide mb-1">{t('lb_stats_match_goals')}</div>
                     <div className="text-sm font-bold text-[#0B1F3A]">{statsData.goalStats.mostMatchGoals.name}</div>
                     <div className="text-xs text-gray-500">{statsData.goalStats.mostMatchGoals.maxGoalScore} ({statsData.goalStats.mostMatchGoals.maxMatch} goals)</div>
                   </div>
@@ -679,7 +681,7 @@ function StatsView({ top4, positionsByUser, lang, leagueId }: {
           {/* Top predicted scores */}
           {statsData.topScores.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">🎯 Most Popular Predicted Scores</h3>
+              <h3 className="text-sm font-bold text-[#0B1F3A] mb-3">🎯 {t('lb_stats_top_scores')}</h3>
               <div className="grid grid-cols-2 gap-1.5">
                 {statsData.topScores.map(({ score, count }, i) => (
                   <div key={score} className={`flex items-center justify-between rounded-lg px-3 py-2 ${i === 0 ? 'bg-[#0B1F3A] text-white' : 'bg-gray-50 border border-gray-100'}`}>
