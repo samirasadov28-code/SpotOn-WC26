@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
@@ -152,6 +152,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const [recap, setRecap] = useState<string | null>(null)
   const [recapLoading, setRecapLoading] = useState(false)
   const [showRecap, setShowRecap] = useState(false)
+  const dayScrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setRecap(null) }, [lang])
 
@@ -257,26 +258,49 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       : b.entry.totalPts - a.entry.totalPts || b.dayPts - a.dayPts
   )
 
-  const dayRanked: Array<{ entry: LeaderboardEntry; dayPts: number; dayRank: number }> = []
+  const dayRanked: Array<{ entry: LeaderboardEntry; dayPts: number; dayRank: number; totalRank: number }> = []
   for (let i = 0; i < withDayPts.length; i++) {
     const row = withDayPts[i]
     const dayRank = i === 0 ? 1 : row.dayPts < withDayPts[i - 1].dayPts ? i + 1 : dayRanked[i - 1].dayRank
-    dayRanked.push({ ...row, dayRank })
+    const totalRank = i === 0 ? 1 : row.entry.totalPts < withDayPts[i - 1].entry.totalPts ? i + 1 : dayRanked[i - 1].totalRank
+    dayRanked.push({ ...row, dayRank, totalRank })
   }
 
   const rankIcon = (r: number) => r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : String(r)
 
   return (
     <div>
-      {/* Day picker — single scrollable row */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4" style={{ scrollbarWidth: 'none' }}>
-        {allDays.map(day => (
-          <button key={day} onClick={() => setSelectedDay(day)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-            {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-          </button>
-        ))}
-      </div>
+      {/* Day picker — single scrollable row with arrows */}
+      {(() => {
+        const KO_STAGES = [
+          { key: 'r32', label: 'R32 ×32', color: 'bg-blue-100 text-blue-700' },
+          { key: 'r16', label: 'R16 ×16', color: 'bg-indigo-100 text-indigo-700' },
+          { key: 'qf',  label: 'QF ×8',  color: 'bg-purple-100 text-purple-700' },
+          { key: 'sf',  label: 'SF ×4',  color: 'bg-pink-100 text-pink-700' },
+          { key: 'final', label: '🏆 Final', color: 'bg-yellow-100 text-yellow-700' },
+        ]
+        return (
+          <div className="flex items-center gap-1 mb-4">
+            <button onClick={() => { dayScrollRef.current?.scrollBy({ left: -160, behavior: 'smooth' }) }}
+              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition-colors">‹</button>
+            <div ref={dayScrollRef} className="flex gap-1.5 overflow-x-auto flex-1" style={{ scrollbarWidth: 'none' }}>
+              {allDays.map(day => (
+                <button key={day} onClick={() => setSelectedDay(day)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                  {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                </button>
+              ))}
+              {allDays.length > 0 && KO_STAGES.map(s => (
+                <span key={s.key} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold shrink-0 cursor-default ${s.color}`}>
+                  {s.label}
+                </span>
+              ))}
+            </div>
+            <button onClick={() => { dayScrollRef.current?.scrollBy({ left: 160, behavior: 'smooth' }) }}
+              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition-colors">›</button>
+          </div>
+        )
+      })()}
 
       {loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : dayMatches.length === 0 ? (
         <div className="text-center text-gray-400 py-10 text-sm">{t('dv_no_matches')}</div>
@@ -340,7 +364,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 </tr>
               </thead>
               <tbody>
-                {dayRanked.map(({ entry, dayPts, dayRank }, idx) => {
+                {dayRanked.map(({ entry, dayPts, dayRank, totalRank }, idx) => {
                   const isMe = entry.userId === currentUserId
                   const userPreds = predsMap.get(entry.userId)
                   const rowBg = isMe ? 'bg-blue-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'
@@ -349,7 +373,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                     <tr key={entry.userId} className={`border-t border-gray-100 ${rowBg}`}>
                       <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg}`}>
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="shrink-0 w-6 text-center font-bold text-sm">{rankIcon(sortMode === 'total' ? entry.rank : dayRank)}</span>
+                          <span className="shrink-0 w-6 text-center font-bold text-sm">{rankIcon(sortMode === 'total' ? totalRank : dayRank)}</span>
                           <Link href={`/predictions/view/${entry.userId}`}
                             className="font-semibold text-[#0B1F3A] hover:underline truncate max-w-[95px]" title={entry.displayName}>
                             {entry.displayName}

@@ -246,6 +246,89 @@ function SimKOMatchCard({ slot, home, away, pred, actualResult, lang, noPick }: 
   )
 }
 
+const BRACKET_H = 560
+
+function BracketMatchCard({ slot, simMatchups, koPredsMap, lang }: {
+  slot: number; simMatchups: SlotMatchup[]; koPredsMap: Map<number, KOPred>; lang: string
+}) {
+  const mu = simMatchups.find(m => m.slot === slot)
+  const pred = koPredsMap.get(slot)
+  const ph = pred?.pred_home_score ?? null
+  const pa = pred?.pred_away_score ?? null
+  const homeWins = ph !== null && pa !== null && ph > pa
+  const awayWins = ph !== null && pa !== null && pa > ph
+  const hName = mu?.home ? (getTeamName(mu.home.fifa_code, lang) ?? mu.home.name) : '?'
+  const aName = mu?.away ? (getTeamName(mu.away.fifa_code, lang) ?? mu.away.name) : '?'
+  const noTeams = !mu?.home && !mu?.away
+
+  return (
+    <div className={`border rounded overflow-hidden text-[9px] w-[100px] bg-white shadow-sm ${noTeams ? 'opacity-30 border-dashed' : 'border-gray-200'}`}>
+      <div className={`flex items-center gap-1 px-1.5 py-[3px] border-b border-gray-100 ${homeWins ? 'bg-[#0B1F3A] text-white' : ''}`}>
+        {mu?.home?.fifa_code && <span className="inline-block w-3.5 h-2.5 overflow-hidden rounded-sm shrink-0"><img src={flagUrl(mu.home.fifa_code, 40)} className="w-full h-full object-cover" alt="" /></span>}
+        <span className="truncate flex-1 font-medium leading-tight">{hName}</span>
+        {ph !== null && <span className="font-mono font-bold shrink-0">{ph}</span>}
+      </div>
+      <div className={`flex items-center gap-1 px-1.5 py-[3px] ${awayWins ? 'bg-[#0B1F3A] text-white' : ''}`}>
+        {mu?.away?.fifa_code && <span className="inline-block w-3.5 h-2.5 overflow-hidden rounded-sm shrink-0"><img src={flagUrl(mu.away.fifa_code, 40)} className="w-full h-full object-cover" alt="" /></span>}
+        <span className="truncate flex-1 font-medium leading-tight">{aName}</span>
+        {pa !== null && <span className="font-mono font-bold shrink-0">{pa}</span>}
+      </div>
+    </div>
+  )
+}
+
+function BracketView({ simMatchups, koPredsMap, lang }: {
+  simMatchups: SlotMatchup[]; koPredsMap: Map<number, KOPred>; lang: string
+}) {
+  function Col({ slots, label }: { slots: number[]; label: string }) {
+    return (
+      <div className="flex flex-col shrink-0 w-[104px]">
+        <div className="text-[8px] text-gray-400 font-bold uppercase tracking-wider text-center mb-1">{label}</div>
+        <div className="flex flex-col justify-evenly" style={{ height: BRACKET_H }}>
+          {slots.map(s => (
+            <BracketMatchCard key={s} slot={s} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto -mx-4 px-1 pb-2" style={{ scrollbarWidth: 'none' }}>
+      <div className="flex gap-1.5 min-w-max pt-1">
+        {/* Left side */}
+        <Col slots={[2, 5, 1, 3, 11, 12, 9, 10]} label="R32" />
+        <Col slots={[17, 18, 21, 22]} label="R16" />
+        <Col slots={[25, 26]} label="QF" />
+
+        {/* Center: SF + Final + 3rd */}
+        <div className="flex flex-col shrink-0 w-[104px]">
+          <div className="text-[8px] text-gray-400 font-bold uppercase tracking-wider text-center mb-1">SF</div>
+          <div className="flex flex-col" style={{ height: BRACKET_H }}>
+            <div className="flex-1 flex items-center justify-center">
+              <BracketMatchCard slot={29} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
+            </div>
+            <div className="shrink-0 flex flex-col items-center gap-1 py-1">
+              <div className="text-[8px] font-bold text-yellow-700 text-center">🏆 FINAL</div>
+              <BracketMatchCard slot={32} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
+              <div className="text-[8px] text-gray-400 text-center mt-0.5">3rd place</div>
+              <BracketMatchCard slot={31} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
+            </div>
+            <div className="flex-1 flex items-center justify-center">
+              <BracketMatchCard slot={30} simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
+            </div>
+          </div>
+        </div>
+
+        {/* Right side */}
+        <Col slots={[27, 28]} label="QF" />
+        <Col slots={[19, 20, 23, 24]} label="R16" />
+        <Col slots={[4, 6, 7, 8, 14, 16, 13, 15]} label="R32" />
+      </div>
+    </div>
+  )
+}
+
 export default function PredictionsViewClient({
   userId,
   initialDisplayName,
@@ -265,6 +348,7 @@ export default function PredictionsViewClient({
   const [tab, setTab] = useState<'groups' | 'standings' | 'knockout'>('groups')
   const [champTeam, setChampTeam] = useState<Team | null>(null)
   const [simMatchups, setSimMatchups] = useState<SlotMatchup[]>([])
+  const [koView, setKoView] = useState<'list' | 'bracket'>('list')
 
   const displayName = initialDisplayName
   const matches = initialMatches
@@ -389,7 +473,19 @@ export default function PredictionsViewClient({
 
       {tab === 'knockout' && (
         <div className="flex flex-col gap-1">
-          {simMatchups.length === 0 ? (
+          {simMatchups.length > 0 && (
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => setKoView('list')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${koView === 'list' ? 'bg-[#0B1F3A] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                ≡ List
+              </button>
+              <button onClick={() => setKoView('bracket')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${koView === 'bracket' ? 'bg-[#0B1F3A] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                ⋈ Bracket
+              </button>
+            </div>
+          )}
+          {koView === 'list' && (simMatchups.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-10">{t('pv_ko_none')}</p>
           ) : (() => {
             const koResultMap = new Map<number, { h: number; a: number }>()
@@ -425,7 +521,10 @@ export default function PredictionsViewClient({
                 </div>
               </div>
             ))
-          })()}
+          })())}
+          {koView === 'bracket' && simMatchups.length > 0 && (
+            <BracketView simMatchups={simMatchups} koPredsMap={koPredsMap} lang={lang} />
+          )}
         </div>
       )}
     </div>
