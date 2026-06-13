@@ -989,19 +989,18 @@ export default function LeaderboardPage() {
       </div>
 
       {/* League selector */}
-      <div className="flex items-center gap-3 mb-5">
-        <label className="text-sm font-semibold text-gray-600 shrink-0">{t('lb_view')}</label>
+      <div className="flex flex-wrap items-center gap-2 mb-5">
         <select value={selectedLeagueId} onChange={e => handleLeagueChange(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] bg-white">
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] bg-white min-w-0 flex-1 max-w-[200px]">
           <option value="global">{t('lb_global')}</option>
           {userLeagues.map(l => <option key={l.id} value={l.id}>🏅 {l.name}</option>)}
         </select>
-        <span className="text-sm font-bold text-[#0B1F3A] tabular-nums">
+        <span className="text-sm font-bold text-[#0B1F3A] tabular-nums shrink-0">
           {visibleEntries.length} <span className="text-gray-400 font-normal text-xs">{visibleEntries.length === 1 ? t('leaderboard_player') : t('lb_players')}</span>
         </span>
         <button onClick={() => setShowLeaguePanel(o => !o)}
-          className="ml-auto text-xs bg-[#0B1F3A] text-white px-3 py-1.5 rounded-lg hover:bg-blue-900 transition-colors shrink-0">
-          {showLeaguePanel ? t('lb_close') : t('lb_manage')}
+          className="ml-auto text-xs bg-[#0B1F3A] text-white px-3 py-2 rounded-lg hover:bg-blue-900 transition-colors shrink-0">
+          {showLeaguePanel ? '✕ Close' : '+ ' + t('lb_manage')}
         </button>
       </div>
 
