@@ -50,6 +50,54 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
   const [lateLoading, setLateLoading] = useState(false)
   const [lateResult, setLateResult] = useState<{ ok: boolean; msg: string } | null>(null)
 
+  const todayCDT = new Date(Date.now() - 6 * 3600_000).toISOString().slice(0, 10)
+  const [recapDay, setRecapDay] = useState(todayCDT)
+  const [recapText, setRecapText] = useState<string | null>(null)
+  const [recapSentAt, setRecapSentAt] = useState<string | null>(null)
+  const [recapLoading, setRecapLoading] = useState(false)
+  const [recapStatus, setRecapStatus] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  const fetchRecap = async (day: string) => {
+    setRecapLoading(true)
+    setRecapStatus(null)
+    try {
+      const res = await fetch(`/api/admin/recap?day=${day}`)
+      const data = await res.json()
+      setRecapText(data.recapText ?? null)
+      setRecapSentAt(data.sentAt ?? null)
+    } catch {
+      setRecapText(null)
+    } finally {
+      setRecapLoading(false)
+    }
+  }
+
+  const handleRecapAction = async (action: 'regenerate' | 'send') => {
+    setRecapLoading(true)
+    setRecapStatus(null)
+    try {
+      const res = await fetch('/api/admin/recap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day: recapDay, action }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setRecapStatus({ ok: false, msg: `❌ ${data.error}` })
+      } else if (action === 'regenerate') {
+        setRecapText(data.recapText)
+        setRecapStatus({ ok: true, msg: '✅ Recap regenerated' })
+      } else {
+        setRecapSentAt(new Date().toISOString())
+        setRecapStatus({ ok: true, msg: `✅ Sent to ${data.sent} participants` })
+      }
+    } catch (err) {
+      setRecapStatus({ ok: false, msg: `❌ Network error: ${String(err)}` })
+    } finally {
+      setRecapLoading(false)
+    }
+  }
+
   const handleLateEntry = async (e: React.FormEvent) => {
     e.preventDefault()
     setLateLoading(true)
@@ -354,6 +402,61 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
               </div>
             )
           })
+        )}
+      </div>
+
+      {/* Day Recap section */}
+      <div className="mb-10">
+        <h2 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-1">📨 Day Recap</h2>
+        <p className="text-xs text-gray-400 mb-3">
+          Generate an AI recap for any completed matchday and send it to all participants by email.
+        </p>
+        <div className="flex gap-2 items-center mb-3 flex-wrap">
+          <input
+            type="date"
+            value={recapDay}
+            onChange={e => { setRecapDay(e.target.value); setRecapText(null); setRecapStatus(null); setRecapSentAt(null) }}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
+          />
+          <button
+            onClick={() => fetchRecap(recapDay)}
+            disabled={recapLoading}
+            className="bg-gray-600 hover:bg-gray-700 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {recapLoading ? '…' : 'Load'}
+          </button>
+          <button
+            onClick={() => handleRecapAction('regenerate')}
+            disabled={recapLoading}
+            className="bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {recapLoading ? '…' : '🔄 Regenerate'}
+          </button>
+          <button
+            onClick={() => handleRecapAction('send')}
+            disabled={recapLoading || !recapText}
+            className="bg-[#0B1F3A] hover:bg-blue-900 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {recapLoading ? '…' : '📧 Send to All'}
+          </button>
+        </div>
+        {recapSentAt && (
+          <p className="text-xs text-green-600 mb-2">
+            ✓ Last sent: {new Date(recapSentAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          </p>
+        )}
+        {recapText && (
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
+            {recapText}
+          </div>
+        )}
+        {recapText === null && !recapLoading && (
+          <p className="text-xs text-gray-400">No recap loaded — pick a day and click Load, or Regenerate to create a fresh one.</p>
+        )}
+        {recapStatus && (
+          <p className={`mt-2 text-sm font-medium ${recapStatus.ok ? 'text-green-700' : 'text-red-600'}`}>
+            {recapStatus.msg}
+          </p>
         )}
       </div>
 
