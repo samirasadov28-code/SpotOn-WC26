@@ -1043,12 +1043,16 @@ export default function LeaderboardPage() {
     setTimeout(() => setCopiedLeagueId(null), 2000)
   }
 
-  const visibleEntries = selectedLeagueId === 'global'
-    ? entries
-    : entries.filter(e => leagueMembers.has(e.userId)).map((e, i, arr) => ({
-        ...e,
-        rank: i === 0 ? 1 : (e.totalPts < arr[i-1].totalPts ? i + 1 : (arr[i-1] as any).rank),
-      }))
+  const visibleEntries = (() => {
+    const filtered = selectedLeagueId === 'global'
+      ? entries
+      : entries.filter(e => leagueMembers.has(e.userId))
+    let rank = 1
+    return filtered.map((e, i) => {
+      if (i > 0 && e.totalPts < filtered[i - 1].totalPts) rank = i + 1
+      return { ...e, rank }
+    })
+  })()
 
   const leagueName = selectedLeagueId === 'global' ? 'Global' : (userLeagues.find(l => l.id === selectedLeagueId)?.name ?? 'League')
 
