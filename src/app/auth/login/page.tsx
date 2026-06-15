@@ -122,14 +122,16 @@ function LoginForm() {
     setLoading(true)
     setError(null)
     setSuccess(null)
-    const supabase = createClient()
-    const redirectTo = `${window.location.origin}/auth/reset-password`
-    const { error: err } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
     setLoading(false)
-    if (err) {
-      setError(err.message)
+    if (!res.ok) {
+      setError('Something went wrong. Try again.')
     } else {
-      setSuccess('Check your email — we sent a password reset link.')
+      setSuccess('Done! Check your email — we sent you a temporary password.')
     }
   }
 
