@@ -16,16 +16,26 @@ export async function rescoreAllGroupPts() {
 
   if (!matches?.length) return
 
-  // All group predictions
-  const { data: preds } = await supabase
-    .from('predictions_group')
-    .select('user_id, match_id, pred_home_score, pred_away_score') as any
+  // Fetch ALL group predictions in pages to avoid the default 1000-row limit
+  const allPreds: any[] = []
+  const PAGE = 1000
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('predictions_group')
+      .select('user_id, match_id, pred_home_score, pred_away_score')
+      .range(from, from + PAGE - 1) as any
+    if (error || !data?.length) break
+    allPreds.push(...data)
+    if (data.length < PAGE) break
+    from += PAGE
+  }
 
   const matchMap = new Map((matches as any[]).map((m: any) => [m.id, m]))
 
   // Sum group pts per user from scratch
   const groupPtsMap = new Map<string, number>()
-  for (const p of (preds ?? []) as any[]) {
+  for (const p of allPreds) {
     if (p.pred_home_score === null || p.pred_away_score === null) continue
     const m = matchMap.get(p.match_id)
     if (!m) continue
@@ -40,8 +50,11 @@ export async function rescoreAllGroupPts() {
   const { data: existingScores } = await supabase.from('scores').select('*') as any
   const existingMap = new Map((existingScores ?? []).map((s: any) => [s.user_id, s]))
 
-  // Upsert each user's score row
-  for (const [userId, groupPts] of groupPtsMap) {
+  // Reset every user that already has a scores row (covers users with 0 group pts too)
+  const allUserIds = new Set([...groupPtsMap.keys(), ...(existingScores ?? []).map((s: any) => s.user_id)])
+
+  for (const userId of allUserIds) {
+    const groupPts = groupPtsMap.get(userId) ?? 0
     const existing = existingMap.get(userId) as any
     const advPts = existing?.advancement_pts ?? 0
     const koPts = existing?.knockout_match_pts ?? 0
