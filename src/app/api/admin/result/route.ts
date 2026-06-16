@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/types'
-import { scoreGroupMatch } from '@/lib/scoring/group'
+import { rescoreAllGroupPts } from '@/lib/scoring/rescore'
 
 function getServiceClient() {
   return createClient<Database>(
@@ -12,7 +12,6 @@ function getServiceClient() {
 }
 
 export async function POST(request: NextRequest) {
-  // Verify caller is admin via session
   const supabase = getServiceClient()
 
   const body = await request.json() as {
@@ -47,43 +46,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: matchErr?.message ?? 'Match not found' }, { status: 400 })
   }
 
-  // Rescore group predictions for this match (idempotent)
+  // Full rescore from scratch (idempotent — no double-counting)
   if (match.stage === 'group') {
-    const { data: predictions } = await supabase
-      .from('predictions_group')
-      .select('*')
-      .eq('match_id', matchId)
-
-    for (const pred of predictions ?? []) {
-      if (pred.pred_home_score === null || pred.pred_away_score === null) continue
-
-      const pts = scoreGroupMatch(
-        { predHome: pred.pred_home_score, predAway: pred.pred_away_score },
-        { actualHome: homeScore, actualAway: awayScore }
-      )
-
-      // Upsert score entry
-      await supabase.from('scores').upsert(
-        { user_id: pred.user_id, group_pts: 0, total_pts: 0 },
-        { onConflict: 'user_id', ignoreDuplicates: true }
-      )
-
-      // We need to recalculate total from scratch for accuracy
-      // For simplicity, add incremental pts (in production, full rescore is recommended)
-      const { data: existing } = await supabase
-        .from('scores')
-        .select('group_pts, total_pts')
-        .eq('user_id', pred.user_id)
-        .single()
-
-      if (existing) {
-        await supabase.from('scores').update({
-          group_pts: (existing.group_pts ?? 0) + pts,
-          total_pts: (existing.total_pts ?? 0) + pts,
-          updated_at: new Date().toISOString(),
-        }).eq('user_id', pred.user_id)
-      }
-    }
+    await rescoreAllGroupPts()
   }
 
   return NextResponse.json({ success: true, match })
