@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/types'
-import { scoreGroupMatch } from '@/lib/scoring/group'
+import { rescoreAllGroupPts } from '@/lib/scoring/rescore'
 
 // API-Football league/season for FIFA World Cup 2026
 const WC_LEAGUE_ID = process.env.API_FOOTBALL_WC_LEAGUE_ID ?? '1'
@@ -109,33 +109,12 @@ export async function GET(request: NextRequest) {
       .eq('id', match.id)
     if (matchErr) continue
 
-    // Score all predictions for this match
-    const { data: preds } = await supabase
-      .from('predictions_group')
-      .select('user_id, pred_home_score, pred_away_score')
-      .eq('match_id', match.id) as any
-
-    for (const pred of (preds ?? []) as any[]) {
-      if (pred.pred_home_score === null || pred.pred_away_score === null) continue
-      const pts = scoreGroupMatch(
-        { predHome: pred.pred_home_score, predAway: pred.pred_away_score },
-        { actualHome: homeScore, actualAway: awayScore }
-      )
-      await supabase.from('scores').upsert(
-        { user_id: pred.user_id, group_pts: 0, total_pts: 0 },
-        { onConflict: 'user_id', ignoreDuplicates: true }
-      )
-      const { data: existing } = await supabase
-        .from('scores').select('group_pts, total_pts').eq('user_id', pred.user_id).single() as any
-      if (existing) {
-        await supabase.from('scores').update({
-          group_pts: (existing.group_pts ?? 0) + pts,
-          total_pts: (existing.total_pts ?? 0) + pts,
-          updated_at: new Date().toISOString(),
-        }).eq('user_id', pred.user_id)
-      }
-    }
     updated++
+  }
+
+  // Full rescore from scratch after all results are in (idempotent — no double-counting)
+  if (updated > 0) {
+    await rescoreAllGroupPts()
   }
 
   return NextResponse.json({ success: true, updated })

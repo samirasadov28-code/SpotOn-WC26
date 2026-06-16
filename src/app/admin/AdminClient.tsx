@@ -361,9 +361,30 @@ export default function AdminClient({ matches, feedback }: { matches: MatchWithT
     { key: 'today', label: 'Today' },
   ]
 
+  const [rescoring, setRescoring] = useState(false)
+  const [rescoreMsg, setRescoreMsg] = useState<string | null>(null)
+
+  const handleRescore = async () => {
+    setRescoring(true)
+    setRescoreMsg(null)
+    const res = await fetch('/api/admin/rescore', { method: 'POST' })
+    setRescoring(false)
+    setRescoreMsg(res.ok ? '✅ Scores recalculated from scratch' : '❌ Rescore failed')
+    setTimeout(() => setRescoreMsg(null), 4000)
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-navy dark:text-white mb-6">Admin — Enter Results</h1>
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-navy dark:text-white">Admin — Enter Results</h1>
+        <div className="flex items-center gap-3">
+          {rescoreMsg && <span className="text-sm font-medium text-green-700">{rescoreMsg}</span>}
+          <button onClick={handleRescore} disabled={rescoring}
+            className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50 transition-colors">
+            {rescoring ? '…' : '🔄 Recalculate All Scores'}
+          </button>
+        </div>
+      </div>
 
       {/* Filter tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
