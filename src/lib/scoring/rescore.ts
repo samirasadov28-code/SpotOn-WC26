@@ -24,6 +24,7 @@ export async function rescoreAllGroupPts() {
     const { data, error } = await supabase
       .from('predictions_group')
       .select('user_id, match_id, pred_home_score, pred_away_score')
+      .order('match_id')
       .range(from, from + PAGE - 1) as any
     if (error || !data?.length) break
     allPreds.push(...data)
