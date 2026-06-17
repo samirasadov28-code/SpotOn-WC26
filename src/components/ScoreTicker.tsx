@@ -28,7 +28,7 @@ function toCDTDate(isoStr: string): string {
 function formatKickoff(iso: string, locale: string) {
   const d = new Date(iso)
   return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' UTC'
+    ' ' + d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 }
 
 function TickerItem({ m, lang, locale }: { m: TickerMatch; lang: string; locale: string }) {
