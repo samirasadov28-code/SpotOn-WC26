@@ -139,7 +139,7 @@ export default function ScoreTicker() {
         }
       `}</style>
       <div
-        className="ticker-wrap bg-[#0B1F3A] text-white h-8 overflow-hidden flex items-center w-full select-none"
+        className="ticker-wrap sticky top-16 z-40 bg-[#0B1F3A] text-white h-8 overflow-hidden flex items-center w-full select-none"
         aria-label="Live score ticker"
       >
         <span className="ticker-track text-sm font-medium tracking-wide">
