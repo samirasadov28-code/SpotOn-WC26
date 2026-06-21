@@ -157,6 +157,16 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
 
   useEffect(() => { setRecap(null) }, [lang])
 
+  // Centre the selected day button in the scroll container
+  useEffect(() => {
+    if (!selectedDay || !dayScrollRef.current) return
+    const container = dayScrollRef.current
+    const btn = container.querySelector<HTMLElement>(`[data-day="${selectedDay}"]`)
+    if (!btn) return
+    const offset = btn.offsetLeft - container.offsetWidth / 2 + btn.offsetWidth / 2
+    container.scrollTo({ left: offset, behavior: 'smooth' })
+  }, [selectedDay, allDays])
+
   useEffect(() => {
     Promise.all([
       supabase.from('matches').select('kickoff_at').eq('stage', 'group').order('kickoff_at'),
@@ -313,7 +323,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition-colors">‹</button>
             <div ref={dayScrollRef} className="flex gap-1.5 overflow-x-auto flex-1" style={{ scrollbarWidth: 'none' }}>
               {allDays.map(day => (
-                <button key={day} onClick={() => setSelectedDay(day)}
+                <button key={day} data-day={day} onClick={() => setSelectedDay(day)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                   {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                 </button>
