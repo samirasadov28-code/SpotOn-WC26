@@ -7,6 +7,7 @@ import { getTeamName } from '@/lib/team-name'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { simulateBracket, simulateAllMatchups, getThirdQualifiers } from '@/lib/bracket-sim'
 import type { TeamInfo, MatchInfo, SlotMatchup } from '@/lib/bracket-sim'
+import { createClient } from '@/lib/supabase/client'
 
 interface Team extends TeamInfo {
   flag_emoji: string | null
@@ -99,7 +100,7 @@ function MatchCard({ m, pred, lang, noPick }: { m: MatchRow; pred: GroupPred | u
             <span className="font-black text-base text-[#0B1F3A] leading-none">{m.actual_home_score} – {m.actual_away_score}</span>
           ) : (
             <span className="text-xs text-gray-400 font-medium">
-              {m.kickoff_at ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC' : 'TBD'}
+              {m.kickoff_at ? new Date(m.kickoff_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD'}
             </span>
           )}
           {hasPred ? (
@@ -349,10 +350,29 @@ export default function PredictionsViewClient({
   const [thirdQualifiers, setThirdQualifiers] = useState<TeamInfo[]>([])
 
   const displayName = initialDisplayName
-  const matches = initialMatches
+  const [matches, setMatches] = useState<MatchRow[]>(initialMatches)
   const teams = initialTeams
   const groupPreds = initialGroupPreds
   const koPreds = initialKoPreds
+
+  // Refresh actual scores from Supabase on mount in case server response was stale
+  useEffect(() => {
+    const supabase = createClient()
+    supabase
+      .from('matches')
+      .select('id, actual_home_score, actual_away_score')
+      .not('actual_home_score', 'is', null)
+      .then(({ data }) => {
+        const rows = (data ?? []) as any[]
+        if (!rows.length) return
+        const scoreMap = new Map<string, { h: number; a: number }>(rows.map((m: any) => [m.id, { h: m.actual_home_score, a: m.actual_away_score }]))
+        setMatches(prev => prev.map(m => {
+          const s = scoreMap.get(m.id)
+          if (!s) return m
+          return { ...m, actual_home_score: s.h, actual_away_score: s.a }
+        }))
+      })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Simulate bracket to find champion
   useEffect(() => {

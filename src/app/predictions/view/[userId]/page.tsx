@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
 import { transliterateName } from '@/lib/transliterate'
 import PredictionsViewClient from './PredictionsViewClient'
@@ -23,6 +24,7 @@ function koStageFromSlot(slot: number | null): string | null {
 }
 
 export default async function UserPredictionsPage({ params }: { params: { userId: string } }) {
+  noStore()
   const { userId } = params
   const supabase = svc()
 
