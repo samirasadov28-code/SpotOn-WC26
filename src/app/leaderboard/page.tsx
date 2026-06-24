@@ -310,29 +310,47 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
     <div>
       {/* Day picker — single scrollable row with arrows */}
       {(() => {
-        const KO_STAGES = [
-          { key: 'r32', label: 'R32 ×32', color: 'bg-blue-100 text-blue-700' },
-          { key: 'r16', label: 'R16 ×16', color: 'bg-indigo-100 text-indigo-700' },
-          { key: 'qf',  label: 'QF ×8',  color: 'bg-purple-100 text-purple-700' },
-          { key: 'sf',  label: 'SF ×4',  color: 'bg-pink-100 text-pink-700' },
-          { key: 'final', label: '🏆 Final', color: 'bg-yellow-100 text-yellow-700' },
+        const KO_STAGE_META = [
+          { key: 'r32',   label: 'R32',  color: 'text-blue-600 bg-blue-50 border border-blue-200' },
+          { key: 'r16',   label: 'R16',  color: 'text-indigo-600 bg-indigo-50 border border-indigo-200' },
+          { key: 'qf',    label: 'QF',   color: 'text-purple-600 bg-purple-50 border border-purple-200' },
+          { key: 'sf',    label: 'SF',   color: 'text-pink-600 bg-pink-50 border border-pink-200' },
+          { key: 'third', label: '3rd',  color: 'text-orange-600 bg-orange-50 border border-orange-200' },
+          { key: 'final', label: '🏆',   color: 'text-yellow-700 bg-yellow-50 border border-yellow-300' },
         ]
+        const koDaysByStage = new Map<string, string[]>()
+        for (const [day, stage] of koDateToStage) {
+          if (!koDaysByStage.has(stage)) koDaysByStage.set(stage, [])
+          koDaysByStage.get(stage)!.push(day)
+        }
+        for (const [, days] of koDaysByStage) days.sort()
+
         return (
           <div className="flex items-center gap-1 mb-4">
             <button onClick={() => { dayScrollRef.current?.scrollBy({ left: -160, behavior: 'smooth' }) }}
               className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition-colors">‹</button>
-            <div ref={dayScrollRef} className="flex gap-1.5 overflow-x-auto flex-1" style={{ scrollbarWidth: 'none' }}>
+            <div ref={dayScrollRef} className="flex gap-1.5 overflow-x-auto flex-1 items-center" style={{ scrollbarWidth: 'none' }}>
               {allDays.map(day => (
                 <button key={day} data-day={day} onClick={() => setSelectedDay(day)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                   {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                 </button>
               ))}
-              {allDays.length > 0 && KO_STAGES.map(s => (
-                <span key={s.key} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold shrink-0 cursor-default ${s.color}`}>
-                  {s.label}
-                </span>
-              ))}
+              {KO_STAGE_META.map(s => {
+                const days = koDaysByStage.get(s.key) ?? []
+                if (days.length === 0) return null
+                return (
+                  <div key={s.key} className="flex items-center gap-1 shrink-0">
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${s.color}`}>{s.label}</span>
+                    {days.map(day => (
+                      <button key={day} data-day={day} onClick={() => setSelectedDay(day)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                        {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                      </button>
+                    ))}
+                  </div>
+                )
+              })}
             </div>
             <button onClick={() => { dayScrollRef.current?.scrollBy({ left: 160, behavior: 'smooth' }) }}
               className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition-colors">›</button>
