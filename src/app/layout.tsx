@@ -6,6 +6,7 @@ import Navbar from '@/components/nav/Navbar'
 import ScoreTicker from '@/components/ScoreTicker'
 import { ToastProvider } from '@/components/ToastProvider'
 import { LanguageProvider } from '@/lib/i18n/LanguageContext'
+import SessionGuard from '@/components/SessionGuard'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -39,7 +40,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.className} bg-white text-gray-900 min-h-screen`}>
         <LanguageProvider>
           <ToastProvider>
-            <Navbar />
+            <SessionGuard />
+          <Navbar />
             <ScoreTicker />
             <main className="pb-16 md:pb-0">{children}</main>
           </ToastProvider>

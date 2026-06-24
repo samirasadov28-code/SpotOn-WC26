@@ -19,6 +19,16 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [rememberMe, setRememberMe] = useState(true)
+
+  const applyRememberMe = () => {
+    if (rememberMe) {
+      localStorage.setItem('spoton_remember', '1')
+    } else {
+      localStorage.removeItem('spoton_remember')
+    }
+    sessionStorage.setItem('spoton_session', '1')
+  }
 
   const joinLeagueAndRedirect = async (supabase: ReturnType<typeof createClient>, userId: string) => {
     if (!leagueCode) {
@@ -57,6 +67,7 @@ function LoginForm() {
           const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
           setLoading(false)
           if (!signInErr && signInData.session) {
+            applyRememberMe()
             await joinLeagueAndRedirect(supabase, signInData.session.user.id)
           } else {
             setMode('signin')
@@ -78,6 +89,7 @@ function LoginForm() {
 
       if (data.session) {
         await upsertUser(data.session.user.id)
+        applyRememberMe()
         await joinLeagueAndRedirect(supabase, data.session.user.id)
         return
       }
@@ -90,6 +102,7 @@ function LoginForm() {
       } else {
         if (signInData.session) {
           await upsertUser(signInData.session.user.id)
+          applyRememberMe()
           await joinLeagueAndRedirect(supabase, signInData.session.user.id)
         }
       }
@@ -106,6 +119,7 @@ function LoginForm() {
           setError(err.message)
         }
       } else {
+        applyRememberMe()
         if (signInData.session) {
           await joinLeagueAndRedirect(supabase, signInData.session.user.id)
         } else {
@@ -248,6 +262,18 @@ function LoginForm() {
               className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A]"
             />
           </div>
+
+          {mode === 'signin' && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+                className="w-4 h-4 accent-[#0B1F3A] rounded"
+              />
+              <span className="text-sm text-gray-600">Stay signed in</span>
+            </label>
+          )}
 
           {error && <p className="text-red-600 text-sm">{error}</p>}
 
