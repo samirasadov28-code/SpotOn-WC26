@@ -202,7 +202,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       }
       for (const [g, arr] of byGroup) {
         arr.sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
-        const complete = arr.every((t: any) => t.played >= 2)
+        const complete = arr.every((t: any) => t.played >= 3)
         arr.forEach((t: any, i: number) => { t.qualified = complete && i < 2; t.complete = complete })
         byGroup.set(g, arr)
       }
@@ -218,8 +218,10 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       if (!container) return
       const btn = container.querySelector<HTMLElement>(`[data-day="${selectedDay}"]`)
       if (!btn) return
-      const offset = btn.offsetLeft - container.offsetWidth / 2 + btn.offsetWidth / 2
-      container.scrollTo({ left: offset, behavior: 'smooth' })
+      const containerRect = container.getBoundingClientRect()
+      const btnRect = btn.getBoundingClientRect()
+      const offset = container.scrollLeft + btnRect.left - containerRect.left - containerRect.width / 2 + btnRect.width / 2
+      container.scrollTo({ left: Math.max(0, offset), behavior: 'smooth' })
     })
     return () => cancelAnimationFrame(raf)
   }, [selectedDay, allDays, koDateToStage])
@@ -441,71 +443,141 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         )
       })()}
 
-      {r32Mode ? (
-        <div>
-          <button onClick={() => setR32Mode(false)} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#0B1F3A] mb-4 transition-colors">
-            ← Back to Day View
-          </button>
-          <h2 className="text-sm font-bold text-[#0B1F3A] mb-3">Round of 32 — Advancement Points</h2>
-          {/* Qualified teams grid */}
-          {groupStandings.size > 0 && (
-            <div className="mb-5">
-              <p className="text-xs text-gray-500 mb-2">
-                {[...groupStandings.values()].every(arr => arr.every((t: any) => t.played >= 2))
-                  ? '✅ All 32 qualified teams confirmed'
-                  : 'Teams qualify once their group is complete (3 games played)'}
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {[...groupStandings.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([grp, grpTeams]) => (
-                  <div key={grp} className="bg-white border border-gray-100 rounded-lg overflow-hidden shadow-sm">
-                    <div className="bg-[#0B1F3A] text-white text-[10px] font-bold px-2 py-1">Group {grp}</div>
-                    {grpTeams.slice(0, 2).map((t: any, i: number) => (
-                      <div key={t.id} className={`flex items-center gap-1.5 px-2 py-1 text-[10px] ${t.qualified ? 'bg-green-50' : 'bg-gray-50'}`}>
-                        <span className="w-4 text-gray-400 font-bold shrink-0">{i + 1}</span>
-                        {t.qualified ? (
-                          <>
-                            <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
-                              <img src={flagUrl(t.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+      {r32Mode ? (() => {
+        // Build 32 R32 positions: 12 winners + 12 runners-up + 8 best 3rds
+        const WC26_GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
+        // Resolve team for a position label from group standings
+        const resolveTeam = (label: string): { name: string; fifa_code: string; flag_emoji: string | null } | null => {
+          const m1 = label.match(/^([12])([A-L])$/)
+          if (m1) {
+            const pos = parseInt(m1[1]) - 1
+            const grp = m1[2]
+            const arr = groupStandings.get(grp) ?? []
+            if (arr.every((t: any) => t.played >= 3) && arr[pos]) return arr[pos]
+            return null
+          }
+          return null
+        }
+        // Compute 8 best 3rd place teams from complete groups
+        const thirds: Array<{ label: string; team: any }> = []
+        for (const g of WC26_GROUPS) {
+          const arr = groupStandings.get(g) ?? []
+          if (arr.every((t: any) => t.played >= 3) && arr[2]) {
+            thirds.push({ label: `3rd-${g}`, team: arr[2] })
+          }
+        }
+        thirds.sort((a, b) => b.team.pts - a.team.pts || b.team.gd - a.team.gd || b.team.gf - a.team.gf)
+        const best8thirds = thirds.slice(0, 8)
+
+        const positions = [
+          ...WC26_GROUPS.map(g => `1${g}`),
+          ...WC26_GROUPS.map(g => `2${g}`),
+          ...Array.from({ length: 8 }, (_, i) => `3rd${i + 1}`),
+        ]
+
+        const sortedEntries = [...entries].sort((a, b) => b.advancementPts - a.advancementPts || b.totalPts - a.totalPts)
+
+        // Dual-scroll: sync top mirror div with main scroll div
+        const r32ScrollRef = { current: null as HTMLDivElement | null }
+        const r32MirrorRef = { current: null as HTMLDivElement | null }
+
+        return (
+          <div>
+            <button onClick={() => setR32Mode(false)} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#0B1F3A] mb-3 transition-colors">
+              ← Back to Day View
+            </button>
+            <h2 className="text-sm font-bold text-[#0B1F3A] mb-3">🏅 Round of 32 — Advancement</h2>
+
+            {/* Top mirror scrollbar */}
+            <div
+              className="overflow-x-auto -mx-4 px-4"
+              style={{ scrollbarWidth: 'thin', height: 12, marginBottom: 2 }}
+              ref={el => { r32MirrorRef.current = el }}
+              onScroll={() => { if (r32ScrollRef.current && r32MirrorRef.current) r32ScrollRef.current.scrollLeft = r32MirrorRef.current.scrollLeft }}
+            >
+              <div style={{ width: 150 + 32 * 68 + 72, height: 1 }} />
+            </div>
+
+            {/* Main scrollable table */}
+            <div
+              className="overflow-x-auto -mx-4 px-4"
+              style={{ scrollbarWidth: 'thin' }}
+              ref={el => { r32ScrollRef.current = el }}
+              onScroll={() => { if (r32MirrorRef.current && r32ScrollRef.current) r32MirrorRef.current.scrollLeft = r32ScrollRef.current.scrollLeft }}
+            >
+              <table className="text-xs border-collapse" style={{ minWidth: 'max-content' }}>
+                <thead>
+                  <tr className="bg-[#0B1F3A] text-white">
+                    <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px] border-r border-white/20">
+                      Player
+                    </th>
+                    {positions.map((pos, i) => {
+                      const team = i < 24 ? resolveTeam(pos) : best8thirds[i - 24]?.team ?? null
+                      const isThird = i >= 24
+                      const sectionBorder = (i === 12 || i === 24) ? 'border-l-2 border-blue-400/50' : ''
+                      return (
+                        <th key={pos} className={`py-1.5 px-1 text-center font-normal min-w-[64px] ${sectionBorder}`}>
+                          {team ? (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0">
+                                <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                              </span>
+                              <span className="text-[9px] font-semibold leading-none">{team.fifa_code}</span>
+                              <span className="text-[8px] text-white/50 leading-none">{pos}</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className={`text-[10px] font-bold ${isThird ? 'text-orange-300' : 'text-white/60'}`}>{pos}</span>
+                            </div>
+                          )}
+                        </th>
+                      )
+                    })}
+                    <th className="py-2 px-3 text-center font-bold text-yellow-300 min-w-[56px] border-l-2 border-yellow-400/50 sticky right-0 bg-[#0B1F3A]">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedEntries.map((e, idx) => {
+                    const isMe = e.userId === currentUserId
+                    const rowBg = isMe ? 'bg-blue-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'
+                    return (
+                      <tr key={e.userId} className={`border-t border-gray-100 ${rowBg}`}>
+                        <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg} border-r border-gray-100`}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-5 text-center text-xs font-bold text-gray-400 shrink-0">
+                              {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                             </span>
-                            <span className="truncate flex-1 font-semibold text-green-800">{t.name}</span>
-                          </>
-                        ) : (
-                          <span className="text-gray-400 italic flex-1">TBD</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+                            <Link href={`/predictions/view/${e.userId}`}
+                              className={`font-semibold truncate max-w-[100px] hover:underline ${isMe ? 'text-blue-700' : 'text-[#0B1F3A]'}`}
+                              title={e.displayName}>
+                              {e.displayName}
+                            </Link>
+                          </div>
+                        </td>
+                        {positions.map((pos, i) => {
+                          const sectionBorder = (i === 12 || i === 24) ? 'border-l-2 border-blue-100' : ''
+                          return (
+                            <td key={pos} className={`py-2 px-2 text-center text-gray-300 ${sectionBorder}`}>—</td>
+                          )
+                        })}
+                        <td className={`py-2 px-3 text-center font-bold text-[#0B1F3A] sticky right-0 ${rowBg} border-l-2 border-gray-100`}>
+                          {e.advancementPts}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
-          )}
-          {/* Leaderboard sorted by advancement pts */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="bg-gradient-to-r from-[#0B1F3A] to-blue-800 px-4 py-3">
-              <h3 className="text-sm font-bold text-white">🏅 Leaderboard — Advancement Points</h3>
-              <p className="text-[11px] text-white/60 mt-0.5">1 pt per team correctly predicted to reach R32</p>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {[...entries].sort((a, b) => b.advancementPts - a.advancementPts || b.totalPts - a.totalPts).map((e, i, arr) => {
-                const isMe = e.userId === currentUserId
-                const rank = i === 0 ? 1 : e.advancementPts < arr[i-1].advancementPts ? i + 1 : (i > 0 ? arr.slice(0, i).findIndex(x => x.advancementPts === e.advancementPts) + 1 : 1)
-                return (
-                  <div key={e.userId} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${isMe ? 'bg-blue-50' : ''}`}>
-                    <span className="w-6 text-center font-bold text-gray-400 text-xs shrink-0">
-                      {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank}
-                    </span>
-                    <span className={`flex-1 font-medium truncate ${isMe ? 'text-blue-700 font-bold' : 'text-[#0B1F3A]'}`}>
-                      {e.displayName}{isMe ? ' (you)' : ''}
-                    </span>
-                    <span className="font-bold text-[#0B1F3A] tabular-nums">{e.advancementPts}</span>
-                    <span className="text-[10px] text-gray-400 shrink-0">pts</span>
-                  </div>
-                )
-              })}
-            </div>
+
+            <p className="text-[10px] text-gray-400 mt-2">
+              Columns: <span className="text-blue-600 font-medium">1A–1L</span> group winners · <span className="text-indigo-600 font-medium">2A–2L</span> runners-up · <span className="text-orange-500 font-medium">3rd1–3rd8</span> best 3rd-place teams · Points awarded once group stage is complete.
+            </p>
           </div>
-        </div>
-      ) : loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : isKoDay ? (
+        )
+      })() : loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : isKoDay ? (
         <>
           {/* KO day: match card grid */}
           {(() => {
@@ -520,11 +592,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             )
           })()}
 
-          {dayMatches.length === 0 ? (
-            <div className="text-center text-gray-400 py-10 text-sm">Schedule not yet available</div>
-          ) : (
+          {dayMatches.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              {dayMatches.map((m, i) => {
+              {dayMatches.map((m) => {
                 const homeKnown = !!m.home_team
                 const awayKnown = !!m.away_team
                 return (
@@ -577,39 +647,6 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                   </div>
                 )
               })}
-            </div>
-          )}
-
-          {/* Group standings accordion */}
-          {groupStandings.size > 0 && (
-            <div className="mt-2">
-              <button
-                onClick={() => setShowGroupStandings(v => !v)}
-                className="flex items-center gap-2 text-xs font-semibold text-[#0B1F3A] bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 w-full hover:bg-blue-100 transition-colors"
-              >
-                <span>📊 Group Standings — who qualifies for R32</span>
-                <span className="ml-auto">{showGroupStandings ? '▲' : '▼'}</span>
-              </button>
-              {showGroupStandings && (
-                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {[...byGroupSorted(groupStandings)].map(([grp, grpTeams]) => (
-                    <div key={grp} className="bg-white border border-gray-100 rounded-lg overflow-hidden shadow-sm">
-                      <div className="bg-[#0B1F3A] text-white text-[10px] font-bold px-2 py-1">Group {grp}</div>
-                      {grpTeams.map((t: any, i: number) => (
-                        <div key={t.id} className={`flex items-center gap-1.5 px-2 py-1 text-[10px] ${i < 2 ? (t.qualified ? 'bg-green-50' : '') : 'opacity-50'} ${i === 1 ? 'border-b border-dashed border-gray-200' : ''}`}>
-                          <span className="w-3 text-gray-400 font-bold shrink-0">{i + 1}</span>
-                          <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
-                            <img src={flagUrl(t.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
-                          </span>
-                          <span className={`truncate flex-1 ${t.qualified ? 'font-semibold text-green-800' : 'text-gray-700'}`}>{t.name}</span>
-                          <span className="font-bold text-[#0B1F3A] shrink-0">{t.pts}p</span>
-                          {t.qualified && <span className="text-green-600 shrink-0 text-[9px]">✓</span>}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </>
@@ -1314,7 +1351,7 @@ export default function LeaderboardPage() {
   const [leagueError, setLeagueError] = useState<string | null>(null)
   const [inviteLeague, setInviteLeague] = useState<UserLeague | null>(null)
   const [copiedLeagueId, setCopiedLeagueId] = useState<string | null>(null)
-  const [lbTab, setLbTab] = useState<'overview' | 'dayview' | 'rounds' | 'stats'>('dayview')
+  const [lbTab, setLbTab] = useState<'overview' | 'dayview' | 'stats'>('dayview')
   const [top4, setTop4] = useState<Array<Array<{ team: TeamRef & {}; votes: number }>>>([[], [], [], []])
   const [positionsByUser, setPositionsByUser] = useState<Record<string, PositionRow>>({})
   const [finishMode, setFinishMode] = useState<'champ' | 'top4'>('champ')
@@ -1620,21 +1657,18 @@ export default function LeaderboardPage() {
 
       {/* Tab switcher */}
       <div className="flex gap-1 mb-5 border-b border-gray-200 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-        {(['overview', 'dayview', 'rounds', 'stats'] as const).map(tab => (
+        {(['overview', 'dayview', 'stats'] as const).map(tab => (
           <button key={tab} onClick={() => setLbTab(tab)}
             className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap shrink-0 ${lbTab === tab ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-            {tab === 'overview' ? t('lb_tab_overview') : tab === 'dayview' ? t('lb_tab_dayview') : tab === 'rounds' ? '🏆 Rounds' : '📊 Stats'}
+            {tab === 'overview' ? t('lb_tab_overview') : tab === 'dayview' ? t('lb_tab_dayview') : '📊 Stats'}
           </button>
         ))}
       </div>
 
       {/* Day View tab */}
       {lbTab === 'dayview' && (
-        <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} finishMode={finishMode} setFinishMode={setFinishMode} onGoToRounds={() => setLbTab('rounds')} />
+        <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} finishMode={finishMode} setFinishMode={setFinishMode} onGoToRounds={undefined} />
       )}
-
-      {/* Rounds tab */}
-      {lbTab === 'rounds' && <RoundsView lang={lang} entries={visibleEntries} />}
 
       {/* Stats tab */}
       {lbTab === 'stats' && (
