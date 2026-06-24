@@ -68,6 +68,8 @@ interface DayMatch {
   actual_home_score: number | null; actual_away_score: number | null
   home_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
   away_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
+  home_label?: string
+  away_label?: string
 }
 
 function PredCell({ ph, pa, ah, aa }: { ph: number|null; pa: number|null; ah: number|null; aa: number|null }) {
@@ -130,6 +132,15 @@ function FinishToggle({ mode, onChange }: { mode: 'champ' | 'top4'; onChange: (m
     </div>
   )
 }
+
+// WC26 R32 bracket seeding: [homeGroup, homePos, awayGroup, awayPos]
+// homePos 1 = group winner, 2 = runner-up
+const WC26_R32_BRACKET: [string, number, string, number][] = [
+  ['A',1,'B',2],['C',1,'D',2],['E',1,'F',2],['G',1,'H',2],
+  ['I',1,'J',2],['K',1,'L',2],['M',1,'N',2],['O',1,'P',2],
+  ['B',1,'A',2],['D',1,'C',2],['F',1,'E',2],['H',1,'G',2],
+  ['J',1,'I',2],['L',1,'K',2],['N',1,'M',2],['P',1,'O',2],
+]
 
 // ── DayView ──────────────────────────────────────────────────────────────────
 
@@ -248,10 +259,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       ]).then(([dateRes, roundRes, groupMatchRes, teamRes]) => {
         const dateMatches = (dateRes.data ?? []) as DayMatch[]
         const roundMatches = (roundRes.data ?? []) as DayMatch[]
-        setDayMatches(dateMatches.length > 0 ? dateMatches : roundMatches)
-        setPredsMap(new Map())
 
-        // Compute group standings
+        // Compute group standings first (needed for virtual match teams)
         const teams = (teamRes.data ?? []) as any[]
         const gMatches = (groupMatchRes.data ?? []) as any[]
         const statsMap = new Map<string, {pts:number,played:number,gd:number,gf:number}>()
@@ -266,7 +275,6 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           if (hs > as_) h.pts += 3; else if (hs < as_) a.pts += 3; else { h.pts += 1; a.pts += 1 }
           statsMap.set(m.home_team_id, h); statsMap.set(m.away_team_id, a)
         }
-        // Group by letter, sort by pts/gd/gf
         const byGroup = new Map<string, any[]>()
         for (const t of teams) {
           if (!t.group_letter) continue
@@ -276,12 +284,37 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         }
         for (const [g, arr] of byGroup) {
           arr.sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
-          // WC26: 3 teams per group, each plays 2 games; group complete when all played 2
           const complete = arr.every((t: any) => t.played >= 2)
           arr.forEach((t: any, i: number) => { t.qualified = complete && i < 2; t.complete = complete })
           byGroup.set(g, arr)
         }
         setGroupStandings(byGroup)
+
+        // Pick best available matches; generate virtual if DB has none
+        let finalMatches: DayMatch[] = dateMatches.length > 0 ? dateMatches : roundMatches
+        if (finalMatches.length === 0 && stage === 'r32') {
+          finalMatches = WC26_R32_BRACKET.map(([hg, hp, ag, ap], i) => {
+            const hTeams = byGroup.get(hg) ?? []
+            const aTeams = byGroup.get(ag) ?? []
+            const hComplete = hTeams.every((t: any) => t.played >= 2)
+            const aComplete = aTeams.every((t: any) => t.played >= 2)
+            const homeTeamData = hComplete ? hTeams[hp - 1] : null
+            const awayTeamData = aComplete ? aTeams[ap - 1] : null
+            return {
+              id: `virtual-r32-${i + 1}`,
+              kickoff_at: null,
+              bracket_slot: i + 1,
+              actual_home_score: null,
+              actual_away_score: null,
+              home_team: homeTeamData ? { name: homeTeamData.name, fifa_code: homeTeamData.fifa_code, flag_emoji: homeTeamData.flag_emoji } : null,
+              away_team: awayTeamData ? { name: awayTeamData.name, fifa_code: awayTeamData.fifa_code, flag_emoji: awayTeamData.flag_emoji } : null,
+              home_label: `${hp === 1 ? '1st' : '2nd'} Group ${hg}`,
+              away_label: `${ap === 1 ? '1st' : '2nd'} Group ${ag}`,
+            } as DayMatch
+          })
+        }
+        setDayMatches(finalMatches)
+        setPredsMap(new Map())
         setShowGroupStandings(false)
         setLoading(false)
       })
@@ -431,7 +464,115 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         )
       })()}
 
-      {loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : dayMatches.length === 0 ? (
+      {loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : isKoDay ? (
+        <>
+          {/* KO day: match card grid */}
+          {(() => {
+            const stageKey = koDateToStage.get(selectedDay)
+            const stageLabels: Record<string, string> = { r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-Finals', sf: 'Semi-Finals', third: 'Third Place', final: 'Final' }
+            const stageLabel = stageLabels[stageKey ?? ''] ?? stageKey ?? 'Knockout'
+            return (
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-bold text-[#0B1F3A]">{stageLabel}</p>
+                <p className="text-xs text-gray-400">{dayLabel} · {dayMatches.length} match{dayMatches.length !== 1 ? 'es' : ''}</p>
+              </div>
+            )
+          })()}
+
+          {dayMatches.length === 0 ? (
+            <div className="text-center text-gray-400 py-10 text-sm">Schedule not yet available</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              {dayMatches.map((m, i) => {
+                const homeKnown = !!m.home_team
+                const awayKnown = !!m.away_team
+                return (
+                  <div key={m.id} className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+                    {m.bracket_slot && (
+                      <div className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mb-2 text-center">
+                        Match {m.bracket_slot}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      {/* Home */}
+                      <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
+                        {homeKnown ? (
+                          <>
+                            <span className="inline-block w-8 h-6 overflow-hidden rounded-sm flex-shrink-0">
+                              <img src={flagUrl(m.home_team!.fifa_code, 80)} alt="" className="w-full h-full object-cover" />
+                            </span>
+                            <span className="text-xs font-semibold text-[#0B1F3A] text-center truncate w-full text-center">{m.home_team!.name}</span>
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-500 text-center leading-tight">{m.home_label ?? 'TBD'}</span>
+                        )}
+                      </div>
+                      {/* Score / time */}
+                      <div className="flex flex-col items-center shrink-0 mx-1">
+                        {m.actual_home_score !== null ? (
+                          <span className="text-sm font-bold text-green-700">{m.actual_home_score}–{m.actual_away_score}</span>
+                        ) : (
+                          <span className="text-xs text-gray-400 font-mono">
+                            {m.kickoff_at
+                              ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
+                              : 'vs'}
+                          </span>
+                        )}
+                      </div>
+                      {/* Away */}
+                      <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
+                        {awayKnown ? (
+                          <>
+                            <span className="inline-block w-8 h-6 overflow-hidden rounded-sm flex-shrink-0">
+                              <img src={flagUrl(m.away_team!.fifa_code, 80)} alt="" className="w-full h-full object-cover" />
+                            </span>
+                            <span className="text-xs font-semibold text-[#0B1F3A] text-center truncate w-full text-center">{m.away_team!.name}</span>
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-500 text-center leading-tight">{m.away_label ?? 'TBD'}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Group standings accordion */}
+          {groupStandings.size > 0 && (
+            <div className="mt-2">
+              <button
+                onClick={() => setShowGroupStandings(v => !v)}
+                className="flex items-center gap-2 text-xs font-semibold text-[#0B1F3A] bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 w-full hover:bg-blue-100 transition-colors"
+              >
+                <span>📊 Group Standings — who qualifies for R32</span>
+                <span className="ml-auto">{showGroupStandings ? '▲' : '▼'}</span>
+              </button>
+              {showGroupStandings && (
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {[...byGroupSorted(groupStandings)].map(([grp, grpTeams]) => (
+                    <div key={grp} className="bg-white border border-gray-100 rounded-lg overflow-hidden shadow-sm">
+                      <div className="bg-[#0B1F3A] text-white text-[10px] font-bold px-2 py-1">Group {grp}</div>
+                      {grpTeams.map((t: any, i: number) => (
+                        <div key={t.id} className={`flex items-center gap-1.5 px-2 py-1 text-[10px] ${i < 2 ? (t.qualified ? 'bg-green-50' : '') : 'opacity-50'} ${i === 1 ? 'border-b border-dashed border-gray-200' : ''}`}>
+                          <span className="w-3 text-gray-400 font-bold shrink-0">{i + 1}</span>
+                          <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
+                            <img src={flagUrl(t.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                          </span>
+                          <span className={`truncate flex-1 ${t.qualified ? 'font-semibold text-green-800' : 'text-gray-700'}`}>{t.name}</span>
+                          <span className="font-bold text-[#0B1F3A] shrink-0">{t.pts}p</span>
+                          {t.qualified && <span className="text-green-600 shrink-0 text-[9px]">✓</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      ) : dayMatches.length === 0 ? (
         <div className="text-center text-gray-400 py-10 text-sm">{t('dv_no_matches')}</div>
       ) : (
         <>
@@ -539,38 +680,6 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium">{t('dv_pts_wrong')}</span>
             <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-medium">{t('dv_pts_pending')}</span>
           </div>
-          {/* KO day: group standings accordion */}
-          {isKoDay && groupStandings.size > 0 && (
-            <div className="mt-4">
-              <button
-                onClick={() => setShowGroupStandings(v => !v)}
-                className="flex items-center gap-2 text-xs font-semibold text-[#0B1F3A] bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 w-full hover:bg-blue-100 transition-colors"
-              >
-                <span>📊 Group Standings — who qualifies for R32</span>
-                <span className="ml-auto">{showGroupStandings ? '▲' : '▼'}</span>
-              </button>
-              {showGroupStandings && (
-                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {[...byGroupSorted(groupStandings)].map(([grp, teams]) => (
-                    <div key={grp} className="bg-white border border-gray-100 rounded-lg overflow-hidden shadow-sm">
-                      <div className="bg-[#0B1F3A] text-white text-[10px] font-bold px-2 py-1">Group {grp}</div>
-                      {teams.map((t: any, i: number) => (
-                        <div key={t.id} className={`flex items-center gap-1.5 px-2 py-1 text-[10px] ${i < 2 ? (t.qualified ? 'bg-green-50' : '') : 'opacity-50'} ${i === 1 ? 'border-b border-dashed border-gray-200' : ''}`}>
-                          <span className="w-3 text-gray-400 font-bold shrink-0">{i + 1}</span>
-                          <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
-                            <img src={flagUrl(t.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
-                          </span>
-                          <span className={`truncate flex-1 ${t.qualified ? 'font-semibold text-green-800' : 'text-gray-700'}`}>{t.name}</span>
-                          <span className="font-bold text-[#0B1F3A] shrink-0">{t.pts}p</span>
-                          {t.qualified && <span className="text-green-600 shrink-0 text-[9px]">✓</span>}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
           {/* Qualified teams pill — shown after the last group matchday */}
           {allDays.length > 0 && selectedDay >= allDays[allDays.length - 1] && (
             <div className="mt-4 flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
