@@ -144,6 +144,26 @@ const WC26_R32_BRACKET: [string, number, string, number][] = [
 
 // ── DayView ──────────────────────────────────────────────────────────────────
 
+// Bracket position labels for KO slots (slot → {home, away} position labels)
+const KO_SLOT_LABELS: Record<number, { home: string; away: string }> = {
+  1: { home: '2A', away: '2B' },   2: { home: '1E', away: 'Best 3rd' },
+  3: { home: '1F', away: '2C' },   4: { home: '1C', away: '2F' },
+  5: { home: '1I', away: 'Best 3rd' }, 6: { home: '2E', away: '2I' },
+  7: { home: '1A', away: 'Best 3rd' }, 8: { home: '1L', away: 'Best 3rd' },
+  9: { home: '1D', away: 'Best 3rd' }, 10: { home: '1G', away: 'Best 3rd' },
+  11: { home: '2K', away: '2L' },  12: { home: '1H', away: '2J' },
+  13: { home: '1B', away: 'Best 3rd' }, 14: { home: '1J', away: '2H' },
+  15: { home: '1K', away: 'Best 3rd' }, 16: { home: '2D', away: '2G' },
+  17: { home: 'W M74', away: 'W M77' }, 18: { home: 'W M73', away: 'W M75' },
+  19: { home: 'W M76', away: 'W M78' }, 20: { home: 'W M79', away: 'W M80' },
+  21: { home: 'W M83', away: 'W M84' }, 22: { home: 'W M81', away: 'W M82' },
+  23: { home: 'W M86', away: 'W M88' }, 24: { home: 'W M85', away: 'W M87' },
+  25: { home: 'W M89', away: 'W M90' }, 26: { home: 'W M93', away: 'W M94' },
+  27: { home: 'W M91', away: 'W M92' }, 28: { home: 'W M95', away: 'W M96' },
+  29: { home: 'W M97', away: 'W M98' }, 30: { home: 'W M99', away: 'W M100' },
+  31: { home: 'L M101', away: 'L M102' }, 32: { home: 'W M101', away: 'W M102' },
+}
+
 function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser, finishMode, setFinishMode, onGoToRounds }: {
   entries: LeaderboardEntry[]
   currentUserId: string | null
@@ -167,6 +187,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const [recapLoading, setRecapLoading] = useState(false)
   const [showRecap, setShowRecap] = useState(false)
   const dayScrollRef = useRef<HTMLDivElement>(null)
+  const tableScrollRef = useRef<HTMLDivElement>(null)
+  const tableMirrorRef = useRef<HTMLDivElement>(null)
   const [groupStandings, setGroupStandings] = useState<Map<string, any[]>>(new Map())
   const [showGroupStandings, setShowGroupStandings] = useState(false)
   const [r32Mode, setR32Mode] = useState(false)
@@ -225,6 +247,22 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
     })
     return () => cancelAnimationFrame(raf)
   }, [selectedDay, allDays, koDateToStage])
+
+  // Centre the R32 badge when r32Mode activates
+  useEffect(() => {
+    if (!r32Mode || !dayScrollRef.current) return
+    const raf = requestAnimationFrame(() => {
+      const container = dayScrollRef.current
+      if (!container) return
+      const btn = container.querySelector<HTMLElement>('[data-r32="true"]')
+      if (!btn) return
+      const containerRect = container.getBoundingClientRect()
+      const btnRect = btn.getBoundingClientRect()
+      const offset = container.scrollLeft + btnRect.left - containerRect.left - containerRect.width / 2 + btnRect.width / 2
+      container.scrollTo({ left: Math.max(0, offset), behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [r32Mode])
 
   useEffect(() => {
     Promise.all([
@@ -416,7 +454,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition-colors">‹</button>
             <div ref={dayScrollRef} className="flex gap-1.5 overflow-x-auto flex-1 items-center" style={{ scrollbarWidth: 'none' }}>
               {allDays.map(day => (
-                <button key={day} data-day={day} onClick={() => setSelectedDay(day)}
+                <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setR32Mode(false) }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                   {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                 </button>
@@ -426,9 +464,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 if (days.length === 0) return null
                 return (
                   <div key={s.key} className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => { if (s.key === 'r32') setR32Mode(true); else if (onGoToRounds) onGoToRounds() }} className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 hover:opacity-80 transition-opacity ${s.color}`}>{s.label}</button>
+                    <button
+                      data-r32={s.key === 'r32' ? 'true' : undefined}
+                      onClick={() => { if (s.key === 'r32') setR32Mode(true); else if (onGoToRounds) onGoToRounds() }}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 hover:opacity-80 transition-opacity ${s.key === 'r32' && r32Mode ? 'bg-[#0B1F3A] text-white border border-[#0B1F3A]' : s.color}`}
+                    >{s.label}</button>
                     {days.map(day => (
-                      <button key={day} data-day={day} onClick={() => setSelectedDay(day)}
+                      <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setR32Mode(false) }}
                         className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                         {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                       </button>
@@ -615,7 +657,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                             <span className="text-xs font-semibold text-[#0B1F3A] text-center truncate w-full text-center">{m.home_team!.name}</span>
                           </>
                         ) : (
-                          <span className="text-xs text-gray-500 text-center leading-tight">{m.home_label ?? 'TBD'}</span>
+                          <span className="text-xs text-gray-500 text-center leading-tight">{m.home_label ?? (m.bracket_slot ? KO_SLOT_LABELS[m.bracket_slot]?.home : null) ?? 'TBD'}</span>
                         )}
                       </div>
                       {/* Score / time */}
@@ -640,7 +682,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                             <span className="text-xs font-semibold text-[#0B1F3A] text-center truncate w-full text-center">{m.away_team!.name}</span>
                           </>
                         ) : (
-                          <span className="text-xs text-gray-500 text-center leading-tight">{m.away_label ?? 'TBD'}</span>
+                          <span className="text-xs text-gray-500 text-center leading-tight">{m.away_label ?? (m.bracket_slot ? KO_SLOT_LABELS[m.bracket_slot]?.away : null) ?? 'TBD'}</span>
                         )}
                       </div>
                     </div>
@@ -673,7 +715,20 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             </div>
           </div>
 
-          <div className="overflow-x-auto -mx-4 px-4">
+          {/* Top mirror scrollbar */}
+          <div
+            ref={tableMirrorRef}
+            className="overflow-x-auto -mx-4 px-4 hidden md:block"
+            style={{ scrollbarWidth: 'thin', height: 10, marginBottom: 2 }}
+            onScroll={() => { if (tableScrollRef.current && tableMirrorRef.current) tableScrollRef.current.scrollLeft = tableMirrorRef.current.scrollLeft }}
+          >
+            <div style={{ minWidth: 'max-content', width: '100%', height: 1 }} />
+          </div>
+          <div
+            ref={tableScrollRef}
+            className="overflow-x-auto -mx-4 px-4"
+            onScroll={() => { if (tableMirrorRef.current && tableScrollRef.current) tableMirrorRef.current.scrollLeft = tableScrollRef.current.scrollLeft }}
+          >
             <table className="text-xs border-collapse" style={{ minWidth: 'max-content', width: '100%' }}>
               <thead>
                 <tr className="bg-[#0B1F3A] text-white">
