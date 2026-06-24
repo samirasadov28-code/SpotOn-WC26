@@ -182,6 +182,19 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         const stage = slot <= 16 ? 'r32' : slot <= 24 ? 'r16' : slot <= 28 ? 'qf' : slot <= 30 ? 'sf' : slot === 32 ? 'final' : 'third'
         if (!koMap.has(day)) koMap.set(day, stage)
       }
+      // Fallback: show all expected WC26 KO days even before teams are assigned
+      const WC26_KO_FALLBACK: [string, string][] = [
+        ['2026-06-28','r32'],['2026-06-29','r32'],['2026-06-30','r32'],
+        ['2026-07-01','r32'],['2026-07-02','r32'],['2026-07-03','r32'],
+        ['2026-07-05','r16'],['2026-07-06','r16'],['2026-07-07','r16'],['2026-07-08','r16'],
+        ['2026-07-10','qf'], ['2026-07-11','qf'],
+        ['2026-07-14','sf'], ['2026-07-15','sf'],
+        ['2026-07-18','third'],
+        ['2026-07-19','final'],
+      ]
+      for (const [day, stage] of WC26_KO_FALLBACK) {
+        if (!koMap.has(day)) koMap.set(day, stage)
+      }
       setKoDateToStage(koMap)
 
       const allKnown = new Set([...days, ...[...koMap.keys()]])
@@ -382,7 +395,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           </div>
 
           <div className="overflow-x-auto -mx-4 px-4">
-            <table className="min-w-full text-xs border-collapse">
+            <table className="text-xs border-collapse" style={{ minWidth: 'max-content', width: '100%' }}>
               <thead>
                 <tr className="bg-[#0B1F3A] text-white">
                   <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">{t('leaderboard_player')}</th>
@@ -508,6 +521,184 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Rounds View ──────────────────────────────────────────────────────────────
+
+interface KoMatchRow {
+  id: string
+  bracket_slot: number
+  kickoff_at: string | null
+  actual_home_score: number | null
+  actual_away_score: number | null
+  home_team: { name: string; fifa_code: string; flag_emoji: string | null } | null
+  away_team: { name: string; fifa_code: string; flag_emoji: string | null } | null
+}
+
+const KO_ROUNDS_META = [
+  { key: 'r32',   label: 'Round of 32',      teamsIn: 32, teamsOut: 16, expected: 16, headerCls: 'from-blue-600 to-blue-700',     badge: 'bg-blue-100 text-blue-700' },
+  { key: 'r16',   label: 'Round of 16',       teamsIn: 16, teamsOut: 8,  expected: 8,  headerCls: 'from-indigo-600 to-indigo-700', badge: 'bg-indigo-100 text-indigo-700' },
+  { key: 'qf',    label: 'Quarter-finals',    teamsIn: 8,  teamsOut: 4,  expected: 4,  headerCls: 'from-purple-600 to-purple-700', badge: 'bg-purple-100 text-purple-700' },
+  { key: 'sf',    label: 'Semi-finals',        teamsIn: 4,  teamsOut: 2,  expected: 2,  headerCls: 'from-pink-600 to-pink-700',    badge: 'bg-pink-100 text-pink-700' },
+  { key: 'third', label: '3rd Place Play-off', teamsIn: 2,  teamsOut: 1,  expected: 1,  headerCls: 'from-orange-500 to-orange-600', badge: 'bg-orange-100 text-orange-700' },
+  { key: 'final', label: 'Final',             teamsIn: 2,  teamsOut: 1,  expected: 1,  headerCls: 'from-yellow-500 to-amber-500',  badge: 'bg-yellow-100 text-yellow-700' },
+]
+
+function slotToRound(slot: number): string {
+  if (slot <= 16) return 'r32'
+  if (slot <= 24) return 'r16'
+  if (slot <= 28) return 'qf'
+  if (slot <= 30) return 'sf'
+  if (slot === 31) return 'third'
+  return 'final'
+}
+
+function RoundsView({ lang }: { lang: string }) {
+  const supabase = createClient()
+  const [matches, setMatches] = useState<KoMatchRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase
+      .from('matches')
+      .select('id, bracket_slot, kickoff_at, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,fifa_code,flag_emoji), away_team:teams!matches_away_team_id_fkey(name,fifa_code,flag_emoji)')
+      .eq('stage', 'knockout')
+      .order('bracket_slot')
+      .then(({ data }) => { setMatches((data ?? []) as KoMatchRow[]); setLoading(false) })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <div className="text-center text-gray-400 py-10 text-sm">Loading…</div>
+
+  const byRound = new Map<string, KoMatchRow[]>()
+  for (const m of matches) {
+    const r = slotToRound(m.bracket_slot)
+    if (!byRound.has(r)) byRound.set(r, [])
+    byRound.get(r)!.push(m)
+  }
+
+  function winner(m: KoMatchRow): 'home' | 'away' | null {
+    if (m.actual_home_score === null || m.actual_away_score === null) return null
+    if (m.actual_home_score > m.actual_away_score) return 'home'
+    if (m.actual_home_score < m.actual_away_score) return 'away'
+    return null
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Progression funnel */}
+      <div className="flex items-center justify-center gap-1 flex-wrap">
+        {KO_ROUNDS_META.map((r, i) => (
+          <div key={r.key} className="flex items-center gap-1">
+            {i > 0 && <span className="text-gray-300 text-xs">→</span>}
+            <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${r.badge}`}>
+              {r.key === 'final' ? '🏆 Final' : r.key === 'third' ? '3rd' : r.label.replace('Round of ', 'R').replace('Quarter-finals', 'QF').replace('Semi-finals', 'SF')}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {KO_ROUNDS_META.map(round => {
+        const roundMatches = byRound.get(round.key) ?? []
+        const played = roundMatches.filter(m => m.actual_home_score !== null)
+        const tbd = round.expected - roundMatches.length
+
+        const advancing = played
+          .map(m => { const w = winner(m); return w === 'home' ? m.home_team : w === 'away' ? m.away_team : null })
+          .filter(Boolean) as Array<{ fifa_code: string; name: string; flag_emoji: string | null }>
+
+        return (
+          <div key={round.key} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className={`bg-gradient-to-r ${round.headerCls} px-4 py-3 flex items-center justify-between`}>
+              <div>
+                <h3 className="text-sm font-bold text-white">{round.label}</h3>
+                <p className="text-[11px] text-white/70 mt-0.5">{round.teamsIn} teams · {round.teamsOut} advance</p>
+              </div>
+              <div className="text-right">
+                <div className="text-white font-bold text-xl leading-none">{played.length}<span className="text-white/50 text-sm font-normal">/{round.expected}</span></div>
+                <div className="text-[10px] text-white/60 mt-0.5">matches played</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 p-3">
+              {roundMatches.map(m => {
+                const w = winner(m)
+                return (
+                  <div key={m.id} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${m.actual_home_score !== null ? 'bg-gray-50 border border-gray-100' : 'bg-white border border-dashed border-gray-200'}`}>
+                    <div className={`flex items-center gap-1 flex-1 min-w-0 ${w === 'home' ? 'font-bold' : w !== null ? 'opacity-50' : ''}`}>
+                      {m.home_team ? (
+                        <>
+                          <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0">
+                            <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                          </span>
+                          <span className="truncate">{getTeamName(m.home_team.fifa_code, lang) ?? m.home_team.name}</span>
+                          {w === 'home' && <span className="text-green-500 text-[10px] shrink-0">✓</span>}
+                        </>
+                      ) : <span className="text-gray-300 italic text-[10px]">TBD</span>}
+                    </div>
+                    <div className="shrink-0 font-mono text-center min-w-[44px]">
+                      {m.actual_home_score !== null
+                        ? <span className="font-bold text-[#0B1F3A] text-sm">{m.actual_home_score}–{m.actual_away_score}</span>
+                        : m.kickoff_at
+                        ? <span className="text-gray-400 text-[10px]">{new Date(m.kickoff_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                        : <span className="text-gray-300 text-[10px]">vs</span>}
+                    </div>
+                    <div className={`flex items-center gap-1 flex-1 min-w-0 justify-end ${w === 'away' ? 'font-bold' : w !== null ? 'opacity-50' : ''}`}>
+                      {m.away_team ? (
+                        <>
+                          {w === 'away' && <span className="text-green-500 text-[10px] shrink-0">✓</span>}
+                          <span className="truncate text-right">{getTeamName(m.away_team.fifa_code, lang) ?? m.away_team.name}</span>
+                          <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0">
+                            <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                          </span>
+                        </>
+                      ) : <span className="text-gray-300 italic text-[10px]">TBD</span>}
+                    </div>
+                  </div>
+                )
+              })}
+              {Array.from({ length: tbd }).map((_, i) => (
+                <div key={`tbd-${i}`} className="flex items-center justify-center rounded-lg px-3 py-2.5 bg-white border border-dashed border-gray-200 text-[10px] text-gray-300 font-medium">
+                  Match TBD
+                </div>
+              ))}
+            </div>
+
+            {advancing.length > 0 && round.key !== 'final' && (
+              <div className="px-3 pb-3 border-t border-gray-100 pt-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wide shrink-0">Advanced:</span>
+                  {advancing.map(team => (
+                    <span key={team.fifa_code} className="inline-flex items-center gap-0.5 bg-green-50 border border-green-200 rounded px-1.5 py-0.5 text-[10px] font-semibold text-green-800">
+                      <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-3.5 h-2.5 object-cover rounded-sm" />
+                      {getTeamName(team.fifa_code, lang) ?? team.fifa_code}
+                    </span>
+                  ))}
+                  {played.length < round.expected && (
+                    <span className="text-[10px] text-gray-300 italic">+{round.expected - played.length} pending</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {round.key === 'final' && advancing.length > 0 && (
+              <div className="px-3 pb-3 border-t border-gray-100 pt-2">
+                <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                  <span className="text-2xl">🏆</span>
+                  <div>
+                    <p className="text-[10px] font-bold text-yellow-700 uppercase tracking-wide">World Champions 2026</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <img src={flagUrl(advancing[0].fifa_code, 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm" />
+                      <span className="text-sm font-bold text-[#0B1F3A]">{getTeamName(advancing[0].fifa_code, lang) ?? advancing[0].name}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -861,7 +1052,7 @@ export default function LeaderboardPage() {
   const [leagueError, setLeagueError] = useState<string | null>(null)
   const [inviteLeague, setInviteLeague] = useState<UserLeague | null>(null)
   const [copiedLeagueId, setCopiedLeagueId] = useState<string | null>(null)
-  const [lbTab, setLbTab] = useState<'overview' | 'dayview' | 'stats'>('dayview')
+  const [lbTab, setLbTab] = useState<'overview' | 'dayview' | 'rounds' | 'stats'>('dayview')
   const [top4, setTop4] = useState<Array<Array<{ team: TeamRef & {}; votes: number }>>>([[], [], [], []])
   const [positionsByUser, setPositionsByUser] = useState<Record<string, PositionRow>>({})
   const [finishMode, setFinishMode] = useState<'champ' | 'top4'>('champ')
@@ -1166,11 +1357,11 @@ export default function LeaderboardPage() {
       )}
 
       {/* Tab switcher */}
-      <div className="flex gap-1 mb-5 border-b border-gray-200">
-        {(['overview', 'dayview', 'stats'] as const).map(tab => (
+      <div className="flex gap-1 mb-5 border-b border-gray-200 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {(['overview', 'dayview', 'rounds', 'stats'] as const).map(tab => (
           <button key={tab} onClick={() => setLbTab(tab)}
-            className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors ${lbTab === tab ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-            {tab === 'overview' ? t('lb_tab_overview') : tab === 'dayview' ? t('lb_tab_dayview') : '📊 Stats'}
+            className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap shrink-0 ${lbTab === tab ? 'border-[#0B1F3A] text-[#0B1F3A]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {tab === 'overview' ? t('lb_tab_overview') : tab === 'dayview' ? t('lb_tab_dayview') : tab === 'rounds' ? '🏆 Rounds' : '📊 Stats'}
           </button>
         ))}
       </div>
@@ -1179,6 +1370,9 @@ export default function LeaderboardPage() {
       {lbTab === 'dayview' && (
         <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} finishMode={finishMode} setFinishMode={setFinishMode} />
       )}
+
+      {/* Rounds tab */}
+      {lbTab === 'rounds' && <RoundsView lang={lang} />}
 
       {/* Stats tab */}
       {lbTab === 'stats' && (
