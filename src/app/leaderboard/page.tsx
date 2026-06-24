@@ -169,18 +169,60 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const dayScrollRef = useRef<HTMLDivElement>(null)
   const [groupStandings, setGroupStandings] = useState<Map<string, any[]>>(new Map())
   const [showGroupStandings, setShowGroupStandings] = useState(false)
+  const [r32Mode, setR32Mode] = useState(false)
 
   useEffect(() => { setRecap(null) }, [lang])
+
+  // Fetch group standings once on mount (needed for R32 view and KO day cards)
+  useEffect(() => {
+    Promise.all([
+      supabase.from('matches').select('actual_home_score, actual_away_score, home_team_id, away_team_id').eq('stage', 'group'),
+      supabase.from('teams').select('id, name, fifa_code, flag_emoji, group_letter'),
+    ]).then(([matchRes, teamRes]) => {
+      const teams = (teamRes.data ?? []) as any[]
+      const gMatches = (matchRes.data ?? []) as any[]
+      const statsMap = new Map<string, {pts:number,played:number,gd:number,gf:number}>()
+      for (const t of teams) statsMap.set(t.id, {pts:0,played:0,gd:0,gf:0})
+      for (const m of gMatches) {
+        if (m.actual_home_score === null || !m.home_team_id || !m.away_team_id) continue
+        const hs = m.actual_home_score as number, as_ = m.actual_away_score as number
+        const h = statsMap.get(m.home_team_id) ?? {pts:0,played:0,gd:0,gf:0}
+        const a = statsMap.get(m.away_team_id) ?? {pts:0,played:0,gd:0,gf:0}
+        h.played++; a.played++
+        h.gf += hs; h.gd += hs - as_; a.gf += as_; a.gd += as_ - hs
+        if (hs > as_) h.pts += 3; else if (hs < as_) a.pts += 3; else { h.pts += 1; a.pts += 1 }
+        statsMap.set(m.home_team_id, h); statsMap.set(m.away_team_id, a)
+      }
+      const byGroup = new Map<string, any[]>()
+      for (const t of teams) {
+        if (!t.group_letter) continue
+        if (!byGroup.has(t.group_letter)) byGroup.set(t.group_letter, [])
+        const s = statsMap.get(t.id) ?? {pts:0,played:0,gd:0,gf:0}
+        byGroup.get(t.group_letter)!.push({ ...t, ...s })
+      }
+      for (const [g, arr] of byGroup) {
+        arr.sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+        const complete = arr.every((t: any) => t.played >= 2)
+        arr.forEach((t: any, i: number) => { t.qualified = complete && i < 2; t.complete = complete })
+        byGroup.set(g, arr)
+      }
+      setGroupStandings(byGroup)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Centre the selected day button in the scroll container
   useEffect(() => {
     if (!selectedDay || !dayScrollRef.current) return
-    const container = dayScrollRef.current
-    const btn = container.querySelector<HTMLElement>(`[data-day="${selectedDay}"]`)
-    if (!btn) return
-    const offset = btn.offsetLeft - container.offsetWidth / 2 + btn.offsetWidth / 2
-    container.scrollTo({ left: offset, behavior: 'smooth' })
-  }, [selectedDay, allDays])
+    const raf = requestAnimationFrame(() => {
+      const container = dayScrollRef.current
+      if (!container) return
+      const btn = container.querySelector<HTMLElement>(`[data-day="${selectedDay}"]`)
+      if (!btn) return
+      const offset = btn.offsetLeft - container.offsetWidth / 2 + btn.offsetWidth / 2
+      container.scrollTo({ left: offset, behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [selectedDay, allDays, koDateToStage])
 
   useEffect(() => {
     Promise.all([
@@ -242,78 +284,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
 
       const KO_SELECT = 'id, kickoff_at, bracket_slot, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)'
 
-      Promise.all([
-        // Primary: by kickoff_at for that specific day
-        supabase.from('matches').select(KO_SELECT)
-          .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
-          .eq('stage', 'knockout').order('kickoff_at'),
-        // Fallback: all matches for the round
-        supabase.from('matches').select(KO_SELECT)
-          .eq('stage', 'knockout')
-          .gte('bracket_slot', slotMin).lte('bracket_slot', slotMax)
-          .order('bracket_slot'),
-        // Group data for standings computation
-        supabase.from('matches').select('actual_home_score, actual_away_score, home_team_id, away_team_id, group_letter')
-          .eq('stage', 'group'),
-        supabase.from('teams').select('id, name, fifa_code, flag_emoji, group_letter'),
-      ]).then(([dateRes, roundRes, groupMatchRes, teamRes]) => {
+      supabase.from('matches').select(KO_SELECT)
+        .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
+        .eq('stage', 'knockout').order('kickoff_at')
+        .then((dateRes) => {
         const dateMatches = (dateRes.data ?? []) as DayMatch[]
-        const roundMatches = (roundRes.data ?? []) as DayMatch[]
-
-        // Compute group standings first (needed for virtual match teams)
-        const teams = (teamRes.data ?? []) as any[]
-        const gMatches = (groupMatchRes.data ?? []) as any[]
-        const statsMap = new Map<string, {pts:number,played:number,gd:number,gf:number}>()
-        for (const t of teams) statsMap.set(t.id, {pts:0,played:0,gd:0,gf:0})
-        for (const m of gMatches) {
-          if (m.actual_home_score === null || !m.home_team_id || !m.away_team_id) continue
-          const hs = m.actual_home_score as number, as_ = m.actual_away_score as number
-          const h = statsMap.get(m.home_team_id) ?? {pts:0,played:0,gd:0,gf:0}
-          const a = statsMap.get(m.away_team_id) ?? {pts:0,played:0,gd:0,gf:0}
-          h.played++; a.played++
-          h.gf += hs; h.gd += hs - as_; a.gf += as_; a.gd += as_ - hs
-          if (hs > as_) h.pts += 3; else if (hs < as_) a.pts += 3; else { h.pts += 1; a.pts += 1 }
-          statsMap.set(m.home_team_id, h); statsMap.set(m.away_team_id, a)
-        }
-        const byGroup = new Map<string, any[]>()
-        for (const t of teams) {
-          if (!t.group_letter) continue
-          if (!byGroup.has(t.group_letter)) byGroup.set(t.group_letter, [])
-          const s = statsMap.get(t.id) ?? {pts:0,played:0,gd:0,gf:0}
-          byGroup.get(t.group_letter)!.push({ ...t, ...s })
-        }
-        for (const [g, arr] of byGroup) {
-          arr.sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
-          const complete = arr.every((t: any) => t.played >= 2)
-          arr.forEach((t: any, i: number) => { t.qualified = complete && i < 2; t.complete = complete })
-          byGroup.set(g, arr)
-        }
-        setGroupStandings(byGroup)
-
-        // Pick best available matches; generate virtual if DB has none
-        let finalMatches: DayMatch[] = dateMatches.length > 0 ? dateMatches : roundMatches
-        if (finalMatches.length === 0 && stage === 'r32') {
-          finalMatches = WC26_R32_BRACKET.map(([hg, hp, ag, ap], i) => {
-            const hTeams = byGroup.get(hg) ?? []
-            const aTeams = byGroup.get(ag) ?? []
-            const hComplete = hTeams.every((t: any) => t.played >= 2)
-            const aComplete = aTeams.every((t: any) => t.played >= 2)
-            const homeTeamData = hComplete ? hTeams[hp - 1] : null
-            const awayTeamData = aComplete ? aTeams[ap - 1] : null
-            return {
-              id: `virtual-r32-${i + 1}`,
-              kickoff_at: null,
-              bracket_slot: i + 1,
-              actual_home_score: null,
-              actual_away_score: null,
-              home_team: homeTeamData ? { name: homeTeamData.name, fifa_code: homeTeamData.fifa_code, flag_emoji: homeTeamData.flag_emoji } : null,
-              away_team: awayTeamData ? { name: awayTeamData.name, fifa_code: awayTeamData.fifa_code, flag_emoji: awayTeamData.flag_emoji } : null,
-              home_label: `${hp === 1 ? '1st' : '2nd'} Group ${hg}`,
-              away_label: `${ap === 1 ? '1st' : '2nd'} Group ${ag}`,
-            } as DayMatch
-          })
-        }
-        setDayMatches(finalMatches)
+        // Use only matches actually scheduled for this specific date
+        setDayMatches(dateMatches)
         setPredsMap(new Map())
         setShowGroupStandings(false)
         setLoading(false)
@@ -447,7 +424,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 if (days.length === 0) return null
                 return (
                   <div key={s.key} className="flex items-center gap-1 shrink-0">
-                    <button onClick={onGoToRounds} className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 hover:opacity-80 transition-opacity ${s.color}`}>{s.label}</button>
+                    <button onClick={() => { if (s.key === 'r32') setR32Mode(true); else if (onGoToRounds) onGoToRounds() }} className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 hover:opacity-80 transition-opacity ${s.color}`}>{s.label}</button>
                     {days.map(day => (
                       <button key={day} data-day={day} onClick={() => setSelectedDay(day)}
                         className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
@@ -464,7 +441,71 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         )
       })()}
 
-      {loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : isKoDay ? (
+      {r32Mode ? (
+        <div>
+          <button onClick={() => setR32Mode(false)} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#0B1F3A] mb-4 transition-colors">
+            ← Back to Day View
+          </button>
+          <h2 className="text-sm font-bold text-[#0B1F3A] mb-3">Round of 32 — Advancement Points</h2>
+          {/* Qualified teams grid */}
+          {groupStandings.size > 0 && (
+            <div className="mb-5">
+              <p className="text-xs text-gray-500 mb-2">
+                {[...groupStandings.values()].every(arr => arr.every((t: any) => t.played >= 2))
+                  ? '✅ All 32 qualified teams confirmed'
+                  : 'Teams qualify once their group is complete (3 games played)'}
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[...groupStandings.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([grp, grpTeams]) => (
+                  <div key={grp} className="bg-white border border-gray-100 rounded-lg overflow-hidden shadow-sm">
+                    <div className="bg-[#0B1F3A] text-white text-[10px] font-bold px-2 py-1">Group {grp}</div>
+                    {grpTeams.slice(0, 2).map((t: any, i: number) => (
+                      <div key={t.id} className={`flex items-center gap-1.5 px-2 py-1 text-[10px] ${t.qualified ? 'bg-green-50' : 'bg-gray-50'}`}>
+                        <span className="w-4 text-gray-400 font-bold shrink-0">{i + 1}</span>
+                        {t.qualified ? (
+                          <>
+                            <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
+                              <img src={flagUrl(t.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                            </span>
+                            <span className="truncate flex-1 font-semibold text-green-800">{t.name}</span>
+                          </>
+                        ) : (
+                          <span className="text-gray-400 italic flex-1">TBD</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Leaderboard sorted by advancement pts */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-[#0B1F3A] to-blue-800 px-4 py-3">
+              <h3 className="text-sm font-bold text-white">🏅 Leaderboard — Advancement Points</h3>
+              <p className="text-[11px] text-white/60 mt-0.5">1 pt per team correctly predicted to reach R32</p>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {[...entries].sort((a, b) => b.advancementPts - a.advancementPts || b.totalPts - a.totalPts).map((e, i, arr) => {
+                const isMe = e.userId === currentUserId
+                const rank = i === 0 ? 1 : e.advancementPts < arr[i-1].advancementPts ? i + 1 : (i > 0 ? arr.slice(0, i).findIndex(x => x.advancementPts === e.advancementPts) + 1 : 1)
+                return (
+                  <div key={e.userId} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${isMe ? 'bg-blue-50' : ''}`}>
+                    <span className="w-6 text-center font-bold text-gray-400 text-xs shrink-0">
+                      {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank}
+                    </span>
+                    <span className={`flex-1 font-medium truncate ${isMe ? 'text-blue-700 font-bold' : 'text-[#0B1F3A]'}`}>
+                      {e.displayName}{isMe ? ' (you)' : ''}
+                    </span>
+                    <span className="font-bold text-[#0B1F3A] tabular-nums">{e.advancementPts}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">pts</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      ) : loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : isKoDay ? (
         <>
           {/* KO day: match card grid */}
           {(() => {
