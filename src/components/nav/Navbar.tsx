@@ -73,6 +73,8 @@ export default function Navbar() {
   }, [])
 
   const handleSignOut = async () => {
+    localStorage.removeItem('spoton_remember')
+    sessionStorage.removeItem('spoton_session')
     await supabase.auth.signOut()
     window.location.href = '/'
   }
