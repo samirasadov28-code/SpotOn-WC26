@@ -64,6 +64,7 @@ function getMatchPts(ph: number, pa: number, ah: number, aa: number) {
 
 interface DayMatch {
   id: string; kickoff_at: string | null
+  bracket_slot?: number
   actual_home_score: number | null; actual_away_score: number | null
   home_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
   away_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
@@ -132,7 +133,7 @@ function FinishToggle({ mode, onChange }: { mode: 'champ' | 'top4'; onChange: (m
 
 // ── DayView ──────────────────────────────────────────────────────────────────
 
-function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser, finishMode, setFinishMode }: {
+function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser, finishMode, setFinishMode, onGoToRounds }: {
   entries: LeaderboardEntry[]
   currentUserId: string | null
   leagueId: string
@@ -140,6 +141,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   positionsByUser: Record<string, PositionRow>
   finishMode: 'champ' | 'top4'
   setFinishMode: (m: 'champ' | 'top4') => void
+  onGoToRounds?: () => void
 }) {
   const supabase = createClient()
   const { lang, t } = useTranslation()
@@ -154,6 +156,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const [recapLoading, setRecapLoading] = useState(false)
   const [showRecap, setShowRecap] = useState(false)
   const dayScrollRef = useRef<HTMLDivElement>(null)
+  const [groupStandings, setGroupStandings] = useState<Map<string, any[]>>(new Map())
+  const [showGroupStandings, setShowGroupStandings] = useState(false)
 
   useEffect(() => { setRecap(null) }, [lang])
 
@@ -219,15 +223,68 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
 
     const isKoDay = koDateToStage.has(selectedDay)
     if (isKoDay) {
-      supabase.from('matches')
-        .select('id, kickoff_at, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)')
-        .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
-        .eq('stage', 'knockout').order('kickoff_at')
-        .then(({ data }) => {
-          setDayMatches((data ?? []) as DayMatch[])
-          setPredsMap(new Map())
-          setLoading(false)
-        })
+      const stage = koDateToStage.get(selectedDay)!
+      const SLOT_RANGES: Record<string, [number, number]> = {
+        r32: [1, 16], r16: [17, 24], qf: [25, 28], sf: [29, 30], third: [31, 31], final: [32, 32]
+      }
+      const [slotMin, slotMax] = SLOT_RANGES[stage] ?? [1, 32]
+
+      const KO_SELECT = 'id, kickoff_at, bracket_slot, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)'
+
+      Promise.all([
+        // Primary: by kickoff_at for that specific day
+        supabase.from('matches').select(KO_SELECT)
+          .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
+          .eq('stage', 'knockout').order('kickoff_at'),
+        // Fallback: all matches for the round
+        supabase.from('matches').select(KO_SELECT)
+          .eq('stage', 'knockout')
+          .gte('bracket_slot', slotMin).lte('bracket_slot', slotMax)
+          .order('bracket_slot'),
+        // Group data for standings computation
+        supabase.from('matches').select('actual_home_score, actual_away_score, home_team_id, away_team_id, group_letter')
+          .eq('stage', 'group'),
+        supabase.from('teams').select('id, name, fifa_code, flag_emoji, group_letter'),
+      ]).then(([dateRes, roundRes, groupMatchRes, teamRes]) => {
+        const dateMatches = (dateRes.data ?? []) as DayMatch[]
+        const roundMatches = (roundRes.data ?? []) as DayMatch[]
+        setDayMatches(dateMatches.length > 0 ? dateMatches : roundMatches)
+        setPredsMap(new Map())
+
+        // Compute group standings
+        const teams = (teamRes.data ?? []) as any[]
+        const gMatches = (groupMatchRes.data ?? []) as any[]
+        const statsMap = new Map<string, {pts:number,played:number,gd:number,gf:number}>()
+        for (const t of teams) statsMap.set(t.id, {pts:0,played:0,gd:0,gf:0})
+        for (const m of gMatches) {
+          if (m.actual_home_score === null || !m.home_team_id || !m.away_team_id) continue
+          const hs = m.actual_home_score as number, as_ = m.actual_away_score as number
+          const h = statsMap.get(m.home_team_id) ?? {pts:0,played:0,gd:0,gf:0}
+          const a = statsMap.get(m.away_team_id) ?? {pts:0,played:0,gd:0,gf:0}
+          h.played++; a.played++
+          h.gf += hs; h.gd += hs - as_; a.gf += as_; a.gd += as_ - hs
+          if (hs > as_) h.pts += 3; else if (hs < as_) a.pts += 3; else { h.pts += 1; a.pts += 1 }
+          statsMap.set(m.home_team_id, h); statsMap.set(m.away_team_id, a)
+        }
+        // Group by letter, sort by pts/gd/gf
+        const byGroup = new Map<string, any[]>()
+        for (const t of teams) {
+          if (!t.group_letter) continue
+          if (!byGroup.has(t.group_letter)) byGroup.set(t.group_letter, [])
+          const s = statsMap.get(t.id) ?? {pts:0,played:0,gd:0,gf:0}
+          byGroup.get(t.group_letter)!.push({ ...t, ...s })
+        }
+        for (const [g, arr] of byGroup) {
+          arr.sort((a: any, b: any) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+          // WC26: 3 teams per group, each plays 2 games; group complete when all played 2
+          const complete = arr.every((t: any) => t.played >= 2)
+          arr.forEach((t: any, i: number) => { t.qualified = complete && i < 2; t.complete = complete })
+          byGroup.set(g, arr)
+        }
+        setGroupStandings(byGroup)
+        setShowGroupStandings(false)
+        setLoading(false)
+      })
       return
     }
 
@@ -319,6 +376,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
 
   const rankIcon = (r: number) => r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : String(r)
 
+  // Helper: sort groups alphabetically
+  const byGroupSorted = (m: Map<string, any[]>) => [...m.entries()].sort(([a], [b]) => a.localeCompare(b))
+
   return (
     <div>
       {/* Day picker — single scrollable row with arrows */}
@@ -354,7 +414,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 if (days.length === 0) return null
                 return (
                   <div key={s.key} className="flex items-center gap-1 shrink-0">
-                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${s.color}`}>{s.label}</span>
+                    <button onClick={onGoToRounds} className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 hover:opacity-80 transition-opacity ${s.color}`}>{s.label}</button>
                     {days.map(day => (
                       <button key={day} data-day={day} onClick={() => setSelectedDay(day)}
                         className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
@@ -479,6 +539,38 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium">{t('dv_pts_wrong')}</span>
             <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-medium">{t('dv_pts_pending')}</span>
           </div>
+          {/* KO day: group standings accordion */}
+          {isKoDay && groupStandings.size > 0 && (
+            <div className="mt-4">
+              <button
+                onClick={() => setShowGroupStandings(v => !v)}
+                className="flex items-center gap-2 text-xs font-semibold text-[#0B1F3A] bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 w-full hover:bg-blue-100 transition-colors"
+              >
+                <span>📊 Group Standings — who qualifies for R32</span>
+                <span className="ml-auto">{showGroupStandings ? '▲' : '▼'}</span>
+              </button>
+              {showGroupStandings && (
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {[...byGroupSorted(groupStandings)].map(([grp, teams]) => (
+                    <div key={grp} className="bg-white border border-gray-100 rounded-lg overflow-hidden shadow-sm">
+                      <div className="bg-[#0B1F3A] text-white text-[10px] font-bold px-2 py-1">Group {grp}</div>
+                      {teams.map((t: any, i: number) => (
+                        <div key={t.id} className={`flex items-center gap-1.5 px-2 py-1 text-[10px] ${i < 2 ? (t.qualified ? 'bg-green-50' : '') : 'opacity-50'} ${i === 1 ? 'border-b border-dashed border-gray-200' : ''}`}>
+                          <span className="w-3 text-gray-400 font-bold shrink-0">{i + 1}</span>
+                          <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
+                            <img src={flagUrl(t.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                          </span>
+                          <span className={`truncate flex-1 ${t.qualified ? 'font-semibold text-green-800' : 'text-gray-700'}`}>{t.name}</span>
+                          <span className="font-bold text-[#0B1F3A] shrink-0">{t.pts}p</span>
+                          {t.qualified && <span className="text-green-600 shrink-0 text-[9px]">✓</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {/* Qualified teams pill — shown after the last group matchday */}
           {allDays.length > 0 && selectedDay >= allDays[allDays.length - 1] && (
             <div className="mt-4 flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
@@ -555,7 +647,7 @@ function slotToRound(slot: number): string {
   return 'final'
 }
 
-function RoundsView({ lang }: { lang: string }) {
+function RoundsView({ lang, entries }: { lang: string; entries: LeaderboardEntry[] }) {
   const supabase = createClient()
   const [matches, setMatches] = useState<KoMatchRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -598,6 +690,26 @@ function RoundsView({ lang }: { lang: string }) {
           </div>
         ))}
       </div>
+
+      {/* Advancement points leaderboard */}
+      {entries.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-gradient-to-r from-[#0B1F3A] to-blue-800 px-4 py-3">
+            <h3 className="text-sm font-bold text-white">🏅 Advancement Points</h3>
+            <p className="text-[11px] text-white/60 mt-0.5">Points for correctly predicting team progression through each round</p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {[...entries].sort((a, b) => b.advancementPts - a.advancementPts).slice(0, 10).map((e, i) => (
+              <div key={e.userId} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                <span className="w-5 text-center font-bold text-gray-400 text-xs shrink-0">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
+                <span className="flex-1 font-medium text-[#0B1F3A] truncate">{e.displayName}</span>
+                <span className="font-bold text-[#0B1F3A] tabular-nums">{e.advancementPts}</span>
+                <span className="text-[10px] text-gray-400">pts</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {KO_ROUNDS_META.map(round => {
         const roundMatches = byRound.get(round.key) ?? []
@@ -1368,11 +1480,11 @@ export default function LeaderboardPage() {
 
       {/* Day View tab */}
       {lbTab === 'dayview' && (
-        <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} finishMode={finishMode} setFinishMode={setFinishMode} />
+        <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} finishMode={finishMode} setFinishMode={setFinishMode} onGoToRounds={() => setLbTab('rounds')} />
       )}
 
       {/* Rounds tab */}
-      {lbTab === 'rounds' && <RoundsView lang={lang} />}
+      {lbTab === 'rounds' && <RoundsView lang={lang} entries={visibleEntries} />}
 
       {/* Stats tab */}
       {lbTab === 'stats' && (
