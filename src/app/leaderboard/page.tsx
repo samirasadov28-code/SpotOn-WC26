@@ -195,6 +195,18 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
 
   useEffect(() => { setRecap(null) }, [lang])
 
+  // Sync mirror scrollbar spacer width to actual table scroll width
+  useEffect(() => {
+    const sync = () => {
+      if (!tableScrollRef.current || !tableMirrorRef.current) return
+      const spacer = tableMirrorRef.current.querySelector('[data-mirror-spacer]') as HTMLElement | null
+      if (spacer) spacer.style.width = tableScrollRef.current.scrollWidth + 'px'
+    }
+    sync()
+    window.addEventListener('resize', sync)
+    return () => window.removeEventListener('resize', sync)
+  }, [dayMatches, entries])
+
   // Fetch group standings once on mount (needed for R32 view and KO day cards)
   useEffect(() => {
     Promise.all([
@@ -455,7 +467,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             <div ref={dayScrollRef} className="flex gap-1.5 overflow-x-auto flex-1 items-center" style={{ scrollbarWidth: 'none' }}>
               {allDays.map(day => (
                 <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setR32Mode(false) }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${!r32Mode && selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                   {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                 </button>
               ))}
@@ -471,7 +483,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                     >{s.label}</button>
                     {days.map(day => (
                       <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setR32Mode(false) }}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${!r32Mode && selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                         {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                       </button>
                     ))}
@@ -554,7 +566,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                       Player
                     </th>
                     {positions.map((pos, i) => {
-                      const team = i < 24 ? resolveTeam(pos) : best8thirds[i - 24]?.team ?? null
+                      const team = i < 24 ? resolveTeam(pos) : null
                       const isThird = i >= 24
                       const sectionBorder = (i === 12 || i === 24) ? 'border-l-2 border-blue-400/50' : ''
                       return (
@@ -634,63 +646,67 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             )
           })()}
 
-          {dayMatches.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              {dayMatches.map((m) => {
-                const homeKnown = !!m.home_team
-                const awayKnown = !!m.away_team
-                return (
-                  <div key={m.id} className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
-                    {m.bracket_slot && (
-                      <div className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mb-2 text-center">
-                        Match {m.bracket_slot}
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between gap-2">
-                      {/* Home */}
-                      <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
-                        {homeKnown ? (
-                          <>
-                            <span className="inline-block w-8 h-6 overflow-hidden rounded-sm flex-shrink-0">
-                              <img src={flagUrl(m.home_team!.fifa_code, 80)} alt="" className="w-full h-full object-cover" />
+          {dayMatches.length > 0 && (() => {
+            // Resolve a slot position label (e.g. "2B") to a team if that group is complete
+            const resolvePos = (label: string) => {
+              const mt = label.match(/^([12])([A-L])$/)
+              if (!mt) return null
+              const arr = groupStandings.get(mt[2]) ?? []
+              if (arr.every((t: any) => t.played >= 3) && arr[parseInt(mt[1]) - 1]) return arr[parseInt(mt[1]) - 1] as { name: string; fifa_code: string; flag_emoji: string | null }
+              return null
+            }
+            const TeamCell = ({ team, label }: { team: { name: string; fifa_code: string; flag_emoji: string | null } | null; label: string | null | undefined }) => {
+              const resolved = !team && label ? resolvePos(label) : null
+              const display = team ?? resolved
+              return display ? (
+                <>
+                  <span className="inline-block w-8 h-6 overflow-hidden rounded-sm flex-shrink-0">
+                    <img src={flagUrl(display.fifa_code, 80)} alt="" className="w-full h-full object-cover" />
+                  </span>
+                  <span className="text-xs font-semibold text-[#0B1F3A] text-center truncate w-full">{display.name}</span>
+                </>
+              ) : (
+                <span className="text-xs text-gray-500 text-center leading-tight">{label ?? 'TBD'}</span>
+              )
+            }
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                {dayMatches.map((m) => {
+                  const slotLabels = m.bracket_slot ? KO_SLOT_LABELS[m.bracket_slot] : null
+                  const homeLabel = m.home_label ?? slotLabels?.home ?? null
+                  const awayLabel = m.away_label ?? slotLabels?.away ?? null
+                  return (
+                    <div key={m.id} className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+                      {m.bracket_slot && (
+                        <div className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mb-2 text-center">
+                          Match {m.bracket_slot + 72} {/* FIFA match numbers start at M73 */}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
+                          <TeamCell team={m.home_team} label={homeLabel} />
+                        </div>
+                        <div className="flex flex-col items-center shrink-0 mx-1">
+                          {m.actual_home_score !== null ? (
+                            <span className="text-sm font-bold text-green-700">{m.actual_home_score}–{m.actual_away_score}</span>
+                          ) : (
+                            <span className="text-xs text-gray-400 font-mono">
+                              {m.kickoff_at
+                                ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
+                                : 'vs'}
                             </span>
-                            <span className="text-xs font-semibold text-[#0B1F3A] text-center truncate w-full text-center">{m.home_team!.name}</span>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-500 text-center leading-tight">{m.home_label ?? (m.bracket_slot ? KO_SLOT_LABELS[m.bracket_slot]?.home : null) ?? 'TBD'}</span>
-                        )}
-                      </div>
-                      {/* Score / time */}
-                      <div className="flex flex-col items-center shrink-0 mx-1">
-                        {m.actual_home_score !== null ? (
-                          <span className="text-sm font-bold text-green-700">{m.actual_home_score}–{m.actual_away_score}</span>
-                        ) : (
-                          <span className="text-xs text-gray-400 font-mono">
-                            {m.kickoff_at
-                              ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
-                              : 'vs'}
-                          </span>
-                        )}
-                      </div>
-                      {/* Away */}
-                      <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
-                        {awayKnown ? (
-                          <>
-                            <span className="inline-block w-8 h-6 overflow-hidden rounded-sm flex-shrink-0">
-                              <img src={flagUrl(m.away_team!.fifa_code, 80)} alt="" className="w-full h-full object-cover" />
-                            </span>
-                            <span className="text-xs font-semibold text-[#0B1F3A] text-center truncate w-full text-center">{m.away_team!.name}</span>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-500 text-center leading-tight">{m.away_label ?? (m.bracket_slot ? KO_SLOT_LABELS[m.bracket_slot]?.away : null) ?? 'TBD'}</span>
-                        )}
+                          )}
+                        </div>
+                        <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
+                          <TeamCell team={m.away_team} label={awayLabel} />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                  )
+                })}
+              </div>
+            )
+          })()}
         </>
       ) : dayMatches.length === 0 ? (
         <div className="text-center text-gray-400 py-10 text-sm">{t('dv_no_matches')}</div>
@@ -722,7 +738,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             style={{ scrollbarWidth: 'thin', height: 10, marginBottom: 2 }}
             onScroll={() => { if (tableScrollRef.current && tableMirrorRef.current) tableScrollRef.current.scrollLeft = tableMirrorRef.current.scrollLeft }}
           >
-            <div style={{ minWidth: 'max-content', width: '100%', height: 1 }} />
+            <div data-mirror-spacer="1" style={{ height: 1 }} />
           </div>
           <div
             ref={tableScrollRef}
