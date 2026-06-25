@@ -350,8 +350,24 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             finalMatches = ((fallbackRes.data ?? []) as DayMatch[])
               .filter(m => m.kickoff_at && toCDTDate(m.kickoff_at) === selectedDay)
           }
+          // Fetch KO predictions for these matches
+          const bracketSlots = finalMatches.map(m => m.bracket_slot).filter((s): s is number => s != null)
+          const slotToId = new Map(finalMatches.map(m => [m.bracket_slot, m.id]))
+          const koMap = new Map<string, Map<string, { h: number; a: number }>>()
+          if (bracketSlots.length > 0) {
+            const koPredsRes = await supabase.from('predictions_knockout')
+              .select('user_id, bracket_slot, pred_home_score, pred_away_score')
+              .in('bracket_slot', bracketSlots)
+            for (const p of ((koPredsRes.data ?? []) as any[])) {
+              if (p.pred_home_score === null) continue
+              const matchId = slotToId.get(p.bracket_slot)
+              if (!matchId) continue
+              if (!koMap.has(p.user_id)) koMap.set(p.user_id, new Map())
+              koMap.get(p.user_id)!.set(matchId, { h: p.pred_home_score, a: p.pred_away_score })
+            }
+          }
           setDayMatches(finalMatches)
-          setPredsMap(new Map())
+          setPredsMap(koMap)
           setShowGroupStandings(false)
           setLoading(false)
         })
@@ -497,7 +513,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 ))
                 return (
                   <div key={s.key} className="flex items-center gap-1 shrink-0">
-                    {s.key === 'final' ? [...dateBtns, badgeEl] : [badgeEl, ...dateBtns]}
+                    {s.key === 'final'
+                      ? [...dateBtns, badgeEl]
+                      : s.key === 'r32' && days.length > 1
+                        ? [dateBtns[0], badgeEl, ...dateBtns.slice(1)]
+                        : [badgeEl, ...dateBtns]}
                   </div>
                 )
               })}
@@ -631,94 +651,23 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             )}
           </div>
         )
-      })() : loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : isKoDay ? (
-        <>
-          {/* KO day: match card grid */}
-          {(() => {
-            const stageKey = koDateToStage.get(selectedDay)
-            const stageLabels: Record<string, string> = { r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-Finals', sf: 'Semi-Finals', third: 'Third Place', final: 'Final' }
-            const stageLabel = stageLabels[stageKey ?? ''] ?? stageKey ?? 'Knockout'
-            return (
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-bold text-[#0B1F3A]">{stageLabel}</p>
-                <p className="text-xs text-gray-400">{dayLabel} · {dayMatches.length} match{dayMatches.length !== 1 ? 'es' : ''}</p>
-              </div>
-            )
-          })()}
-
-          {dayMatches.length > 0 && (() => {
-            // Resolve a slot position label (e.g. "2B") to a team if that group is complete
-            const resolvePos = (label: string) => {
-              const mt = label.match(/^([12])([A-L])$/)
-              if (!mt) return null
-              const arr = groupStandings.get(mt[2]) ?? []
-              if (arr.every((t: any) => t.played >= 3) && arr[parseInt(mt[1]) - 1]) return arr[parseInt(mt[1]) - 1] as { name: string; fifa_code: string; flag_emoji: string | null }
-              return null
-            }
-            const TeamCell = ({ team, label }: { team: { name: string; fifa_code: string; flag_emoji: string | null } | null; label: string | null | undefined }) => {
-              const resolved = !team && label ? resolvePos(label) : null
-              const display = team ?? resolved
-              return display ? (
-                <>
-                  <span className="inline-block w-8 h-6 overflow-hidden rounded-sm flex-shrink-0">
-                    <img src={flagUrl(display.fifa_code, 80)} alt="" className="w-full h-full object-cover" />
-                  </span>
-                  <span className="text-xs font-semibold text-[#0B1F3A] text-center truncate w-full">{display.name}</span>
-                </>
-              ) : (
-                <span className="text-xs text-gray-500 text-center leading-tight">{label ?? 'TBD'}</span>
-              )
-            }
-            return (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                {dayMatches.map((m) => {
-                  const slotLabels = m.bracket_slot ? KO_SLOT_LABELS[m.bracket_slot] : null
-                  const homeLabel = m.home_label ?? slotLabels?.home ?? null
-                  const awayLabel = m.away_label ?? slotLabels?.away ?? null
-                  return (
-                    <div key={m.id} className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
-                      {m.bracket_slot && (
-                        <div className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mb-2 text-center">
-                          Match {m.bracket_slot + 72} {/* FIFA match numbers start at M73 */}
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
-                          <TeamCell team={m.home_team} label={homeLabel} />
-                        </div>
-                        <div className="flex flex-col items-center shrink-0 mx-1">
-                          {m.actual_home_score !== null ? (
-                            <span className="text-sm font-bold text-green-700">{m.actual_home_score}–{m.actual_away_score}</span>
-                          ) : (
-                            <span className="text-xs text-gray-400 font-mono">
-                              {m.kickoff_at
-                                ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
-                                : 'vs'}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
-                          <TeamCell team={m.away_team} label={awayLabel} />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
-        </>
-      ) : dayMatches.length === 0 ? (
+      })() : loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : dayMatches.length === 0 ? (
         <div className="text-center text-gray-400 py-10 text-sm">{t('dv_no_matches')}</div>
       ) : (
         <>
           {/* Toolbar: [date label] [📰 Recap] flex-1 [Total|Day toggle] */}
           <div className="flex items-center gap-2 mb-3">
-            <p className="text-xs text-gray-400 shrink-0">{dayLabel} · {dayMatches.length} matches</p>
-            <button onClick={loadRecap}
+            {isKoDay ? (
+              <p className="text-xs text-gray-400 shrink-0">
+                {({ r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-Finals', sf: 'Semi-Finals', third: 'Third Place', final: 'Final' } as Record<string,string>)[koDateToStage.get(selectedDay) ?? ''] ?? 'Knockout'} · {dayLabel} · {dayMatches.length} match{dayMatches.length !== 1 ? 'es' : ''}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 shrink-0">{dayLabel} · {dayMatches.length} matches</p>
+            )}
+            {!isKoDay && <button onClick={loadRecap}
               className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:from-purple-500 hover:to-indigo-500 active:scale-95 transition-all shadow mx-auto">
               📰 {t('dv_recap_btn')}
-            </button>
+            </button>}
             <div className="flex rounded-lg overflow-hidden border border-gray-200 text-[10px] font-semibold shrink-0">
               <button onClick={() => setSortMode('total')}
                 className={`px-2.5 py-1.5 transition-colors ${sortMode === 'total' ? 'bg-[#0B1F3A] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
@@ -749,30 +698,35 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               <thead>
                 <tr className="bg-[#0B1F3A] text-white">
                   <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">{t('leaderboard_player')}</th>
-                  {dayMatches.map(m => (
-                    <th key={m.id} className="py-2 px-1 text-center font-normal min-w-[72px]">
-                      <div className="flex items-center justify-center gap-0.5">
-                        {m.home_team?.fifa_code && (
-                          <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
-                            <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
-                          </span>
-                        )}
-                        <span className="font-semibold text-[9px]">{m.home_team?.fifa_code}</span>
-                        <span className="text-white/40 text-[8px]">v</span>
-                        <span className="font-semibold text-[9px]">{m.away_team?.fifa_code}</span>
-                        {m.away_team?.fifa_code && (
-                          <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
-                            <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[10px] opacity-70 mt-0.5">
-                        {m.actual_home_score !== null
-                          ? <span className="font-bold opacity-100 text-green-300">{m.actual_home_score}–{m.actual_away_score} FT</span>
-                          : m.kickoff_at ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC' : 'TBD'}
-                      </div>
-                    </th>
-                  ))}
+                  {dayMatches.map(m => {
+                    const slotLbl = m.bracket_slot ? KO_SLOT_LABELS[m.bracket_slot] : null
+                    const homeCode = m.home_team?.fifa_code ?? slotLbl?.home ?? '?'
+                    const awayCode = m.away_team?.fifa_code ?? slotLbl?.away ?? '?'
+                    return (
+                      <th key={m.id} className="py-2 px-1 text-center font-normal min-w-[72px]">
+                        <div className="flex items-center justify-center gap-0.5">
+                          {m.home_team?.fifa_code && (
+                            <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
+                              <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                            </span>
+                          )}
+                          <span className="font-semibold text-[9px]">{homeCode}</span>
+                          <span className="text-white/40 text-[8px]">v</span>
+                          <span className="font-semibold text-[9px]">{awayCode}</span>
+                          {m.away_team?.fifa_code && (
+                            <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
+                              <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] opacity-70 mt-0.5">
+                          {m.actual_home_score !== null
+                            ? <span className="font-bold opacity-100 text-green-300">{m.actual_home_score}–{m.actual_away_score} FT</span>
+                            : m.kickoff_at ? new Date(m.kickoff_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC' : 'TBD'}
+                        </div>
+                      </th>
+                    )
+                  })}
                   <th className="py-2 px-2 text-center text-yellow-300 text-[11px] min-w-[100px]">
                     <div className="flex flex-col items-center gap-1">
                       <span>🏆 Predicted</span>
