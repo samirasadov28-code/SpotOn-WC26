@@ -513,11 +513,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 ))
                 return (
                   <div key={s.key} className="flex items-center gap-1 shrink-0">
-                    {s.key === 'final'
-                      ? [...dateBtns, badgeEl]
-                      : s.key === 'r32' && days.length > 1
-                        ? [dateBtns[0], badgeEl, ...dateBtns.slice(1)]
-                        : [badgeEl, ...dateBtns]}
+                    {s.key === 'final' ? [...dateBtns, badgeEl] : [badgeEl, ...dateBtns]}
                   </div>
                 )
               })}
@@ -703,22 +699,32 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                   <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px]">{t('leaderboard_player')}</th>
                   {dayMatches.map(m => {
                     const slotLbl = m.bracket_slot ? KO_SLOT_LABELS[m.bracket_slot] : null
-                    const homeCode = m.home_team?.fifa_code ?? slotLbl?.home ?? '?'
-                    const awayCode = m.away_team?.fifa_code ?? slotLbl?.away ?? '?'
+                    // Resolve position label → actual team via groupStandings
+                    const resolvePos = (lbl: string | undefined) => {
+                      if (!lbl) return null
+                      const mt = lbl.match(/^([12])([A-L])$/)
+                      if (!mt) return null
+                      const arr = groupStandings.get(mt[2]) ?? []
+                      return arr.every((t: any) => t.played >= 3) ? (arr[parseInt(mt[1]) - 1] ?? null) : null
+                    }
+                    const homeTeam = m.home_team ?? resolvePos(slotLbl?.home)
+                    const awayTeam = m.away_team ?? resolvePos(slotLbl?.away)
+                    const homeCode = homeTeam?.fifa_code ?? slotLbl?.home ?? '?'
+                    const awayCode = awayTeam?.fifa_code ?? slotLbl?.away ?? '?'
                     return (
                       <th key={m.id} className="py-2 px-1 text-center font-normal min-w-[72px]">
                         <div className="flex items-center justify-center gap-0.5">
-                          {m.home_team?.fifa_code && (
+                          {homeTeam?.fifa_code && (
                             <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
-                              <img src={flagUrl(m.home_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                              <img src={flagUrl(homeTeam.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
                             </span>
                           )}
                           <span className="font-semibold text-[9px]">{homeCode}</span>
                           <span className="text-white/40 text-[8px]">v</span>
                           <span className="font-semibold text-[9px]">{awayCode}</span>
-                          {m.away_team?.fifa_code && (
+                          {awayTeam?.fifa_code && (
                             <span className="inline-block w-4 h-3 overflow-hidden rounded-sm flex-shrink-0">
-                              <img src={flagUrl(m.away_team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                              <img src={flagUrl(awayTeam.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
                             </span>
                           )}
                         </div>
