@@ -49,6 +49,13 @@ export async function POST() {
 
   const supabase = createClient(url, key)
 
+  // Ensure columns exist (safe on repeated runs)
+  await supabase.rpc('exec_sql', { sql: `
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS ko_stage text check (ko_stage in ('r32','r16','qf','sf','final','third'));
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS bracket_slot int;
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS venue text;
+  ` }).catch(() => null) // rpc may not exist; columns likely already present
+
   const { count } = await supabase.from('matches')
     .select('id', { count: 'exact', head: true })
     .eq('stage', 'knockout')
