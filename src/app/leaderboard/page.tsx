@@ -658,9 +658,12 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           {/* Toolbar: [date label] [📰 Recap] flex-1 [Total|Day toggle] */}
           <div className="flex items-center gap-2 mb-3">
             {isKoDay ? (
-              <p className="text-xs text-gray-400 shrink-0">
-                {({ r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-Finals', sf: 'Semi-Finals', third: 'Third Place', final: 'Final' } as Record<string,string>)[koDateToStage.get(selectedDay) ?? ''] ?? 'Knockout'} · {dayLabel} · {dayMatches.length} match{dayMatches.length !== 1 ? 'es' : ''}
-              </p>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="bg-[#0B1F3A] text-white text-[10px] font-bold px-2 py-0.5 rounded shrink-0">
+                  {({ r32: 'R32', r16: 'R16', qf: 'QF', sf: 'SF', third: '3rd', final: 'Final' } as Record<string,string>)[koDateToStage.get(selectedDay) ?? ''] ?? 'KO'}
+                </span>
+                <p className="text-xs text-gray-500 shrink-0">{dayLabel} · {dayMatches.length} match{dayMatches.length !== 1 ? 'es' : ''}</p>
+              </div>
             ) : (
               <p className="text-xs text-gray-400 shrink-0">{dayLabel} · {dayMatches.length} matches</p>
             )}
