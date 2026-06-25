@@ -2,6 +2,10 @@
 -- Slots 1-16 = R32 (M73-M88), 17-24 = R16, 25-28 = QF, 29-30 = SF, 31 = 3rd, 32 = Final
 -- kickoff_at in UTC; toCDTDate subtracts 6h to get the CDT calendar day shown in the app
 
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS ko_stage text check (ko_stage in ('r32','r16','qf','sf','final','third'));
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS bracket_slot int;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS venue text;
+
 INSERT INTO matches (stage, ko_stage, bracket_slot, kickoff_at, venue)
 VALUES
   -- ── ROUND OF 32 (Jun 28 – Jul 3) ─────────────────────────────────────────

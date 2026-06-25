@@ -482,19 +482,22 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               {KO_STAGE_META.map(s => {
                 const days = koDaysByStage.get(s.key) ?? []
                 if (days.length === 0) return null
+                const badgeEl = (
+                  <button
+                    data-ko={s.key}
+                    onClick={() => setKoMode(s.key)}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 hover:opacity-80 transition-opacity ${koMode === s.key ? 'bg-[#0B1F3A] text-white border border-[#0B1F3A]' : s.color}`}
+                  >{s.label}</button>
+                )
+                const dateBtns = days.map(day => (
+                  <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setKoMode(null) }}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${!koMode && selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                    {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                  </button>
+                ))
                 return (
                   <div key={s.key} className="flex items-center gap-1 shrink-0">
-                    {days.map(day => (
-                      <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setKoMode(null) }}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${!koMode && selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                        {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-                      </button>
-                    ))}
-                    <button
-                      data-ko={s.key}
-                      onClick={() => setKoMode(s.key)}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 hover:opacity-80 transition-opacity ${koMode === s.key ? 'bg-[#0B1F3A] text-white border border-[#0B1F3A]' : s.color}`}
-                    >{s.label}</button>
+                    {s.key === 'final' ? [...dateBtns, badgeEl] : [badgeEl, ...dateBtns]}
                   </div>
                 )
               })}
