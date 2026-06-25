@@ -191,7 +191,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const tableMirrorRef = useRef<HTMLDivElement>(null)
   const [groupStandings, setGroupStandings] = useState<Map<string, any[]>>(new Map())
   const [showGroupStandings, setShowGroupStandings] = useState(false)
-  const [r32Mode, setR32Mode] = useState(false)
+  const [koMode, setKoMode] = useState<string | null>(null) // 'r32' | 'r16' | 'qf' | 'sf' | 'third' | 'final' | null
 
   useEffect(() => { setRecap(null) }, [lang])
 
@@ -260,13 +260,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
     return () => cancelAnimationFrame(raf)
   }, [selectedDay, allDays, koDateToStage])
 
-  // Centre the R32 badge when r32Mode activates
+  // Centre the active KO stage badge when koMode activates
   useEffect(() => {
-    if (!r32Mode || !dayScrollRef.current) return
+    if (!koMode || !dayScrollRef.current) return
     const raf = requestAnimationFrame(() => {
       const container = dayScrollRef.current
       if (!container) return
-      const btn = container.querySelector<HTMLElement>('[data-r32="true"]')
+      const btn = container.querySelector<HTMLElement>(`[data-ko="${koMode}"]`)
       if (!btn) return
       const containerRect = container.getBoundingClientRect()
       const btnRect = btn.getBoundingClientRect()
@@ -274,7 +274,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       container.scrollTo({ left: Math.max(0, offset), behavior: 'smooth' })
     })
     return () => cancelAnimationFrame(raf)
-  }, [r32Mode])
+  }, [koMode])
 
   useEffect(() => {
     Promise.all([
@@ -339,14 +339,22 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       supabase.from('matches').select(KO_SELECT)
         .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
         .eq('stage', 'knockout').order('kickoff_at')
-        .then((dateRes) => {
-        const dateMatches = (dateRes.data ?? []) as DayMatch[]
-        // Use only matches actually scheduled for this specific date
-        setDayMatches(dateMatches)
-        setPredsMap(new Map())
-        setShowGroupStandings(false)
-        setLoading(false)
-      })
+        .then(async (dateRes) => {
+          let finalMatches = (dateRes.data ?? []) as DayMatch[]
+          if (finalMatches.length === 0) {
+            // Fallback: fetch all matches for this stage by slot range, filter client-side by CDT date
+            const fallbackRes = await supabase.from('matches').select(KO_SELECT)
+              .eq('stage', 'knockout')
+              .gte('bracket_slot', slotMin).lte('bracket_slot', slotMax)
+              .order('bracket_slot')
+            finalMatches = ((fallbackRes.data ?? []) as DayMatch[])
+              .filter(m => m.kickoff_at && toCDTDate(m.kickoff_at) === selectedDay)
+          }
+          setDayMatches(finalMatches)
+          setPredsMap(new Map())
+          setShowGroupStandings(false)
+          setLoading(false)
+        })
       return
     }
 
@@ -466,8 +474,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition-colors">‹</button>
             <div ref={dayScrollRef} className="flex gap-1.5 overflow-x-auto flex-1 items-center" style={{ scrollbarWidth: 'none' }}>
               {allDays.map(day => (
-                <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setR32Mode(false) }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${!r32Mode && selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setKoMode(null) }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${!koMode && selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                   {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                 </button>
               ))}
@@ -476,17 +484,17 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 if (days.length === 0) return null
                 return (
                   <div key={s.key} className="flex items-center gap-1 shrink-0">
-                    <button
-                      data-r32={s.key === 'r32' ? 'true' : undefined}
-                      onClick={() => { if (s.key === 'r32') setR32Mode(true); else if (onGoToRounds) onGoToRounds() }}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 hover:opacity-80 transition-opacity ${s.key === 'r32' && r32Mode ? 'bg-[#0B1F3A] text-white border border-[#0B1F3A]' : s.color}`}
-                    >{s.label}</button>
                     {days.map(day => (
-                      <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setR32Mode(false) }}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${!r32Mode && selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                      <button key={day} data-day={day} onClick={() => { setSelectedDay(day); setKoMode(null) }}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 shrink-0 ${!koMode && selectedDay === day ? 'bg-[#0B1F3A] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                         {new Date(day + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                       </button>
                     ))}
+                    <button
+                      data-ko={s.key}
+                      onClick={() => setKoMode(s.key)}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 hover:opacity-80 transition-opacity ${koMode === s.key ? 'bg-[#0B1F3A] text-white border border-[#0B1F3A]' : s.color}`}
+                    >{s.label}</button>
                   </div>
                 )
               })}
@@ -497,80 +505,73 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         )
       })()}
 
-      {r32Mode ? (() => {
-        // Build 32 R32 positions: 12 winners + 12 runners-up + 8 best 3rds
+      {koMode ? (() => {
         const WC26_GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
-        // Resolve team for a position label from group standings
+
         const resolveTeam = (label: string): { name: string; fifa_code: string; flag_emoji: string | null } | null => {
           const m1 = label.match(/^([12])([A-L])$/)
-          if (m1) {
-            const pos = parseInt(m1[1]) - 1
-            const grp = m1[2]
-            const arr = groupStandings.get(grp) ?? []
-            if (arr.every((t: any) => t.played >= 3) && arr[pos]) return arr[pos]
-            return null
-          }
+          if (!m1) return null
+          const arr = groupStandings.get(m1[2]) ?? []
+          if (arr.every((t: any) => t.played >= 3) && arr[parseInt(m1[1]) - 1]) return arr[parseInt(m1[1]) - 1]
           return null
         }
-        // Compute 8 best 3rd place teams from complete groups
-        const thirds: Array<{ label: string; team: any }> = []
-        for (const g of WC26_GROUPS) {
-          const arr = groupStandings.get(g) ?? []
-          if (arr.every((t: any) => t.played >= 3) && arr[2]) {
-            thirds.push({ label: `3rd-${g}`, team: arr[2] })
-          }
+
+        // Columns per stage
+        const STAGE_COLS: Record<string, string[]> = {
+          r32: [...WC26_GROUPS.map(g => `1${g}`), ...WC26_GROUPS.map(g => `2${g}`), ...Array.from({ length: 8 }, (_, i) => `3rd${i+1}`)],
+          r16: Array.from({ length: 16 }, (_, i) => `W M${73+i}`),
+          qf:  Array.from({ length: 8 },  (_, i) => `W M${89+i}`),
+          sf:  Array.from({ length: 4 },  (_, i) => `W M${97+i}`),
+          third: ['L M101', 'L M102'],
+          final: ['W M101', 'W M102'],
         }
-        thirds.sort((a, b) => b.team.pts - a.team.pts || b.team.gd - a.team.gd || b.team.gf - a.team.gf)
-        const best8thirds = thirds.slice(0, 8)
+        const STAGE_TITLES: Record<string, string> = {
+          r32: '🏅 Round of 32 — Advancement', r16: '🏅 Round of 16 — Advancement',
+          qf: '🏅 Quarter-Finals — Advancement', sf: '🏅 Semi-Finals — Advancement',
+          third: '🥉 Third Place — Advancement', final: '🏆 Final — Advancement',
+        }
 
-        const positions = [
-          ...WC26_GROUPS.map(g => `1${g}`),
-          ...WC26_GROUPS.map(g => `2${g}`),
-          ...Array.from({ length: 8 }, (_, i) => `3rd${i + 1}`),
-        ]
-
+        const columns = STAGE_COLS[koMode] ?? []
         const sortedEntries = [...entries].sort((a, b) => b.advancementPts - a.advancementPts || b.totalPts - a.totalPts)
+        const koScrollRef = { current: null as HTMLDivElement | null }
+        const koMirrorRef = { current: null as HTMLDivElement | null }
 
-        // Dual-scroll: sync top mirror div with main scroll div
-        const r32ScrollRef = { current: null as HTMLDivElement | null }
-        const r32MirrorRef = { current: null as HTMLDivElement | null }
+        const sectionHead = (i: number) => koMode === 'r32' && (i === 12 || i === 24) ? 'border-l-2 border-blue-400/50' : ''
+        const sectionBody = (i: number) => koMode === 'r32' && (i === 12 || i === 24) ? 'border-l-2 border-blue-100' : ''
 
         return (
           <div>
-            <button onClick={() => setR32Mode(false)} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#0B1F3A] mb-3 transition-colors">
+            <button onClick={() => setKoMode(null)} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#0B1F3A] mb-3 transition-colors">
               ← Back to Day View
             </button>
-            <h2 className="text-sm font-bold text-[#0B1F3A] mb-3">🏅 Round of 32 — Advancement</h2>
+            <h2 className="text-sm font-bold text-[#0B1F3A] mb-3">{STAGE_TITLES[koMode]}</h2>
 
             {/* Top mirror scrollbar */}
             <div
               className="overflow-x-auto -mx-4 px-4"
               style={{ scrollbarWidth: 'thin', height: 12, marginBottom: 2 }}
-              ref={el => { r32MirrorRef.current = el }}
-              onScroll={() => { if (r32ScrollRef.current && r32MirrorRef.current) r32ScrollRef.current.scrollLeft = r32MirrorRef.current.scrollLeft }}
+              ref={el => { koMirrorRef.current = el }}
+              onScroll={() => { if (koScrollRef.current && koMirrorRef.current) koScrollRef.current.scrollLeft = koMirrorRef.current.scrollLeft }}
             >
-              <div style={{ width: 150 + 32 * 68 + 72, height: 1 }} />
+              <div style={{ width: 150 + columns.length * 68 + 72, height: 1 }} />
             </div>
 
             {/* Main scrollable table */}
             <div
               className="overflow-x-auto -mx-4 px-4"
               style={{ scrollbarWidth: 'thin' }}
-              ref={el => { r32ScrollRef.current = el }}
-              onScroll={() => { if (r32MirrorRef.current && r32ScrollRef.current) r32MirrorRef.current.scrollLeft = r32ScrollRef.current.scrollLeft }}
+              ref={el => { koScrollRef.current = el }}
+              onScroll={() => { if (koMirrorRef.current && koScrollRef.current) koMirrorRef.current.scrollLeft = koScrollRef.current.scrollLeft }}
             >
               <table className="text-xs border-collapse" style={{ minWidth: 'max-content' }}>
                 <thead>
                   <tr className="bg-[#0B1F3A] text-white">
-                    <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px] border-r border-white/20">
-                      Player
-                    </th>
-                    {positions.map((pos, i) => {
-                      const team = i < 24 ? resolveTeam(pos) : null
-                      const isThird = i >= 24
-                      const sectionBorder = (i === 12 || i === 24) ? 'border-l-2 border-blue-400/50' : ''
+                    <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px] border-r border-white/20">Player</th>
+                    {columns.map((pos, i) => {
+                      const team = koMode === 'r32' && i < 24 ? resolveTeam(pos) : null
+                      const isThird = koMode === 'r32' && i >= 24
                       return (
-                        <th key={pos} className={`py-1.5 px-1 text-center font-normal min-w-[64px] ${sectionBorder}`}>
+                        <th key={pos} className={`py-1.5 px-1 text-center font-normal min-w-[64px] ${sectionHead(i)}`}>
                           {team ? (
                             <div className="flex flex-col items-center gap-0.5">
                               <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0">
@@ -580,9 +581,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                               <span className="text-[8px] text-white/50 leading-none">{pos}</span>
                             </div>
                           ) : (
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className={`text-[10px] font-bold ${isThird ? 'text-orange-300' : 'text-white/60'}`}>{pos}</span>
-                            </div>
+                            <span className={`text-[10px] font-bold ${isThird ? 'text-orange-300' : 'text-white/60'}`}>{pos}</span>
                           )}
                         </th>
                       )
@@ -610,12 +609,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                             </Link>
                           </div>
                         </td>
-                        {positions.map((pos, i) => {
-                          const sectionBorder = (i === 12 || i === 24) ? 'border-l-2 border-blue-100' : ''
-                          return (
-                            <td key={pos} className={`py-2 px-2 text-center text-gray-300 ${sectionBorder}`}>—</td>
-                          )
-                        })}
+                        {columns.map((pos, i) => (
+                          <td key={pos} className={`py-2 px-2 text-center text-gray-300 ${sectionBody(i)}`}>—</td>
+                        ))}
                         <td className={`py-2 px-3 text-center font-bold text-[#0B1F3A] sticky right-0 ${rowBg} border-l-2 border-gray-100`}>
                           {e.advancementPts}
                         </td>
@@ -625,10 +621,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 </tbody>
               </table>
             </div>
-
-            <p className="text-[10px] text-gray-400 mt-2">
-              Columns: <span className="text-blue-600 font-medium">1A–1L</span> group winners · <span className="text-indigo-600 font-medium">2A–2L</span> runners-up · <span className="text-orange-500 font-medium">3rd1–3rd8</span> best 3rd-place teams · Points awarded once group stage is complete.
-            </p>
+            {koMode === 'r32' && (
+              <p className="text-[10px] text-gray-400 mt-2">
+                Columns: <span className="text-blue-600 font-medium">1A–1L</span> group winners · <span className="text-indigo-600 font-medium">2A–2L</span> runners-up · <span className="text-orange-500 font-medium">3rd1–3rd8</span> best 3rd-place teams
+              </p>
+            )}
           </div>
         )
       })() : loading ? <div className="text-center text-gray-400 py-10 text-sm">{t('loading')}</div> : isKoDay ? (

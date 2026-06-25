@@ -208,9 +208,10 @@ interface MatchCardProps {
   isLocked: boolean
   compact?: boolean
   isLastFilled?: boolean
+  kickoffAt?: string | null
 }
 
-function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, isSaving, isSaved, isLocked, compact, isLastFilled }: MatchCardProps) {
+function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, isSaving, isSaved, isLocked, compact, isLastFilled, kickoffAt }: MatchCardProps) {
   const { t, lang } = useTranslation()
   const [localPred, setLocalPred] = useState(pred)
   const isFocusedRef = useRef(false)
@@ -272,9 +273,17 @@ function MatchCard({ slot, label, homeTeam, awayTeam, pred, onSave, hasError, is
     )
   }
 
+  const kickoffStr = kickoffAt
+    ? new Date(kickoffAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ' · ' +
+      new Date(kickoffAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
+    : null
+
   return (
     <div className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${showError ? 'border-red-400' : 'border-gray-200'}`}>
-      <div className="text-xs text-gray-400 mb-2">{label}</div>
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <span className="text-xs text-gray-400">{label}</span>
+        {kickoffStr && <span className="text-[10px] text-gray-400 shrink-0">{kickoffStr}</span>}
+      </div>
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5 overflow-hidden">
           <span className="font-semibold text-xs sm:text-sm text-[#0B1F3A] text-right truncate">{homeTeam ? (getTeamName(homeTeam.fifa_code, lang) ?? homeTeam.name) : 'TBD'}</span>
@@ -339,6 +348,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
   const [savedSlotCount, setSavedSlotCount] = useState(0)
   const [showWinner, setShowWinner] = useState(false)
   const [lastFilledSlot, setLastFilledSlot] = useState<number | null>(null)
+  const [slotKickoffs, setSlotKickoffs] = useState<Record<number, string>>({})
   const isLocked = userEmail === LATE_ENTRY_EMAIL
     ? new Date() >= LATE_ENTRY_DEADLINE
     : userEmail !== null
@@ -373,17 +383,23 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
       setUserEmail(user.email ?? null)
       userIdRef.current = user.id
 
-      const [matchRes, teamRes, gpRes, kpRes] = await Promise.all([
+      const [matchRes, teamRes, gpRes, kpRes, koRes] = await Promise.all([
         supabase.from('matches')
           .select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*)')
           .eq('stage', 'group').order('kickoff_at'),
         supabase.from('teams').select('*'),
         supabase.from('predictions_group').select('*').eq('user_id', user.id),
         supabase.from('predictions_knockout').select('*').eq('user_id', user.id),
+        supabase.from('matches').select('bracket_slot, kickoff_at').eq('stage', 'knockout').not('kickoff_at', 'is', null),
       ])
 
       setGroupMatches((matchRes.data ?? []) as MatchWithTeams[])
       setAllTeams(teamRes.data ?? [])
+      const kickoffs: Record<number, string> = {}
+      for (const m of (koRes.data ?? []) as any[]) {
+        if (m.bracket_slot && m.kickoff_at) kickoffs[m.bracket_slot] = m.kickoff_at
+      }
+      setSlotKickoffs(kickoffs)
 
       const gpMap: GroupPredMap = {}
       for (const p of gpRes.data ?? []) {
@@ -498,8 +514,9 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
       isSaved,
       isLocked,
       isLastFilled: lastFilledSlot === slot,
+      kickoffAt: slotKickoffs[slot] ?? null,
     }
-  }, [koPreds, qualified, errorSlots, savingSlots, isLocked, handleSave, lastFilledSlot])
+  }, [koPreds, qualified, errorSlots, savingSlots, isLocked, handleSave, lastFilledSlot, slotKickoffs])
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh] text-gray-500">{t('ko_loading')}</div>
