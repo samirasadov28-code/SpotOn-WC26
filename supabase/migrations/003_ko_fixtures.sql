@@ -6,6 +6,11 @@ ALTER TABLE matches ADD COLUMN IF NOT EXISTS ko_stage text check (ko_stage in ('
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS bracket_slot int;
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS venue text;
 
+-- Widen the stage check constraint to allow 'knockout' (may already include it)
+ALTER TABLE matches DROP CONSTRAINT IF EXISTS matches_stage_check;
+ALTER TABLE matches ADD CONSTRAINT matches_stage_check
+  CHECK (stage IN ('group','knockout','r32','r16','qf','sf','final','third'));
+
 INSERT INTO matches (stage, ko_stage, bracket_slot, kickoff_at, venue)
 VALUES
   -- ── ROUND OF 32 (Jun 28 – Jul 3) ─────────────────────────────────────────
