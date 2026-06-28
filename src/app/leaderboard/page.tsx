@@ -65,6 +65,8 @@ function getMatchPts(ph: number, pa: number, ah: number, aa: number) {
 interface DayMatch {
   id: string; kickoff_at: string | null
   bracket_slot?: number
+  home_team_id?: string | null
+  away_team_id?: string | null
   actual_home_score: number | null; actual_away_score: number | null
   home_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
   away_team: { name: string; flag_emoji: string | null; fifa_code: string } | null
@@ -192,6 +194,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const [groupStandings, setGroupStandings] = useState<Map<string, any[]>>(new Map())
   const [showGroupStandings, setShowGroupStandings] = useState(false)
   const [koMode, setKoMode] = useState<string | null>(null) // 'r32' | 'r16' | 'qf' | 'sf' | 'third' | 'final' | null
+  const [koRoundPairs, setKoRoundPairs] = useState<Map<string, Set<string>>>(new Map())
 
   useEffect(() => { setRecap(null) }, [lang])
 
@@ -334,7 +337,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       }
       const [slotMin, slotMax] = SLOT_RANGES[stage] ?? [1, 32]
 
-      const KO_SELECT = 'id, kickoff_at, bracket_slot, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)'
+      const KO_SELECT = 'id, kickoff_at, bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score, home_team:teams!matches_home_team_id_fkey(name,flag_emoji,fifa_code), away_team:teams!matches_away_team_id_fkey(name,flag_emoji,fifa_code)'
 
       supabase.from('matches').select(KO_SELECT)
         .gte('kickoff_at', start.toISOString()).lt('kickoff_at', end.toISOString())
@@ -350,24 +353,30 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             finalMatches = ((fallbackRes.data ?? []) as DayMatch[])
               .filter(m => m.kickoff_at && toCDTDate(m.kickoff_at) === selectedDay)
           }
-          // Fetch KO predictions for these matches
-          const bracketSlots = finalMatches.map(m => m.bracket_slot).filter((s): s is number => s != null)
+          // Fetch ALL round slot predictions (for pair check + today's scores)
           const slotToId = new Map(finalMatches.map(m => [m.bracket_slot, m.id]))
+          const roundPredsRes = await supabase.from('predictions_knockout')
+            .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
+            .gte('bracket_slot', slotMin).lte('bracket_slot', slotMax)
           const koMap = new Map<string, Map<string, { h: number; a: number }>>()
-          if (bracketSlots.length > 0) {
-            const koPredsRes = await supabase.from('predictions_knockout')
-              .select('user_id, bracket_slot, pred_home_score, pred_away_score')
-              .in('bracket_slot', bracketSlots)
-            for (const p of ((koPredsRes.data ?? []) as any[])) {
-              if (p.pred_home_score === null) continue
-              const matchId = slotToId.get(p.bracket_slot)
-              if (!matchId) continue
+          const roundPairs = new Map<string, Set<string>>()
+          for (const p of ((roundPredsRes.data ?? []) as any[])) {
+            // Score prediction for today's matches
+            const matchId = slotToId.get(p.bracket_slot)
+            if (matchId && p.pred_home_score !== null && p.pred_away_score !== null) {
               if (!koMap.has(p.user_id)) koMap.set(p.user_id, new Map())
               koMap.get(p.user_id)!.set(matchId, { h: p.pred_home_score, a: p.pred_away_score })
+            }
+            // Round pair tracking (for visibility check)
+            if (p.pred_home_team_id && p.pred_away_team_id) {
+              if (!roundPairs.has(p.user_id)) roundPairs.set(p.user_id, new Set())
+              const key = [p.pred_home_team_id, p.pred_away_team_id].sort().join('|')
+              roundPairs.get(p.user_id)!.add(key)
             }
           }
           setDayMatches(finalMatches)
           setPredsMap(koMap)
+          setKoRoundPairs(roundPairs)
           setShowGroupStandings(false)
           setLoading(false)
         })
@@ -765,9 +774,18 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                       </td>
                       {dayMatches.map(m => {
                         const p = userPreds?.get(m.id)
+                        // Only show predicted score if user predicted this pair anywhere in the round
+                        let showPred = true
+                        if (isKoDay && m.home_team_id && m.away_team_id) {
+                          const pairKey = [m.home_team_id, m.away_team_id].sort().join('|')
+                          const userPairs = koRoundPairs.get(entry.userId)
+                          showPred = userPairs ? userPairs.has(pairKey) : false
+                        }
                         return (
                           <td key={m.id} className="py-2 px-2 text-center">
-                            <PredCell ph={p?.h ?? null} pa={p?.a ?? null} ah={m.actual_home_score} aa={m.actual_away_score} />
+                            {showPred
+                              ? <PredCell ph={p?.h ?? null} pa={p?.a ?? null} ah={m.actual_home_score} aa={m.actual_away_score} />
+                              : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                         )
                       })}
