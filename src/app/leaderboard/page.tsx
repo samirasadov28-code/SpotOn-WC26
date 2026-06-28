@@ -918,9 +918,10 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                       </td>
                       {dayMatches.map(m => {
                         const p = userPreds?.get(m.id)
-                        // Only show predicted score if user predicted this pair anywhere in the round
+                        // For R32 the pairs are fixed — always show. For R16+ only show if user predicted this pair.
+                        const koStage = isKoDay ? koDateToStage.get(selectedDay) : null
                         let showPred = true
-                        if (isKoDay && m.home_team_id && m.away_team_id) {
+                        if (isKoDay && koStage !== 'r32' && m.home_team_id && m.away_team_id) {
                           const pairKey = [m.home_team_id, m.away_team_id].sort().join('|')
                           const userPairs = koRoundPairs.get(entry.userId)
                           showPred = userPairs ? userPairs.has(pairKey) : false
