@@ -485,8 +485,15 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
     setKoPreds(p => ({ ...p, [slot]: pred }))
 
     setSavingSlots(s => new Set([...s, slot]))
+    const { home: predHome, away: predAway } = getSlotTeams(slot, koPredsRef.current, qualified)
     await supabase.from('predictions_knockout').upsert(
-      { user_id: uid, bracket_slot: slot, pred_home_score: h, pred_away_score: a, updated_at: new Date().toISOString() },
+      {
+        user_id: uid, bracket_slot: slot,
+        pred_home_team_id: predHome?.id ?? null,
+        pred_away_team_id: predAway?.id ?? null,
+        pred_home_score: h, pred_away_score: a,
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: 'user_id,bracket_slot' }
     )
     setSavingSlots(s => { const n = new Set(s); n.delete(slot); return n })
@@ -496,7 +503,7 @@ export default function KnockoutPredictionsPage({ onCountChange }: { onCountChan
       setLastFilledSlot(slot)
       setTimeout(() => setLastFilledSlot(null), 1500)
     }
-  }, [isLocked, supabase, onCountChange])
+  }, [isLocked, supabase, onCountChange, qualified])
 
   const slotProps = useCallback((slot: number) => {
     const { home, away } = getSlotTeams(slot, koPreds, qualified)
