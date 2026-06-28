@@ -111,7 +111,7 @@ export default function ResultsPage() {
   )
 
   const groupMatches = matches.filter(m => m.stage === 'group' && m.group_letter === activeGroup)
-  const koMatches = matches.filter(m => m.stage === activeKoStage)
+  const koMatches = matches.filter(m => m.ko_stage === activeKoStage)
   const played = matches.filter(m => m.actual_home_score !== null).length
   const total = matches.length
 
