@@ -261,10 +261,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
     Promise.all([
       supabase.from('matches').select('bracket_slot, home_team_id, away_team_id')
         .eq('stage','knockout').gte('bracket_slot',1).lte('bracket_slot',16),
-      supabase.from('predictions_knockout')
-        .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id')
-        .gte('bracket_slot',1).lte('bracket_slot',16),
-    ]).then(([mRes, pRes]) => {
+      fetch('/api/r32-preds', { method: 'POST' }).then(r => r.json()),
+    ]).then(([mRes, r32Preds]) => {
       const actualByPos = new Map<string,string>()
       for (const m of (mRes.data ?? []) as any[]) {
         const lbl = KO_SLOT_LABELS[m.bracket_slot as number]
@@ -280,20 +278,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         }
       }
       setKoActualByPos(actualByPos)
+
+      // r32Preds: Record<userId, Record<position, teamId>> from /api/r32-preds
       const userPreds = new Map<string,Map<string,string>>()
-      for (const p of (pRes.data ?? []) as any[]) {
-        if (!userPreds.has(p.user_id)) userPreds.set(p.user_id, new Map())
-        const lbl = KO_SLOT_LABELS[p.bracket_slot as number]
-        if (!lbl) continue
-        if (p.pred_home_team_id && !lbl.home.startsWith('Best')) userPreds.get(p.user_id)!.set(lbl.home, p.pred_home_team_id)
-        if (p.pred_away_team_id && !lbl.away.startsWith('Best')) userPreds.get(p.user_id)!.set(lbl.away, p.pred_away_team_id)
-        // Map 'Best 3rd' predicted teams to 3rd1–3rd8
-        if (p.pred_away_team_id && lbl.away.startsWith('Best')) {
-          const t = slotToThird[p.bracket_slot as number]; if (t) userPreds.get(p.user_id)!.set(t, p.pred_away_team_id)
-        }
-        if (p.pred_home_team_id && lbl.home.startsWith('Best')) {
-          const t = slotToThird[p.bracket_slot as number]; if (t) userPreds.get(p.user_id)!.set(t, p.pred_home_team_id)
-        }
+      for (const [userId, posObj] of Object.entries(r32Preds as Record<string, Record<string,string>>)) {
+        userPreds.set(userId, new Map(Object.entries(posObj)))
       }
       setKoUserPredsByPos(userPreds)
     })
