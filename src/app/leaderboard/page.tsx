@@ -195,6 +195,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const [showGroupStandings, setShowGroupStandings] = useState(false)
   const [koMode, setKoMode] = useState<string | null>(null) // 'r32' | 'r16' | 'qf' | 'sf' | 'third' | 'final' | null
   const [koRoundPairs, setKoRoundPairs] = useState<Map<string, Set<string>>>(new Map())
+  const [koPointsMode, setKoPointsMode] = useState<'total'|'round'>('total')
+  const [koActualByPos, setKoActualByPos] = useState<Map<string,string>>(new Map())
+  const [koUserPredsByPos, setKoUserPredsByPos] = useState<Map<string,Map<string,string>>>(new Map())
 
   useEffect(() => { setRecap(null) }, [lang])
 
@@ -246,6 +249,36 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       setGroupStandings(byGroup)
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch R32 actual teams + user predictions when R32 scorecard is opened
+  useEffect(() => {
+    if (koMode !== 'r32') return
+    Promise.all([
+      supabase.from('matches').select('bracket_slot, home_team_id, away_team_id')
+        .eq('stage','knockout').gte('bracket_slot',1).lte('bracket_slot',16),
+      supabase.from('predictions_knockout')
+        .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id')
+        .gte('bracket_slot',1).lte('bracket_slot',16),
+    ]).then(([mRes, pRes]) => {
+      const actualByPos = new Map<string,string>()
+      for (const m of (mRes.data ?? []) as any[]) {
+        const lbl = KO_SLOT_LABELS[m.bracket_slot as number]
+        if (!lbl) continue
+        if (m.home_team_id && !lbl.home.startsWith('Best')) actualByPos.set(lbl.home, m.home_team_id)
+        if (m.away_team_id && !lbl.away.startsWith('Best')) actualByPos.set(lbl.away, m.away_team_id)
+      }
+      setKoActualByPos(actualByPos)
+      const userPreds = new Map<string,Map<string,string>>()
+      for (const p of (pRes.data ?? []) as any[]) {
+        if (!userPreds.has(p.user_id)) userPreds.set(p.user_id, new Map())
+        const lbl = KO_SLOT_LABELS[p.bracket_slot as number]
+        if (!lbl) continue
+        if (p.pred_home_team_id && !lbl.home.startsWith('Best')) userPreds.get(p.user_id)!.set(lbl.home, p.pred_home_team_id)
+        if (p.pred_away_team_id && !lbl.away.startsWith('Best')) userPreds.get(p.user_id)!.set(lbl.away, p.pred_away_team_id)
+      }
+      setKoUserPredsByPos(userPreds)
+    })
+  }, [koMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Centre the selected day button in the scroll container
   useEffect(() => {
@@ -560,7 +593,23 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         }
 
         const columns = STAGE_COLS[koMode] ?? []
-        const sortedEntries = [...entries].sort((a, b) => b.advancementPts - a.advancementPts || b.totalPts - a.totalPts)
+        const calcR32Pts = (userId: string) => {
+          const userPreds = koUserPredsByPos.get(userId)
+          if (!userPreds || koActualByPos.size === 0) return 0
+          let pts = 0
+          for (const [pos, actualId] of koActualByPos) {
+            if (userPreds.get(pos) === actualId) pts++
+          }
+          return pts
+        }
+        const teamById = new Map<string, any>()
+        for (const arr of groupStandings.values()) for (const t of arr) teamById.set(t.id, t)
+        const sortedEntries = [...entries].sort((a, b) => {
+          if (koMode === 'r32' && koPointsMode === 'round') {
+            return calcR32Pts(b.userId) - calcR32Pts(a.userId) || b.totalPts - a.totalPts
+          }
+          return b.advancementPts - a.advancementPts || b.totalPts - a.totalPts
+        })
         const koScrollRef = { current: null as HTMLDivElement | null }
         const koMirrorRef = { current: null as HTMLDivElement | null }
 
@@ -614,8 +663,22 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                         </th>
                       )
                     })}
-                    <th className="py-2 px-3 text-center font-bold text-yellow-300 min-w-[56px] border-l-2 border-yellow-400/50 sticky right-0 bg-[#0B1F3A]">
-                      Total
+                    <th className="py-2 px-3 text-center font-bold text-yellow-300 min-w-[80px] border-l-2 border-yellow-400/50 sticky right-0 bg-[#0B1F3A]">
+                      {koMode === 'r32' ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span>{koPointsMode === 'round' ? 'R32 Pts' : 'Total'}</span>
+                          <div className="flex rounded overflow-hidden border border-yellow-400/40 text-[9px] font-semibold">
+                            <button onClick={() => setKoPointsMode('round')}
+                              className={`px-1.5 py-0.5 transition-colors ${koPointsMode === 'round' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
+                              Round
+                            </button>
+                            <button onClick={() => setKoPointsMode('total')}
+                              className={`px-1.5 py-0.5 transition-colors ${koPointsMode === 'total' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
+                              Total
+                            </button>
+                          </div>
+                        </div>
+                      ) : 'Total'}
                     </th>
                   </tr>
                 </thead>
@@ -637,11 +700,41 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                             </Link>
                           </div>
                         </td>
-                        {columns.map((pos, i) => (
-                          <td key={pos} className={`py-2 px-2 text-center text-gray-300 ${sectionBody(i)}`}>—</td>
-                        ))}
+                        {columns.map((pos, i) => {
+                          if (koMode === 'r32' && i < 24) {
+                            const actualId = koActualByPos.get(pos)
+                            const predId = koUserPredsByPos.get(e.userId)?.get(pos)
+                            if (!predId) return <td key={pos} className={`py-2 px-2 text-center text-gray-200 ${sectionBody(i)}`}>—</td>
+                            const correct = actualId != null ? predId === actualId : null
+                            const cellBg = correct === true ? 'bg-green-50' : correct === false ? 'bg-red-50' : ''
+                            const predTeam = teamById.get(predId)
+                            return (
+                              <td key={pos} className={`py-1.5 px-1 text-center ${sectionBody(i)} ${cellBg}`}>
+                                {predTeam ? (
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm">
+                                      <img src={flagUrl(predTeam.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                                    </span>
+                                    {correct !== null && (
+                                      <span className={`text-[8px] font-bold leading-none ${correct ? 'text-green-600' : 'text-red-500'}`}>
+                                        {correct ? '✓' : '✗'}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className={`text-[10px] font-bold ${correct === true ? 'text-green-600' : correct === false ? 'text-red-500' : 'text-gray-400'}`}>
+                                    {correct === true ? '✓' : correct === false ? '✗' : '?'}
+                                  </span>
+                                )}
+                              </td>
+                            )
+                          }
+                          return <td key={pos} className={`py-2 px-2 text-center text-gray-300 ${sectionBody(i)}`}>—</td>
+                        })}
                         <td className={`py-2 px-3 text-center font-bold text-[#0B1F3A] sticky right-0 ${rowBg} border-l-2 border-gray-100`}>
-                          {e.advancementPts}
+                          {koMode === 'r32' && koPointsMode === 'round'
+                            ? calcR32Pts(e.userId)
+                            : e.advancementPts}
                         </td>
                       </tr>
                     )
