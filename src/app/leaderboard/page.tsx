@@ -253,6 +253,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   // Fetch R32 actual teams + user predictions when R32 scorecard is opened
   useEffect(() => {
     if (koMode !== 'r32') return
+    // 'Best 3rd' slots in bracket order → maps to 3rd1–3rd8 column labels
+    const THIRD_SLOT_ORDER = [2, 5, 7, 8, 9, 10, 13, 15]
+    const slotToThird: Record<number, string> = {}
+    THIRD_SLOT_ORDER.forEach((s, i) => { slotToThird[s] = `3rd${i + 1}` })
+
     Promise.all([
       supabase.from('matches').select('bracket_slot, home_team_id, away_team_id')
         .eq('stage','knockout').gte('bracket_slot',1).lte('bracket_slot',16),
@@ -266,6 +271,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         if (!lbl) continue
         if (m.home_team_id && !lbl.home.startsWith('Best')) actualByPos.set(lbl.home, m.home_team_id)
         if (m.away_team_id && !lbl.away.startsWith('Best')) actualByPos.set(lbl.away, m.away_team_id)
+        // Map 'Best 3rd' slots to 3rd1–3rd8
+        if (m.away_team_id && lbl.away.startsWith('Best')) {
+          const t = slotToThird[m.bracket_slot as number]; if (t) actualByPos.set(t, m.away_team_id)
+        }
+        if (m.home_team_id && lbl.home.startsWith('Best')) {
+          const t = slotToThird[m.bracket_slot as number]; if (t) actualByPos.set(t, m.home_team_id)
+        }
       }
       setKoActualByPos(actualByPos)
       const userPreds = new Map<string,Map<string,string>>()
@@ -275,6 +287,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         if (!lbl) continue
         if (p.pred_home_team_id && !lbl.home.startsWith('Best')) userPreds.get(p.user_id)!.set(lbl.home, p.pred_home_team_id)
         if (p.pred_away_team_id && !lbl.away.startsWith('Best')) userPreds.get(p.user_id)!.set(lbl.away, p.pred_away_team_id)
+        // Map 'Best 3rd' predicted teams to 3rd1–3rd8
+        if (p.pred_away_team_id && lbl.away.startsWith('Best')) {
+          const t = slotToThird[p.bracket_slot as number]; if (t) userPreds.get(p.user_id)!.set(t, p.pred_away_team_id)
+        }
+        if (p.pred_home_team_id && lbl.home.startsWith('Best')) {
+          const t = slotToThird[p.bracket_slot as number]; if (t) userPreds.get(p.user_id)!.set(t, p.pred_home_team_id)
+        }
       }
       setKoUserPredsByPos(userPreds)
     })
@@ -645,7 +664,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                   <tr className="bg-[#0B1F3A] text-white">
                     <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px] border-r border-white/20">Player</th>
                     {columns.map((pos, i) => {
-                      const team = koMode === 'r32' && i < 24 ? resolveTeam(pos) : null
+                      const team = koMode === 'r32' && i < 24
+                        ? resolveTeam(pos)
+                        : koMode === 'r32' && i >= 24
+                        ? (koActualByPos.has(pos) ? (teamById.get(koActualByPos.get(pos)!) ?? null) : null)
+                        : null
                       const isThird = koMode === 'r32' && i >= 24
                       return (
                         <th key={pos} className={`py-1.5 px-1 text-center font-normal min-w-[64px] ${sectionHead(i)}`}>
@@ -702,6 +725,34 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                         </td>
                         {columns.map((pos, i) => {
                           if (koMode === 'r32' && i < 24) {
+                            const actualId = koActualByPos.get(pos)
+                            const predId = koUserPredsByPos.get(e.userId)?.get(pos)
+                            if (!predId) return <td key={pos} className={`py-2 px-2 text-center text-gray-200 ${sectionBody(i)}`}>—</td>
+                            const correct = actualId != null ? predId === actualId : null
+                            const cellBg = correct === true ? 'bg-green-50' : correct === false ? 'bg-red-50' : ''
+                            const predTeam = teamById.get(predId)
+                            return (
+                              <td key={pos} className={`py-1.5 px-1 text-center ${sectionBody(i)} ${cellBg}`}>
+                                {predTeam ? (
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm">
+                                      <img src={flagUrl(predTeam.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
+                                    </span>
+                                    {correct !== null && (
+                                      <span className={`text-[8px] font-bold leading-none ${correct ? 'text-green-600' : 'text-red-500'}`}>
+                                        {correct ? '✓' : '✗'}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className={`text-[10px] font-bold ${correct === true ? 'text-green-600' : correct === false ? 'text-red-500' : 'text-gray-400'}`}>
+                                    {correct === true ? '✓' : correct === false ? '✗' : '?'}
+                                  </span>
+                                )}
+                              </td>
+                            )
+                          }
+                          if (koMode === 'r32' && i >= 24) {
                             const actualId = koActualByPos.get(pos)
                             const predId = koUserPredsByPos.get(e.userId)?.get(pos)
                             if (!predId) return <td key={pos} className={`py-2 px-2 text-center text-gray-200 ${sectionBody(i)}`}>—</td>
@@ -1500,6 +1551,7 @@ export default function LeaderboardPage() {
   const [top4, setTop4] = useState<Array<Array<{ team: TeamRef & {}; votes: number }>>>([[], [], [], []])
   const [positionsByUser, setPositionsByUser] = useState<Record<string, PositionRow>>({})
   const [finishMode, setFinishMode] = useState<'champ' | 'top4'>('champ')
+  const [maxPts, setMaxPts] = useState<Record<string, number>>({})
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
@@ -1575,6 +1627,15 @@ export default function LeaderboardPage() {
     ;(supabase as any).from('league_members').select('user_id').eq('league_id', selectedLeagueId)
       .then(({ data }: any) => setLeagueMembers(new Set((data ?? []).map((r: any) => r.user_id))))
   }, [selectedLeagueId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch max available points
+  useEffect(() => {
+    fetch('/api/max-pts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leagueId: selectedLeagueId === 'global' ? null : selectedLeagueId }),
+    }).then(r => r.json()).then(data => setMaxPts(data ?? {})).catch(() => {})
+  }, [selectedLeagueId])
 
   // Fetch bracket simulation results (champion + positions per user)
   useEffect(() => {
@@ -1846,6 +1907,7 @@ export default function LeaderboardPage() {
                   <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_advance_col')}</th>
                   <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_playoff_col')}</th>
                   <th className="py-3 px-3 text-right font-bold">{t('lb_total')}</th>
+                  <th className="py-3 px-3 text-right text-cyan-300 text-xs hidden sm:table-cell" title="Max points still available if surviving predicted teams win their remaining matches">Max Avail</th>
                   <th className="py-3 px-3 text-left text-yellow-300 text-xs hidden md:table-cell min-w-[110px]">
                     <div className="flex flex-col gap-1">
                       <span>🏆 Predicted</span>
@@ -1887,6 +1949,11 @@ export default function LeaderboardPage() {
                         <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.advancementPts}</td>
                         <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.knockoutPts}</td>
                         <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
+                        <td className="py-3 px-3 text-right hidden sm:table-cell">
+                          {maxPts[entry.userId] != null
+                            ? <span className={`text-sm font-semibold ${maxPts[entry.userId] > entry.totalPts ? 'text-cyan-600' : 'text-gray-400'}`}>{maxPts[entry.userId]}</span>
+                            : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
                         <td className="py-3 px-2 hidden md:table-cell">
                           <PredictedFinishCell positions={positions} lang={lang} mode={finishMode} />
                         </td>
@@ -1894,7 +1961,7 @@ export default function LeaderboardPage() {
 
                       {isExpanded && (
                         <tr key={`${entry.userId}-breakdown`} className={`border-t-0 ${isMe ? 'bg-blue-50' : entry.rank === 1 ? 'bg-yellow-50' : ''}`}>
-                          <td colSpan={8} className="px-4 pb-4 pt-1">
+                          <td colSpan={9} className="px-4 pb-4 pt-1">
                             {loadingBreakdown === entry.userId ? (
                               <div className="text-xs text-gray-400 py-2">Loading breakdown…</div>
                             ) : bd ? (
