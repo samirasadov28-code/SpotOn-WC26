@@ -96,19 +96,19 @@ export async function rescoreKOPts() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // All completed KO matches
-  const { data: koMatches } = await supabase
+  // All KO matches with teams assigned (for advancement pts — awarded as soon as teams are confirmed)
+  const { data: koMatchesWithTeams } = await supabase
     .from('matches')
     .select('bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score')
     .eq('stage', 'knockout')
-    .not('actual_home_score', 'is', null) as any
+    .not('home_team_id', 'is', null) as any
 
   // All KO predictions
   const { data: preds } = await supabase
     .from('predictions_knockout')
     .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score') as any
 
-  const matchBySlot = new Map(((koMatches ?? []) as any[]).map((m: any) => [m.bracket_slot as number, m]))
+  const matchBySlot = new Map(((koMatchesWithTeams ?? []) as any[]).map((m: any) => [m.bracket_slot as number, m]))
 
   const userAdvPts = new Map<string, number>()
   const userKoPts = new Map<string, number>()
@@ -120,13 +120,13 @@ export async function rescoreKOPts() {
     const stage = slotStage(p.bracket_slot)
     const stagePts = STAGE_POINTS[stage] ?? 0
 
-    // Advancement: points per correctly predicted team slot
+    // Advancement: 1pt (or stage pts) per correctly predicted team — awarded once teams are confirmed
     let advAdd = 0
     if (p.pred_home_team_id && p.pred_home_team_id === match.home_team_id) advAdd += stagePts
     if (p.pred_away_team_id && p.pred_away_team_id === match.away_team_id) advAdd += stagePts
 
-    // Final winner bonus
-    if (p.bracket_slot === 32) {
+    // Final winner bonus — only once match is played
+    if (p.bracket_slot === 32 && match.actual_home_score !== null) {
       const ah = match.actual_home_score as number, aa = match.actual_away_score as number
       const actualWinner = ah > aa ? match.home_team_id : match.away_team_id
       const ph = p.pred_home_score ?? 0, pa = p.pred_away_score ?? 0
@@ -136,8 +136,8 @@ export async function rescoreKOPts() {
 
     userAdvPts.set(p.user_id, (userAdvPts.get(p.user_id) ?? 0) + advAdd)
 
-    // KO score prediction pts
-    if (p.pred_home_score !== null && p.pred_away_score !== null) {
+    // KO score prediction pts — only for played matches
+    if (match.actual_home_score !== null && p.pred_home_score !== null && p.pred_away_score !== null) {
       const ph = p.pred_home_score as number, pa = p.pred_away_score as number
       const ah = match.actual_home_score as number, aa = match.actual_away_score as number
       let koPts = 0

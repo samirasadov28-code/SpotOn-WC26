@@ -410,6 +410,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           const roundPredsRes = await supabase.from('predictions_knockout')
             .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
             .gte('bracket_slot', slotMin).lte('bracket_slot', slotMax)
+          const matchBySlot = new Map(finalMatches.map(m => [m.bracket_slot, m]))
           const koMap = new Map<string, Map<string, { h: number; a: number }>>()
           const roundPairs = new Map<string, Set<string>>()
           for (const p of ((roundPredsRes.data ?? []) as any[])) {
@@ -419,11 +420,14 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               if (!koMap.has(p.user_id)) koMap.set(p.user_id, new Map())
               koMap.get(p.user_id)!.set(matchId, { h: p.pred_home_score, a: p.pred_away_score })
             }
-            // Round pair tracking (for visibility check)
-            if (p.pred_home_team_id && p.pred_away_team_id) {
+            // Round pair tracking: use stored team IDs if available, else fall back to actual
+            // match team IDs (for R32 where pred_home/away_team_id may be null but pair is fixed)
+            const actualMatch = matchBySlot.get(p.bracket_slot)
+            const homeId = p.pred_home_team_id || (p.pred_home_score !== null ? actualMatch?.home_team_id : null)
+            const awayId = p.pred_away_team_id || (p.pred_away_score !== null ? actualMatch?.away_team_id : null)
+            if (homeId && awayId) {
               if (!roundPairs.has(p.user_id)) roundPairs.set(p.user_id, new Set())
-              const key = [p.pred_home_team_id, p.pred_away_team_id].sort().join('|')
-              roundPairs.get(p.user_id)!.add(key)
+              roundPairs.get(p.user_id)!.add([homeId, awayId].sort().join('|'))
             }
           }
           setDayMatches(finalMatches)
@@ -503,6 +507,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
     let dayPts = 0
     for (const m of dayMatches) {
       if (m.actual_home_score === null) continue
+      // Apply the same pair check as the display — don't award points for unpredicted pairs
+      if (isKoDay && m.home_team_id && m.away_team_id) {
+        const pairKey = [m.home_team_id, m.away_team_id].sort().join('|')
+        if (!koRoundPairs.get(entry.userId)?.has(pairKey)) continue
+      }
       const p = userPreds?.get(m.id)
       if (p) dayPts += predPts(p.h, p.a, m.actual_home_score!, m.actual_away_score!)
     }
