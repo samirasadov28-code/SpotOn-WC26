@@ -1943,7 +1943,7 @@ export default function LeaderboardPage() {
                         <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.knockoutPts}</td>
                         <td className="py-3 px-3 text-right">
                           {maxPts[entry.userId] != null
-                            ? <span className={`text-sm font-semibold ${maxPts[entry.userId] > entry.totalPts ? 'text-cyan-600' : 'text-gray-400'}`}>{maxPts[entry.userId]}</span>
+                            ? <span className="text-sm font-semibold text-cyan-600">{maxPts[entry.userId]}</span>
                             : <span className="text-gray-300 text-xs">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
