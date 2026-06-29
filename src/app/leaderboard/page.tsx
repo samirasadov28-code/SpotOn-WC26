@@ -288,6 +288,23 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
     })
   }, [koMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fetch R16+ actual teams + user predictions when non-r32 KO scorecard is opened
+  useEffect(() => {
+    if (!koMode || koMode === 'r32') return
+    fetch('/api/ko-stage-preds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: koMode }),
+    }).then(r => r.json()).then((data: { actual: Record<string,string>; preds: Record<string,Record<string,string>> }) => {
+      setKoActualByPos(new Map(Object.entries(data.actual ?? {})))
+      const userPreds = new Map<string, Map<string,string>>()
+      for (const [userId, posObj] of Object.entries(data.preds ?? {})) {
+        userPreds.set(userId, new Map(Object.entries(posObj)))
+      }
+      setKoUserPredsByPos(userPreds)
+    }).catch(() => {})
+  }, [koMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Centre the selected day button in the scroll container
   useEffect(() => {
     if (!selectedDay || !dayScrollRef.current) return
@@ -684,11 +701,12 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                   <tr className="bg-[#0B1F3A] text-white">
                     <th className="py-2 px-3 text-left sticky left-0 bg-[#0B1F3A] z-10 min-w-[150px] border-r border-white/20">Player</th>
                     {columns.map((pos, i) => {
-                      const team = koMode === 'r32' && i < 24
-                        ? resolveTeam(pos)
-                        : koMode === 'r32' && i >= 24
-                        ? (koActualByPos.has(pos) ? (teamById.get(koActualByPos.get(pos)!) ?? null) : null)
-                        : null
+                      let team: any = null
+                      if (koMode === 'r32' && i < 24) {
+                        team = resolveTeam(pos)
+                      } else if (koActualByPos.has(pos)) {
+                        team = teamById.get(koActualByPos.get(pos)!) ?? null
+                      }
                       const isThird = koMode === 'r32' && i >= 24
                       return (
                         <th key={pos} className={`py-1.5 px-1 text-center font-normal min-w-[64px] ${sectionHead(i)}`}>
@@ -744,12 +762,14 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                           </div>
                         </td>
                         {columns.map((pos, i) => {
-                          if (koMode === 'r32') {
-                            const actualR32Teams = new Set(koActualByPos.values())
+                          {
                             const predId = koUserPredsByPos.get(e.userId)?.get(pos)
                             if (!predId) return <td key={pos} className={`py-2 px-2 text-center text-gray-200 ${sectionBody(i)}`}>—</td>
-                            // ✓ if the team is anywhere in R32 (any position), ✗ if R32 is known and team isn't there
-                            const correct = actualR32Teams.size > 0 ? actualR32Teams.has(predId) : null
+                            const actualTeamId = koActualByPos.get(pos) ?? null
+                            // r32: team just needs to appear anywhere; r16+: compare directly to the actual winner of that column
+                            const correct = koMode === 'r32'
+                              ? (koActualByPos.size > 0 ? new Set(koActualByPos.values()).has(predId) : null)
+                              : actualTeamId != null ? predId === actualTeamId : null
                             const cellBg = correct === true ? 'bg-green-50' : correct === false ? 'bg-red-50' : ''
                             const predTeam = teamById.get(predId)
                             return (
@@ -773,7 +793,6 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                               </td>
                             )
                           }
-                          return <td key={pos} className={`py-2 px-2 text-center text-gray-300 ${sectionBody(i)}`}>—</td>
                         })}
                         <td className={`py-2 px-3 text-center font-bold text-[#0B1F3A] sticky right-0 ${rowBg} border-l-2 border-gray-100`}>
                           {koMode === 'r32' && koPointsMode === 'round'
