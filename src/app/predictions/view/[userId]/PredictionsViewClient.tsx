@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { flagUrl } from '@/lib/flag-map'
 import { getTeamName } from '@/lib/team-name'
@@ -281,6 +281,30 @@ function BracketMatchCard({ slot, simMatchups, koPredsMap, lang }: {
   )
 }
 
+function BracketScroller({ children }: { children: React.ReactNode }) {
+  const topRef = React.useRef<HTMLDivElement>(null)
+  const botRef = React.useRef<HTMLDivElement>(null)
+  const syncing = React.useRef(false)
+  const sync = (from: HTMLDivElement, to: HTMLDivElement) => {
+    if (syncing.current) return
+    syncing.current = true
+    to.scrollLeft = from.scrollLeft
+    syncing.current = false
+  }
+  return (
+    <div className="-mx-4 px-1">
+      <div ref={topRef} className="overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}
+        onScroll={() => botRef.current && sync(topRef.current!, botRef.current)}>
+        <div style={{ minWidth: 700, height: 1 }} />
+      </div>
+      <div ref={botRef} className="overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}
+        onScroll={() => topRef.current && sync(botRef.current!, topRef.current)}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function BracketView({ simMatchups, koPredsMap, lang }: {
   simMatchups: SlotMatchup[]; koPredsMap: Map<number, KOPred>; lang: string
 }) {
@@ -298,7 +322,7 @@ function BracketView({ simMatchups, koPredsMap, lang }: {
   }
 
   return (
-    <div className="overflow-x-auto -mx-4 px-1 pb-3" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
+    <BracketScroller>
       <div className="flex gap-1.5 min-w-max pt-1">
         {/* Left side */}
         <Col slots={[2, 5, 1, 3, 11, 12, 9, 10]} label="R32" />
@@ -323,7 +347,7 @@ function BracketView({ simMatchups, koPredsMap, lang }: {
         <Col slots={[19, 20, 23, 24]} label="R16" />
         <Col slots={[4, 6, 7, 8, 14, 16, 13, 15]} label="R32" />
       </div>
-    </div>
+    </BracketScroller>
   )
 }
 

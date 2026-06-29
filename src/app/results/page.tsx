@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useTranslation } from '@/lib/i18n/LanguageContext'
 import { createClient } from '@/lib/supabase/client'
 import { flagUrl } from '@/lib/flag-map'
@@ -534,14 +534,40 @@ function BracketMatchCard({ match }: { match: MatchRow | undefined }) {
             {team?.fifa_code
               ? <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-5 h-auto rounded-sm flex-shrink-0" />
               : <span className="w-5 h-3.5 bg-gray-100 rounded-sm flex-shrink-0" />}
-            <span className={`flex-1 min-w-0 text-[11px] font-medium truncate ${team ? (wins ? 'text-green-700' : 'text-[#0B1F3A]') : 'text-gray-300'}`}>
-              {team ? (getTeamName(team.fifa_code, lang) ?? team.name) : 'TBD'}
+            <span className={`flex-1 min-w-0 text-[11px] font-bold tracking-wide ${team ? (wins ? 'text-green-700' : 'text-[#0B1F3A]') : 'text-gray-300'}`}>
+              {team ? team.fifa_code : 'TBD'}
             </span>
             <span className={`text-xs font-bold flex-shrink-0 w-4 text-right ${wins ? 'text-green-700' : 'text-[#0B1F3A]'}`}>
               {score !== null ? score : (team ? '–' : '')}
             </span>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function BracketScroller({ children }: { children: React.ReactNode }) {
+  const topRef = React.useRef<HTMLDivElement>(null)
+  const botRef = React.useRef<HTMLDivElement>(null)
+  const syncing = React.useRef(false)
+  const sync = (from: HTMLDivElement, to: HTMLDivElement) => {
+    if (syncing.current) return
+    syncing.current = true
+    to.scrollLeft = from.scrollLeft
+    syncing.current = false
+  }
+  return (
+    <div className="-mx-4 px-4">
+      {/* Top scrollbar mirror */}
+      <div ref={topRef} className="overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}
+        onScroll={() => botRef.current && sync(topRef.current!, botRef.current)}>
+        <div style={{ minWidth: 1100, height: 1 }} />
+      </div>
+      {/* Main content */}
+      <div ref={botRef} className="overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}
+        onScroll={() => topRef.current && sync(botRef.current!, topRef.current)}>
+        {children}
       </div>
     </div>
   )
@@ -573,7 +599,7 @@ function BracketTab({ matches }: { matches: MatchRow[] }) {
   )
 
   return (
-    <div className="overflow-x-auto -mx-4 px-4">
+    <BracketScroller>
       <div className="min-w-[1100px] flex gap-1.5 items-stretch">
         <BracketColumn title={t('ko_r32')} slots={BRACKET_LEFT_R32}  className="flex-1 min-w-[120px]" />
         <BracketColumn title={t('ko_r16')} slots={BRACKET_LEFT_R16}  className="flex-1 min-w-[120px]" />
@@ -593,6 +619,6 @@ function BracketTab({ matches }: { matches: MatchRow[] }) {
         <BracketColumn title={t('ko_r16')} slots={BRACKET_RIGHT_R16} className="flex-1 min-w-[120px]" />
         <BracketColumn title={t('ko_r32')} slots={BRACKET_RIGHT_R32} className="flex-1 min-w-[120px]" />
       </div>
-    </div>
+    </BracketScroller>
   )
 }
