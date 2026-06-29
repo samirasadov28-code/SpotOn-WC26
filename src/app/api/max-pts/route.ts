@@ -102,9 +102,14 @@ export async function POST(req: Request) {
     }
   }
 
-  // Derive actual R32 slot teams from actual group standings
-  const { groupMatchesByGroup, teamsByGroup } = await loadGroupData()
+  // Derive actual R32 slot teams from actual group standings; also load per-user group preds
+  const { groupMatchesByGroup, teamsByGroup, predsByUser } = await loadGroupData()
   const actualR32Pos = computeUserR32Positions(new Map(), groupMatchesByGroup, teamsByGroup, false)
+  // Per-user predicted R32 positions (from their group predictions) — for R32 pair check
+  const userR32PosMap = new Map<string, Map<string, string>>()
+  for (const [userId, userGroupPreds] of predsByUser) {
+    userR32PosMap.set(userId, computeUserR32Positions(userGroupPreds, groupMatchesByGroup, teamsByGroup, true))
+  }
   const actualSlotTeams = new Map<number, { home: string; away: string }>()
   for (const def of R32_DEFS) {
     const h = actualR32Pos.get(def.homePos)
@@ -138,13 +143,19 @@ export async function POST(req: Request) {
 
     let maxAdditional = 0
 
-    // R32: advancement already in basePts; add potential score pts for unplayed matches
-    for (const def of R32_DEFS) {
-      if (playedSlots.has(def.slot)) continue
-      const teams = actualSlotTeams.get(def.slot)
-      if (!teams || eliminatedTeams.has(teams.home) || eliminatedTeams.has(teams.away)) continue
-      const pred = slotPreds.get(def.slot)
-      if (pred?.pred_home_score != null && pred?.pred_away_score != null) maxAdditional += 3
+    // R32: advancement already in basePts; add score pts only when user predicted the correct pair
+    const r32Pos = userR32PosMap.get(score.user_id)
+    if (r32Pos) {
+      for (const def of R32_DEFS) {
+        if (playedSlots.has(def.slot)) continue
+        const teams = actualSlotTeams.get(def.slot)
+        if (!teams || eliminatedTeams.has(teams.home) || eliminatedTeams.has(teams.away)) continue
+        const predHome = r32Pos.get(def.homePos)
+        const predAway = r32Pos.get(def.awayPos)
+        if (predHome !== teams.home || predAway !== teams.away) continue
+        const pred = slotPreds.get(def.slot)
+        if (pred?.pred_home_score != null && pred?.pred_away_score != null) maxAdditional += 3
+      }
     }
 
     // R16+ slots: advancement pts for alive predicted teams + score pts
@@ -175,9 +186,9 @@ export async function POST(req: Request) {
         }
       }
 
-      // Score pts: R16+ has no pair check in scoring rules, so any unplayed slot with a pred earns up to 3
+      // Score pts: only when both predicted teams are alive (pair must be viable)
       const pred = slotPreds.get(slot)
-      if (pred?.pred_home_score != null && pred?.pred_away_score != null) maxAdditional += 3
+      if (hAlive && aAlive && pred?.pred_home_score != null && pred?.pred_away_score != null) maxAdditional += 3
     }
 
     result[score.user_id] = basePts + maxAdditional
