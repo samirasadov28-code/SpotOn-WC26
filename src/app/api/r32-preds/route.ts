@@ -16,7 +16,9 @@ export async function POST() {
   const result: Record<string, Record<string, string>> = {}
 
   for (const [userId, userPreds] of predsByUser) {
-    const posMap = computeUserR32Positions(userPreds, groupMatchesByGroup, teamsByGroup)
+    // strict=true: only score teams from groups the user actually predicted;
+    // don't fall back to actual results (prevents inflated scores)
+    const posMap = computeUserR32Positions(userPreds, groupMatchesByGroup, teamsByGroup, true)
     if (posMap.size > 0) {
       result[userId] = Object.fromEntries(posMap)
     }
