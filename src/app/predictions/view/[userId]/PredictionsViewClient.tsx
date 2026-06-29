@@ -261,20 +261,20 @@ function BracketMatchCard({ slot, simMatchups, koPredsMap, lang }: {
   const pa = pred?.pred_away_score ?? null
   const homeWins = ph !== null && pa !== null && ph > pa
   const awayWins = ph !== null && pa !== null && pa > ph
-  const hName = mu?.home ? (getTeamName(mu.home.fifa_code, lang) ?? mu.home.name) : '?'
-  const aName = mu?.away ? (getTeamName(mu.away.fifa_code, lang) ?? mu.away.name) : '?'
+  const hCode = mu?.home?.fifa_code ?? '?'
+  const aCode = mu?.away?.fifa_code ?? '?'
   const noTeams = !mu?.home && !mu?.away
 
   return (
-    <div className={`border rounded overflow-hidden text-[9px] w-[100px] bg-white shadow-sm ${noTeams ? 'opacity-30 border-dashed' : 'border-gray-200'}`}>
-      <div className={`flex items-center gap-1 px-1.5 py-[3px] border-b border-gray-100 ${homeWins ? 'bg-[#0B1F3A] text-white' : ''}`}>
+    <div className={`border rounded overflow-hidden text-[9px] w-[76px] bg-white shadow-sm ${noTeams ? 'opacity-30 border-dashed' : 'border-gray-200'}`}>
+      <div className={`flex items-center gap-1 px-1 py-[3px] border-b border-gray-100 ${homeWins ? 'bg-[#0B1F3A] text-white' : ''}`}>
         {mu?.home?.fifa_code && <span className="inline-block w-3.5 h-2.5 overflow-hidden rounded-sm shrink-0"><img src={flagUrl(mu.home.fifa_code, 40)} className="w-full h-full object-cover" alt="" /></span>}
-        <span className="truncate flex-1 font-medium leading-tight">{hName}</span>
+        <span className="flex-1 font-bold leading-tight tracking-wide text-[8px]">{hCode}</span>
         {ph !== null && <span className="font-mono font-bold shrink-0">{ph}</span>}
       </div>
-      <div className={`flex items-center gap-1 px-1.5 py-[3px] ${awayWins ? 'bg-[#0B1F3A] text-white' : ''}`}>
+      <div className={`flex items-center gap-1 px-1 py-[3px] ${awayWins ? 'bg-[#0B1F3A] text-white' : ''}`}>
         {mu?.away?.fifa_code && <span className="inline-block w-3.5 h-2.5 overflow-hidden rounded-sm shrink-0"><img src={flagUrl(mu.away.fifa_code, 40)} className="w-full h-full object-cover" alt="" /></span>}
-        <span className="truncate flex-1 font-medium leading-tight">{aName}</span>
+        <span className="flex-1 font-bold leading-tight tracking-wide text-[8px]">{aCode}</span>
         {pa !== null && <span className="font-mono font-bold shrink-0">{pa}</span>}
       </div>
     </div>
@@ -286,7 +286,7 @@ function BracketView({ simMatchups, koPredsMap, lang }: {
 }) {
   function Col({ slots, label }: { slots: number[]; label: string }) {
     return (
-      <div className="flex flex-col shrink-0 w-[104px]">
+      <div className="flex flex-col shrink-0 w-[80px]">
         <div className="text-[8px] text-gray-400 font-bold uppercase tracking-wider text-center mb-1">{label}</div>
         <div className="flex flex-col justify-evenly" style={{ height: BRACKET_H }}>
           {slots.map(s => (
@@ -298,7 +298,7 @@ function BracketView({ simMatchups, koPredsMap, lang }: {
   }
 
   return (
-    <div className="overflow-x-auto -mx-4 px-1 pb-2" style={{ scrollbarWidth: 'none' }}>
+    <div className="overflow-x-auto -mx-4 px-1 pb-3" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
       <div className="flex gap-1.5 min-w-max pt-1">
         {/* Left side */}
         <Col slots={[2, 5, 1, 3, 11, 12, 9, 10]} label="R32" />
@@ -307,7 +307,7 @@ function BracketView({ simMatchups, koPredsMap, lang }: {
         <Col slots={[29]} label="SF" />
 
         {/* Center: Final + 3rd place */}
-        <div className="flex flex-col shrink-0 w-[104px]">
+        <div className="flex flex-col shrink-0 w-[80px]">
           <div className="text-[8px] text-gray-400 font-bold uppercase tracking-wider text-center mb-1">Final</div>
           <div className="flex flex-col justify-center items-center gap-2" style={{ height: BRACKET_H }}>
             <div className="text-[8px] font-bold text-yellow-700 text-center">🏆 FINAL</div>
