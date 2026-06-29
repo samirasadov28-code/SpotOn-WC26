@@ -204,7 +204,7 @@ export async function rescoreKOPts() {
   // Map: userId -> Map<position, teamId>  e.g. '1F' -> teamId
   const userR32PosMap = new Map<string, Map<string, string>>()
   for (const [userId, userGroupPreds] of predsByUser) {
-    userR32PosMap.set(userId, computeUserR32Positions(userGroupPreds, groupMatchesByGroup, teamsByGroup))
+    userR32PosMap.set(userId, computeUserR32Positions(userGroupPreds, groupMatchesByGroup, teamsByGroup, true))
   }
 
   // Collect all actual R32 teams

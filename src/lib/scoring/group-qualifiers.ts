@@ -27,12 +27,15 @@ interface Stat { teamId: string; pts: number; gd: number; gf: number }
 function simulateGroup(
   matches: any[],
   teams: any[],
-  userPreds: Map<string, { h: number; a: number }>
+  userPreds: Map<string, { h: number; a: number }>,
+  strictUserPreds = false
 ): Stat[] {
   const stats = new Map<string, Stat>()
   for (const t of teams) stats.set(t.id, { teamId: t.id, pts: 0, gd: 0, gf: 0 })
   for (const m of matches) {
     const pred = userPreds.get(m.id)
+    // In strict mode, skip matches the user didn't predict (don't fall back to actual results)
+    if (strictUserPreds && pred === undefined) continue
     const h = pred !== undefined ? pred.h : m.actual_home_score
     const a = pred !== undefined ? pred.a : m.actual_away_score
     if (h === null || h === undefined || a === null || a === undefined) continue
@@ -47,20 +50,27 @@ function simulateGroup(
   return [...stats.values()].sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
 }
 
-/** Given a user's group predictions, compute their predicted R32 position → teamId map */
+/** Given a user's group predictions, compute their predicted R32 position → teamId map.
+ *  strictUserPreds=true (for scoring): skip groups where user made no predictions,
+ *  and don't fill missing matches with actual results. */
 export function computeUserR32Positions(
   userGroupPreds: Map<string, { h: number; a: number }>,
   groupMatchesByGroup: Map<string, any[]>,
-  teamsByGroup: Map<string, any[]>
+  teamsByGroup: Map<string, any[]>,
+  strictUserPreds = false
 ): Map<string, string> {
   const posMap = new Map<string, string>()
   const thirds: Array<Stat & { group: string }> = []
 
   for (const group of GROUPS) {
+    const groupMatches = groupMatchesByGroup.get(group) ?? []
+    // In strict mode, skip groups the user made no predictions for
+    if (strictUserPreds && !groupMatches.some(m => userGroupPreds.has(m.id))) continue
     const standings = simulateGroup(
-      groupMatchesByGroup.get(group) ?? [],
+      groupMatches,
       teamsByGroup.get(group) ?? [],
-      userGroupPreds
+      userGroupPreds,
+      strictUserPreds
     )
     if (standings[0]) posMap.set(`1${group}`, standings[0].teamId)
     if (standings[1]) posMap.set(`2${group}`, standings[1].teamId)
