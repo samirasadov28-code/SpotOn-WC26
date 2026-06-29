@@ -755,8 +755,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                   {sortedEntries.map((e, idx) => {
                     const isMe = e.userId === currentUserId
                     const rowBg = isMe ? 'bg-blue-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'
+                    const top1PtsKo = sortedEntries[0]?.totalPts ?? 0
+                    const eMax = maxPts[e.userId]
+                    const cannotWinKo = !isMe && (eMax === undefined || eMax === 0 || eMax < top1PtsKo)
                     return (
-                      <tr key={e.userId} className={`border-t border-gray-100 ${rowBg}`}>
+                      <tr key={e.userId} className={`border-t border-gray-100 ${rowBg} ${cannotWinKo ? 'opacity-50' : ''}`}>
                         <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg} border-r border-gray-100`}>
                           <div className="flex items-center gap-1.5">
                             <span className="w-5 text-center text-xs font-bold text-gray-400 shrink-0">
@@ -923,8 +926,11 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                   const userPreds = predsMap.get(entry.userId)
                   const rowBg = isMe ? 'bg-blue-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'
                   const positions = positionsByUser[entry.userId] as PositionRow | undefined
+                  const top1PtsDv = dayRanked[0]?.entry.totalPts ?? 0
+                  const dvMax = maxPts[entry.userId]
+                  const cannotWinDv = !isMe && (dvMax === undefined || dvMax === 0 || dvMax < top1PtsDv)
                   return (
-                    <tr key={entry.userId} className={`border-t border-gray-100 ${rowBg}`}>
+                    <tr key={entry.userId} className={`border-t border-gray-100 ${rowBg} ${cannotWinDv ? 'opacity-50' : ''}`}>
                       <td className={`py-2 px-3 sticky left-0 z-10 ${rowBg}`}>
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="shrink-0 w-6 text-center font-bold text-sm">{rankIcon(sortMode === 'total' ? totalRank : dayRank)}</span>
@@ -1944,7 +1950,8 @@ export default function LeaderboardPage() {
                   const bd = breakdowns[entry.userId]
                   const positions = positionsByUser[entry.userId] as PositionRow | undefined
                   const top1Pts = visibleEntries[0]?.totalPts ?? 0
-                  const cannotWin = !isMe && maxPts[entry.userId] !== undefined && maxPts[entry.userId] < top1Pts
+                  const userMax = maxPts[entry.userId]
+                  const cannotWin = !isMe && (userMax === undefined || userMax === 0 || userMax < top1Pts)
 
                   return (
                     <>
