@@ -26,19 +26,15 @@ function slotStage(slot: number): string {
 }
 
 /**
- * Build a user's complete predicted bracket by cascading their score predictions
- * through the actual R32 seeds. This correctly reflects who they predicted to
- * advance at each stage, regardless of their group-stage predictions.
+ * Cascade user's score predictions through actual R32 seeds to derive which teams
+ * they predicted at each R16+ slot. Used as fallback when pred_home_team_id is null.
  */
 function buildUserBracket(
   actualSlotTeams: Map<number, { home: string; away: string }>,
   slotPreds: Map<number, any>
 ): Map<number, { home: string | null; away: string | null }> {
   const bt = new Map<number, { home: string | null; away: string | null }>()
-
-  for (const [slot, teams] of actualSlotTeams) {
-    bt.set(slot, { home: teams.home, away: teams.away })
-  }
+  for (const [slot, teams] of actualSlotTeams) bt.set(slot, { home: teams.home, away: teams.away })
 
   const ALL_SLOTS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,
                      17,18,19,20,21,22,23,24,25,26,27,28,29,30,32]
@@ -48,8 +44,7 @@ function buildUserBracket(
     const pred = slotPreds.get(slot)
     if (!pred || pred.pred_home_score == null || pred.pred_away_score == null) continue
 
-    const ph = pred.pred_home_score as number
-    const pa = pred.pred_away_score as number
+    const ph = pred.pred_home_score as number, pa = pred.pred_away_score as number
     const winner = ph >= pa ? teams.home : teams.away
     const loser  = winner === teams.home ? teams.away : teams.home
 
@@ -57,18 +52,14 @@ function buildUserBracket(
     if (adv) {
       if (!bt.has(adv.nextSlot)) bt.set(adv.nextSlot, { home: null, away: null })
       const next = bt.get(adv.nextSlot)!
-      if (adv.side === 'home') next.home = winner
-      else next.away = winner
+      if (adv.side === 'home') next.home = winner; else next.away = winner
     }
-
     if (slot === 29 || slot === 30) {
       if (!bt.has(31)) bt.set(31, { home: null, away: null })
       const tp = bt.get(31)!
-      if (slot === 29) tp.home = loser
-      else tp.away = loser
+      if (slot === 29) tp.home = loser; else tp.away = loser
     }
   }
-
   return bt
 }
 
@@ -84,10 +75,8 @@ export async function POST(req: Request) {
   )
 
   const { data: koMatches } = await supabase
-    .from('matches')
-    .select('bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score')
-    .eq('stage', 'knockout')
-    .order('bracket_slot')
+    .from('matches').select('bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score')
+    .eq('stage', 'knockout').order('bracket_slot')
 
   const eliminatedTeams = new Set<string>()
   const playedSlots = new Set<number>()
@@ -96,31 +85,30 @@ export async function POST(req: Request) {
     if (m.actual_home_score !== null && m.home_team_id && m.away_team_id) {
       playedSlots.add(m.bracket_slot as number)
       eliminatedTeams.add(
-        (m.actual_home_score as number) > (m.actual_away_score as number)
-          ? m.away_team_id : m.home_team_id
+        (m.actual_home_score as number) > (m.actual_away_score as number) ? m.away_team_id : m.home_team_id
       )
     }
   }
 
-  // Derive actual R32 slot teams from actual group standings; also load per-user group preds
+  // Actual R32 seeds (from real group standings)
   const { groupMatchesByGroup, teamsByGroup, predsByUser } = await loadGroupData()
   const actualR32Pos = computeUserR32Positions(new Map(), groupMatchesByGroup, teamsByGroup, false)
-  // Per-user predicted R32 positions (from their group predictions) — for R32 pair check
-  const userR32PosMap = new Map<string, Map<string, string>>()
-  for (const [userId, userGroupPreds] of predsByUser) {
-    userR32PosMap.set(userId, computeUserR32Positions(userGroupPreds, groupMatchesByGroup, teamsByGroup, true))
-  }
   const actualSlotTeams = new Map<number, { home: string; away: string }>()
   for (const def of R32_DEFS) {
-    const h = actualR32Pos.get(def.homePos)
-    const a = actualR32Pos.get(def.awayPos)
+    const h = actualR32Pos.get(def.homePos), a = actualR32Pos.get(def.awayPos)
     if (h && a) actualSlotTeams.set(def.slot, { home: h, away: a })
   }
 
-  // KO score predictions only (team IDs from pred_home_team_id are stale — we re-derive below)
+  // Per-user R32 predicted positions (for R32 pair check)
+  const userR32PosMap = new Map<string, Map<string, string>>()
+  for (const [userId, groupPreds] of predsByUser) {
+    userR32PosMap.set(userId, computeUserR32Positions(groupPreds, groupMatchesByGroup, teamsByGroup, true))
+  }
+
+  // All KO predictions including stored team IDs (used directly for R16+)
   const { data: predsData } = await supabase
     .from('predictions_knockout')
-    .select('user_id, bracket_slot, pred_home_score, pred_away_score')
+    .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
 
   const { data: scores } = await supabase.from('scores').select('user_id, total_pts')
 
@@ -135,60 +123,63 @@ export async function POST(req: Request) {
   for (const score of (scores ?? []) as any[]) {
     const basePts: number = score.total_pts ?? 0
     const slotPreds = userKoPreds.get(score.user_id)
-
     if (!slotPreds) { result[score.user_id] = basePts; continue }
 
-    // Re-derive user's bracket using actual R32 seeds + their score predictions
-    const userBracket = buildUserBracket(actualSlotTeams, slotPreds)
+    // Cascade fallback: derive team IDs for slots where pred_home_team_id is null
+    const cascade = buildUserBracket(actualSlotTeams, slotPreds)
 
     let maxAdditional = 0
 
-    // R32: advancement already in basePts; add score pts only when user predicted the correct pair
+    // R32 score pts: only when user's predicted pair matches the actual pair
     const r32Pos = userR32PosMap.get(score.user_id)
     if (r32Pos) {
       for (const def of R32_DEFS) {
         if (playedSlots.has(def.slot)) continue
-        const teams = actualSlotTeams.get(def.slot)
-        if (!teams || eliminatedTeams.has(teams.home) || eliminatedTeams.has(teams.away)) continue
-        const predHome = r32Pos.get(def.homePos)
-        const predAway = r32Pos.get(def.awayPos)
-        if (predHome !== teams.home || predAway !== teams.away) continue
+        const actual = actualSlotTeams.get(def.slot)
+        if (!actual || eliminatedTeams.has(actual.home) || eliminatedTeams.has(actual.away)) continue
+        if (r32Pos.get(def.homePos) !== actual.home || r32Pos.get(def.awayPos) !== actual.away) continue
         const pred = slotPreds.get(def.slot)
         if (pred?.pred_home_score != null && pred?.pred_away_score != null) maxAdditional += 3
       }
     }
 
-    // R16+ slots: advancement pts for alive predicted teams + score pts
+    // R16+ advancement pts
+    // Strategy: use stored pred_home_team_id / pred_away_team_id (user's explicit picks).
+    // Fall back to the cascade-derived team when stored ID is null (handles cases where
+    // predictions were saved before groups were complete).
+    // Score pts only when both predicted teams are alive — keeps max near ~250.
     const R16_PLUS = [17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]
+
     for (const slot of R16_PLUS) {
       if (playedSlots.has(slot)) continue
+      const pred = slotPreds.get(slot)
+      if (!pred) continue
 
       const stage = slotStage(slot)
       const stagePts = STAGE_POINTS[stage] ?? 0
+      const fallback = cascade.get(slot)
 
-      const entry = userBracket.get(slot)
-      const homeTeam = entry?.home ?? null
-      const awayTeam = entry?.away ?? null
+      // Primary: stored team ID; fallback: cascade-derived
+      const homeTeam: string | null = pred.pred_home_team_id ?? fallback?.home ?? null
+      const awayTeam: string | null = pred.pred_away_team_id ?? fallback?.away ?? null
 
       const hAlive = homeTeam != null && !eliminatedTeams.has(homeTeam)
-      const aAlive = awayTeam != null && !eliminatedTeams.has(awayTeam)
+      const aAlive = awayTeam != null && awayTeam !== homeTeam && !eliminatedTeams.has(awayTeam)
 
       if (hAlive) maxAdditional += stagePts
       if (aAlive) maxAdditional += stagePts
 
-      // Final winner bonus
+      // Final: winner bonus
       if (slot === 32) {
-        const pred = slotPreds.get(slot)
-        if (pred?.pred_home_score != null && pred?.pred_away_score != null) {
-          const winner = (pred.pred_home_score as number) >= (pred.pred_away_score as number)
-            ? homeTeam : awayTeam
-          if (winner && !eliminatedTeams.has(winner)) maxAdditional += STAGE_POINTS['winner'] ?? 16
-        }
+        const ph = pred.pred_home_score ?? 0, pa = pred.pred_away_score ?? 0
+        const predWinner = ph >= pa ? homeTeam : awayTeam
+        if (predWinner && !eliminatedTeams.has(predWinner)) maxAdditional += STAGE_POINTS['winner'] ?? 16
       }
 
-      // Score pts: only when both predicted teams are alive (pair must be viable)
-      const pred = slotPreds.get(slot)
-      if (hAlive && aAlive && pred?.pred_home_score != null && pred?.pred_away_score != null) maxAdditional += 3
+      // Score pts: only when both predicted teams are alive (keeps total near ~250)
+      if (hAlive && aAlive && pred.pred_home_score != null && pred.pred_away_score != null) {
+        maxAdditional += 3
+      }
     }
 
     result[score.user_id] = basePts + maxAdditional

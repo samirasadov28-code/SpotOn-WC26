@@ -1581,6 +1581,11 @@ export default function LeaderboardPage() {
       }
     } catch { }
 
+    try {
+      const mpRes = await fetch('/api/max-pts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      if (mpRes.ok) setMaxPts(await mpRes.json())
+    } catch { }
+
     const built: Omit<LeaderboardEntry, 'rank'>[] = users.map(u => {
       const s = scores.get(u.id)
       return {
@@ -1621,14 +1626,6 @@ export default function LeaderboardPage() {
       .then(({ data }: any) => setLeagueMembers(new Set((data ?? []).map((r: any) => r.user_id))))
   }, [selectedLeagueId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch max available points
-  useEffect(() => {
-    fetch('/api/max-pts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ leagueId: selectedLeagueId === 'global' ? null : selectedLeagueId }),
-    }).then(r => r.json()).then(data => setMaxPts(data ?? {})).catch(() => {})
-  }, [selectedLeagueId])
 
   // Fetch bracket simulation results (champion + positions per user)
   useEffect(() => {
