@@ -115,31 +115,23 @@ export async function rescoreKOPts() {
     userR32PosMap.set(userId, computeUserR32Positions(userGroupPreds, groupMatchesByGroup, teamsByGroup))
   }
 
-  // Build actual R32 position → teamId from matches table using R32_DEFS
-  const actualPosToTeam = new Map<string, string>()
+  // Collect all actual R32 teams
+  const actualR32Teams = new Set<string>()
   for (const def of R32_DEFS) {
     const m = matchBySlot.get(def.slot)
     if (!m) continue
-    if (m.home_team_id) actualPosToTeam.set(def.homePos, m.home_team_id)
-    if (m.away_team_id) actualPosToTeam.set(def.awayPos, m.away_team_id)
+    if (m.home_team_id) actualR32Teams.add(m.home_team_id)
+    if (m.away_team_id) actualR32Teams.add(m.away_team_id)
   }
 
   const userAdvPts = new Map<string, number>()
   const userKoPts = new Map<string, number>()
 
-  // Collect all user IDs from predictions
-  const allPredUserIds = new Set<string>((preds ?? []).map((p: any) => p.user_id as string))
-  // Also include users who only have group preds (no KO preds yet)
-  for (const uid of userR32PosMap.keys()) allPredUserIds.add(uid)
-
-  // R32 advancement pts: 1pt per correctly predicted team position
+  // R32 advancement pts: 1pt per team user predicted that actually appears in R32 (any position)
   for (const [userId, posMap] of userR32PosMap) {
     let advAdd = 0
-    for (const def of R32_DEFS) {
-      const m = matchBySlot.get(def.slot)
-      if (!m) continue // teams not confirmed yet
-      if (m.home_team_id && posMap.get(def.homePos) === m.home_team_id) advAdd += STAGE_POINTS['r32'] ?? 1
-      if (m.away_team_id && posMap.get(def.awayPos) === m.away_team_id) advAdd += STAGE_POINTS['r32'] ?? 1
+    for (const teamId of posMap.values()) {
+      if (actualR32Teams.has(teamId)) advAdd += STAGE_POINTS['r32'] ?? 1
     }
     if (advAdd > 0) userAdvPts.set(userId, (userAdvPts.get(userId) ?? 0) + advAdd)
   }

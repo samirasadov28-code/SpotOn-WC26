@@ -195,7 +195,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const [showGroupStandings, setShowGroupStandings] = useState(false)
   const [koMode, setKoMode] = useState<string | null>(null) // 'r32' | 'r16' | 'qf' | 'sf' | 'third' | 'final' | null
   const [koRoundPairs, setKoRoundPairs] = useState<Map<string, Set<string>>>(new Map())
-  const [koPointsMode, setKoPointsMode] = useState<'total'|'round'>('total')
+  const [koPointsMode, setKoPointsMode] = useState<'total'|'round'>('round')
   const [koActualByPos, setKoActualByPos] = useState<Map<string,string>>(new Map())
   const [koUserPredsByPos, setKoUserPredsByPos] = useState<Map<string,Map<string,string>>>(new Map())
 
@@ -396,9 +396,21 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           }
           // Fetch ALL round slot predictions (for pair check + today's scores)
           const slotToId = new Map(finalMatches.map(m => [m.bracket_slot, m.id]))
-          const roundPredsRes = await supabase.from('predictions_knockout')
-            .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
-            .gte('bracket_slot', slotMin).lte('bracket_slot', slotMax)
+          const [roundPredsRes, r32PredsData] = await Promise.all([
+            supabase.from('predictions_knockout')
+              .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
+              .gte('bracket_slot', slotMin).lte('bracket_slot', slotMax),
+            stage === 'r32'
+              ? fetch('/api/r32-preds', { method: 'POST' }).then(r => r.json()).catch(() => ({}))
+              : Promise.resolve(null),
+          ])
+          // R32 position defs (slot → homePos, awayPos)
+          const R32_POS: Record<number, { hp: string; ap: string }> = {
+            1:{hp:'2A',ap:'2B'}, 2:{hp:'1E',ap:'3rd1'}, 3:{hp:'1F',ap:'2C'}, 4:{hp:'1C',ap:'2F'},
+            5:{hp:'1I',ap:'3rd2'}, 6:{hp:'2E',ap:'2I'}, 7:{hp:'1A',ap:'3rd3'}, 8:{hp:'1L',ap:'3rd4'},
+            9:{hp:'1D',ap:'3rd5'}, 10:{hp:'1G',ap:'3rd6'}, 11:{hp:'2K',ap:'2L'}, 12:{hp:'1H',ap:'2J'},
+            13:{hp:'1B',ap:'3rd7'}, 14:{hp:'1J',ap:'2H'}, 15:{hp:'1K',ap:'3rd8'}, 16:{hp:'2D',ap:'2G'},
+          }
           const matchBySlot = new Map(finalMatches.map(m => [m.bracket_slot, m]))
           const koMap = new Map<string, Map<string, { h: number; a: number }>>()
           const roundPairs = new Map<string, Set<string>>()
@@ -409,11 +421,20 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               if (!koMap.has(p.user_id)) koMap.set(p.user_id, new Map())
               koMap.get(p.user_id)!.set(matchId, { h: p.pred_home_score, a: p.pred_away_score })
             }
-            // Round pair tracking: use stored team IDs if available, else fall back to actual
-            // match team IDs (for R32 where pred_home/away_team_id may be null but pair is fixed)
-            const actualMatch = matchBySlot.get(p.bracket_slot)
-            const homeId = p.pred_home_team_id || (p.pred_home_score !== null ? actualMatch?.home_team_id : null)
-            const awayId = p.pred_away_team_id || (p.pred_away_score !== null ? actualMatch?.away_team_id : null)
+            // Pair check: for R32 use computed group-qualifier predictions; for R16+ use stored team IDs
+            let homeId: string | null = null, awayId: string | null = null
+            if (stage === 'r32' && r32PredsData) {
+              const def = R32_POS[p.bracket_slot as number]
+              const userPos = r32PredsData[p.user_id] as Record<string,string> | undefined
+              if (def && userPos) { homeId = userPos[def.hp] ?? null; awayId = userPos[def.ap] ?? null }
+            } else {
+              const actualMatch = matchBySlot.get(p.bracket_slot)
+              homeId = p.pred_home_team_id || null
+              awayId = p.pred_away_team_id || null
+              // For R16+ without stored IDs, fall back to actual (teams are confirmed before play)
+              if (!homeId && actualMatch?.home_team_id) homeId = actualMatch.home_team_id
+              if (!awayId && actualMatch?.away_team_id) awayId = actualMatch.away_team_id
+            }
             if (homeId && awayId) {
               if (!roundPairs.has(p.user_id)) roundPairs.set(p.user_id, new Set())
               roundPairs.get(p.user_id)!.add([homeId, awayId].sort().join('|'))
@@ -613,9 +634,10 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         const calcR32Pts = (userId: string) => {
           const userPreds = koUserPredsByPos.get(userId)
           if (!userPreds || koActualByPos.size === 0) return 0
+          const actualTeams = new Set(koActualByPos.values())
           let pts = 0
-          for (const [pos, actualId] of koActualByPos) {
-            if (userPreds.get(pos) === actualId) pts++
+          for (const predId of userPreds.values()) {
+            if (actualTeams.has(predId)) pts++
           }
           return pts
         }
@@ -625,7 +647,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           if (koMode === 'r32' && koPointsMode === 'round') {
             return calcR32Pts(b.userId) - calcR32Pts(a.userId) || b.totalPts - a.totalPts
           }
-          return b.advancementPts - a.advancementPts || b.totalPts - a.totalPts
+          return b.totalPts - a.totalPts
         })
         const koScrollRef = { current: null as HTMLDivElement | null }
         const koMirrorRef = { current: null as HTMLDivElement | null }
@@ -783,7 +805,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                         <td className={`py-2 px-3 text-center font-bold text-[#0B1F3A] sticky right-0 ${rowBg} border-l-2 border-gray-100`}>
                           {koMode === 'r32' && koPointsMode === 'round'
                             ? calcR32Pts(e.userId)
-                            : e.advancementPts}
+                            : e.totalPts}
                         </td>
                       </tr>
                     )
