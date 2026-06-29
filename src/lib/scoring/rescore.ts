@@ -3,6 +3,75 @@ import { scoreGroupMatch } from './group'
 import { STAGE_POINTS } from './advancement'
 import { loadGroupData, computeUserR32Positions, R32_DEFS } from './group-qualifiers'
 
+const BRACKET_ADVANCE: Record<number, { nextSlot: number; side: 'home' | 'away' }> = {
+  1:  { nextSlot: 17, side: 'home' }, 2:  { nextSlot: 17, side: 'away' },
+  3:  { nextSlot: 18, side: 'home' }, 4:  { nextSlot: 18, side: 'away' },
+  5:  { nextSlot: 19, side: 'home' }, 6:  { nextSlot: 19, side: 'away' },
+  7:  { nextSlot: 20, side: 'home' }, 8:  { nextSlot: 20, side: 'away' },
+  9:  { nextSlot: 21, side: 'home' }, 10: { nextSlot: 21, side: 'away' },
+  11: { nextSlot: 22, side: 'home' }, 12: { nextSlot: 22, side: 'away' },
+  13: { nextSlot: 23, side: 'home' }, 14: { nextSlot: 23, side: 'away' },
+  15: { nextSlot: 24, side: 'home' }, 16: { nextSlot: 24, side: 'away' },
+  17: { nextSlot: 25, side: 'home' }, 18: { nextSlot: 25, side: 'away' },
+  19: { nextSlot: 26, side: 'home' }, 20: { nextSlot: 26, side: 'away' },
+  21: { nextSlot: 27, side: 'home' }, 22: { nextSlot: 27, side: 'away' },
+  23: { nextSlot: 28, side: 'home' }, 24: { nextSlot: 28, side: 'away' },
+  25: { nextSlot: 29, side: 'home' }, 26: { nextSlot: 29, side: 'away' },
+  27: { nextSlot: 30, side: 'home' }, 28: { nextSlot: 30, side: 'away' },
+  29: { nextSlot: 32, side: 'home' },
+  30: { nextSlot: 32, side: 'away' },
+}
+
+/**
+ * Reads all played KO matches and propagates each winner to the next bracket slot.
+ * Safe to run repeatedly — always overwrites from actual results.
+ */
+export async function syncKOBracket() {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { data: played } = await supabase
+    .from('matches')
+    .select('bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score, actual_winner_id')
+    .eq('stage', 'knockout')
+    .not('actual_home_score', 'is', null) as any
+
+  for (const m of (played ?? []) as any[]) {
+    const slot = m.bracket_slot as number
+    const adv = BRACKET_ADVANCE[slot]
+    if (!adv) continue
+
+    // Determine winner
+    let winnerId: string | null = m.actual_winner_id ?? null
+    if (!winnerId) {
+      const ah = m.actual_home_score as number, aa = m.actual_away_score as number
+      if (ah > aa) winnerId = m.home_team_id
+      else if (aa > ah) winnerId = m.away_team_id
+    }
+    if (!winnerId) continue
+
+    const field = adv.side === 'home' ? 'home_team_id' : 'away_team_id'
+    await supabase.from('matches')
+      .update({ [field]: winnerId })
+      .eq('stage', 'knockout')
+      .eq('bracket_slot', adv.nextSlot)
+
+    // SF losers go to 3rd-place match
+    if (slot === 29 || slot === 30) {
+      const loserId = winnerId === m.home_team_id ? m.away_team_id : m.home_team_id
+      if (loserId) {
+        const loserField = slot === 29 ? 'home_team_id' : 'away_team_id'
+        await supabase.from('matches')
+          .update({ [loserField]: loserId })
+          .eq('stage', 'knockout')
+          .eq('bracket_slot', 31)
+      }
+    }
+  }
+}
+
 function slotStage(slot: number): string {
   if (slot <= 16) return 'r32'
   if (slot <= 24) return 'r16'
