@@ -1926,8 +1926,8 @@ export default function LeaderboardPage() {
                   <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_group_col')}</th>
                   <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_advance_col')}</th>
                   <th className="py-3 px-3 text-right hidden sm:table-cell">{t('lb_playoff_col')}</th>
+                  <th className="py-3 px-3 text-right text-cyan-300 text-xs" title="Max points still available if surviving predicted teams win their remaining matches">Max Avail</th>
                   <th className="py-3 px-3 text-right font-bold">{t('lb_total')}</th>
-                  <th className="py-3 px-3 text-right text-cyan-300 text-xs hidden sm:table-cell" title="Max points still available if surviving predicted teams win their remaining matches">Max Avail</th>
                   <th className="py-3 px-3 text-left text-yellow-300 text-xs hidden md:table-cell min-w-[110px]">
                     <div className="flex flex-col gap-1">
                       <span>🏆 Predicted</span>
@@ -1968,12 +1968,12 @@ export default function LeaderboardPage() {
                         <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.groupPts}</td>
                         <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.advancementPts}</td>
                         <td className="py-3 px-3 text-right text-gray-600 hidden sm:table-cell">{entry.knockoutPts}</td>
-                        <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
-                        <td className="py-3 px-3 text-right hidden sm:table-cell">
+                        <td className="py-3 px-3 text-right">
                           {maxPts[entry.userId] != null
                             ? <span className={`text-sm font-semibold ${maxPts[entry.userId] > entry.totalPts ? 'text-cyan-600' : 'text-gray-400'}`}>{maxPts[entry.userId]}</span>
                             : <span className="text-gray-300 text-xs">—</span>}
                         </td>
+                        <td className="py-3 px-3 text-right font-bold text-green-600 text-base">{entry.totalPts}</td>
                         <td className="py-3 px-2 hidden md:table-cell">
                           <PredictedFinishCell positions={positions} lang={lang} mode={finishMode} />
                         </td>
