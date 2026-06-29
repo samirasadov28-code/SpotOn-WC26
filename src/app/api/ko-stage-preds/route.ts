@@ -1,122 +1,170 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { loadGroupData, computeUserR32Positions, R32_DEFS } from '@/lib/scoring/group-qualifiers'
-import { buildUserBracket, BRACKET_ADVANCE_INV } from '@/lib/scoring/bracket-cascade'
+import { simulateAllMatchups } from '@/lib/bracket-sim'
+import type { MatchInfo, TeamInfo } from '@/lib/bracket-sim'
 
 /**
- * Returns actual advancing teams + per-user predictions for a KO stage view.
+ * Returns actual advancing teams + per-user predicted advancing teams for a KO stage.
  *
  * stage: 'r16' | 'qf' | 'sf' | 'final' | 'third'
  *
- * Response:
- *   actual: { [colPos]: teamId }      e.g. "W M73" → actual winner team ID
- *   preds:  { [userId]: { [colPos]: teamId } }
+ * For each stage, columns represent "winner of prev-round slot X":
+ *   r16:   columns W M73–W M88  (winners of R32 slots 1–16)
+ *   qf:    columns W M89–W M96  (winners of R16 slots 17–24)
+ *   sf:    columns W M97–W M100 (winners of QF slots 25–28)
+ *   final: columns W M101, W M102 (winners of SF slots 29–30)
+ *   third: columns L M101, L M102 (losers of SF slots 29–30)
  *
- * colPos format: "W M{prevSlot+72}" for winners, "L M{slot+72}" for 3rd-place losers
+ * actual: { [colPos]: teamId }       — actual winner/loser of that slot
+ * preds:  { [userId]: { [colPos]: teamId } } — user's predicted winner/loser
+ * roundPts: { [userId]: number }     — advancement pts earned in this stage
  */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const stage: string = body.stage ?? 'r16'
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({}, { status: 500 })
+    return NextResponse.json({ actual: {}, preds: {}, roundPts: {} }, { status: 500 })
   }
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
   )
 
-  // Stage config: prevSlots = matches whose winners are shown as columns
-  //               currSlots = prediction slots that store team IDs
-  const STAGE_CONFIG: Record<string, { prevSlots: [number,number]; currSlots: [number,number]; isThird?: true }> = {
-    r16:   { prevSlots: [1,  16], currSlots: [17, 24] },
-    qf:    { prevSlots: [17, 24], currSlots: [25, 28] },
-    sf:    { prevSlots: [25, 28], currSlots: [29, 30] },
-    final: { prevSlots: [29, 30], currSlots: [32, 32] },
-    third: { prevSlots: [29, 30], currSlots: [31, 31], isThird: true },
+  // prevSlots: the round whose WINNERS become the columns for this view
+  const STAGE_PREV: Record<string, [number, number]> = {
+    r16: [1, 16], qf: [17, 24], sf: [25, 28], final: [29, 30], third: [29, 30],
   }
-  const cfg = STAGE_CONFIG[stage]
-  if (!cfg) return NextResponse.json({ actual: {}, preds: {} })
+  const prevRange = STAGE_PREV[stage]
+  if (!prevRange) return NextResponse.json({ actual: {}, preds: {}, roundPts: {} })
 
-  // Fetch all KO matches for actual results + team IDs
-  const { data: koMatches } = await supabase
-    .from('matches')
-    .select('bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score, actual_winner_id')
-    .eq('stage', 'knockout')
-    .order('bracket_slot')
+  const isThird = stage === 'third'
+  const prefix = isThird ? 'L' : 'W'
 
-  const matchBySlot = new Map<number, any>()
-  for (const m of (koMatches ?? []) as any[]) matchBySlot.set(m.bracket_slot as number, m)
+  // Fetch all matches and teams
+  const [matchRes, teamRes] = await Promise.all([
+    supabase.from('matches').select('id, stage, group_letter, bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score, actual_winner_id'),
+    supabase.from('teams').select('id, name, fifa_code, group_letter, flag_emoji'),
+  ])
 
-  // Build actual column map
+  const allMatchRows = (matchRes.data ?? []) as any[]
+  const allTeams: TeamInfo[] = (teamRes.data ?? []).map((t: any) => ({
+    id: t.id, name: t.name, fifa_code: t.fifa_code, group_letter: t.group_letter, flag_emoji: t.flag_emoji,
+  }))
+  const allMatches: MatchInfo[] = allMatchRows.map((m: any) => ({
+    id: m.id,
+    group_letter: m.group_letter,
+    home_team_id: m.home_team_id,
+    away_team_id: m.away_team_id,
+  }))
+
+  // Build actual column map from played matches
   const actual: Record<string, string> = {}
-  for (let slot = cfg.prevSlots[0]; slot <= cfg.prevSlots[1]; slot++) {
-    const m = matchBySlot.get(slot)
-    if (!m || m.actual_home_score === null) continue
-    let winnerId: string | null = m.actual_winner_id ?? null
+  for (const m of allMatchRows) {
+    if (m.stage !== 'knockout') continue
+    const slot = m.bracket_slot as number
+    if (slot < prevRange[0] || slot > prevRange[1]) continue
+    if (m.actual_home_score === null || !m.home_team_id || !m.away_team_id) continue
+
+    let winnerId: string = m.actual_winner_id
     if (!winnerId) {
       const ah = m.actual_home_score as number, aa = m.actual_away_score as number
       winnerId = ah > aa ? m.home_team_id : m.away_team_id
     }
-    if (!winnerId) continue
-    if (cfg.isThird) {
-      const loserId = winnerId === m.home_team_id ? m.away_team_id : m.home_team_id
-      if (loserId) actual[`L M${slot + 72}`] = loserId
-    } else {
-      actual[`W M${slot + 72}`] = winnerId
+    const loserId = winnerId === m.home_team_id ? m.away_team_id : m.home_team_id
+
+    const colPos = `${prefix} M${slot + 72}`
+    actual[colPos] = isThird ? loserId : winnerId
+  }
+
+  // Group predictions per user
+  const groupMatchIds = allMatchRows.filter(m => m.stage === 'group').map((m: any) => m.id as string)
+  const userGroupPreds = new Map<string, Map<string, { h: number; a: number }>>()
+  if (groupMatchIds.length > 0) {
+    let offset = 0
+    while (true) {
+      const { data } = await supabase
+        .from('predictions_group')
+        .select('user_id, match_id, pred_home_score, pred_away_score')
+        .in('match_id', groupMatchIds)
+        .range(offset, offset + 999)
+      if (!data?.length) break
+      for (const p of data as any[]) {
+        if (p.pred_home_score === null) continue
+        if (!userGroupPreds.has(p.user_id)) userGroupPreds.set(p.user_id, new Map())
+        userGroupPreds.get(p.user_id)!.set(p.match_id, { h: p.pred_home_score, a: p.pred_away_score })
+      }
+      if (data.length < 1000) break
+      offset += 1000
     }
   }
 
-  // Build actual R32 slot teams (for cascade)
-  const actualSlotTeams = new Map<number, { home: string; away: string }>()
-  const { groupMatchesByGroup, teamsByGroup, predsByUser } = await loadGroupData()
-  const actualR32Pos = computeUserR32Positions(new Map(), groupMatchesByGroup, teamsByGroup, false)
-  for (const def of R32_DEFS) {
-    const h = actualR32Pos.get(def.homePos), a = actualR32Pos.get(def.awayPos)
-    if (h && a) actualSlotTeams.set(def.slot, { home: h, away: a })
-    else {
-      const m = matchBySlot.get(def.slot)
-      if (m?.home_team_id && m?.away_team_id) actualSlotTeams.set(def.slot, { home: m.home_team_id, away: m.away_team_id })
+  // KO score predictions per user
+  const userKOPreds = new Map<string, Map<number, { h: number; a: number }>>()
+  {
+    let offset = 0
+    while (true) {
+      const { data } = await supabase
+        .from('predictions_knockout')
+        .select('user_id, bracket_slot, pred_home_score, pred_away_score')
+        .range(offset, offset + 999)
+      if (!data?.length) break
+      for (const p of data as any[]) {
+        if (p.pred_home_score === null) continue
+        if (!userKOPreds.has(p.user_id)) userKOPreds.set(p.user_id, new Map())
+        userKOPreds.get(p.user_id)!.set(p.bracket_slot as number, { h: p.pred_home_score, a: p.pred_away_score })
+      }
+      if (data.length < 1000) break
+      offset += 1000
     }
   }
 
-  // All KO predictions
-  const { data: predsData } = await supabase
-    .from('predictions_knockout')
-    .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
-
-  // Group preds by user
-  const userKoPreds = new Map<string, Map<number, any>>()
-  for (const p of (predsData ?? []) as any[]) {
-    if (!userKoPreds.has(p.user_id)) userKoPreds.set(p.user_id, new Map())
-    userKoPreds.get(p.user_id)!.set(p.bracket_slot as number, p)
-  }
-
-  // Build per-user predictions using stored team IDs + cascade fallback
+  const allUserIds = new Set([...userGroupPreds.keys(), ...userKOPreds.keys()])
   const preds: Record<string, Record<string, string>> = {}
+  const roundPts: Record<string, number> = {}
 
-  for (const [userId, slotPreds] of userKoPreds) {
-    const cascade = buildUserBracket(actualSlotTeams, slotPreds)
+  for (const userId of allUserIds) {
+    const gp = userGroupPreds.get(userId) ?? new Map()
+    const kp = userKOPreds.get(userId) ?? new Map()
+    if (gp.size === 0 && kp.size === 0) continue
+
+    // Full bracket simulation
+    const matchups = simulateAllMatchups(gp, kp, allMatches, allTeams)
+    const userSlot = new Map(matchups.map(m => [m.slot, { home: m.home, away: m.away }]))
+
     const userCols: Record<string, string> = {}
+    let pts = 0
 
-    for (let currSlot = cfg.currSlots[0]; currSlot <= cfg.currSlots[1]; currSlot++) {
-      const p = slotPreds.get(currSlot)
-      if (!p) continue
-      const fallback = cascade.get(currSlot)
+    for (let slot = prevRange[0]; slot <= prevRange[1]; slot++) {
+      const colPos = `${prefix} M${slot + 72}`
+      const matchup = userSlot.get(slot)
+      if (!matchup) continue
 
-      const homeTeam: string | null = p.pred_home_team_id ?? fallback?.home ?? null
-      const awayTeam: string | null = p.pred_away_team_id ?? fallback?.away ?? null
+      const pred = kp.get(slot)
+      if (!pred || pred.h === pred.a) continue
 
-      const inv = BRACKET_ADVANCE_INV[currSlot]
-      if (!inv) continue
+      // Determine user's predicted winner (or loser for third-place)
+      let predictedTeam: TeamInfo | null
+      if (isThird) {
+        predictedTeam = pred.h > pred.a ? matchup.away : matchup.home // loser
+      } else {
+        predictedTeam = pred.h > pred.a ? matchup.home : matchup.away // winner
+      }
+      if (!predictedTeam) continue
 
-      const prefix = cfg.isThird ? 'L' : 'W'
-      if (homeTeam && inv.homeSlot) userCols[`${prefix} M${inv.homeSlot + 72}`] = homeTeam
-      if (awayTeam && inv.awaySlot) userCols[`${prefix} M${inv.awaySlot + 72}`] = awayTeam
+      userCols[colPos] = predictedTeam.id
+
+      // Round pts: +pts if prediction matches actual
+      if (actual[colPos] && actual[colPos] === predictedTeam.id) {
+        // Stage pts for next round (the current stage in view)
+        const nextStageMap: Record<string, string> = { r16: 'r16', qf: 'qf', sf: 'sf', final: 'final', third: 'third_match' }
+        pts += STAGE_POINTS[nextStageMap[stage]] ?? 0
+      }
     }
 
     if (Object.keys(userCols).length > 0) preds[userId] = userCols
+    if (pts > 0) roundPts[userId] = pts
   }
 
-  return NextResponse.json({ actual, preds })
+  return NextResponse.json({ actual, preds, roundPts })
 }

@@ -289,6 +289,19 @@ export function getThirdQualifiers(
     .filter((t): t is TeamInfo => !!t)
 }
 
+export function getSlotResult(
+  slot: number,
+  koPreds: KOPreds,
+  qualified: Map<string, TeamInfo>
+): { home: TeamInfo | null; away: TeamInfo | null; winner: TeamInfo | null; loser: TeamInfo | null } {
+  const { home, away } = getSlotTeams(slot, koPreds, qualified)
+  const pred = koPreds.get(slot)
+  if (!pred || pred.h === pred.a) return { home, away, winner: null, loser: null }
+  const winner = pred.h > pred.a ? home : away
+  const loser  = pred.h > pred.a ? away  : home
+  return { home, away, winner, loser }
+}
+
 export function simulateAllMatchups(
   groupPreds: GroupPreds,
   koPreds: KOPreds,
