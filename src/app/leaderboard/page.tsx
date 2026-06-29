@@ -196,6 +196,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const [koMode, setKoMode] = useState<string | null>(null) // 'r32' | 'r16' | 'qf' | 'sf' | 'third' | 'final' | null
   const [koRoundPairs, setKoRoundPairs] = useState<Map<string, Set<string>>>(new Map())
   const [koPointsMode, setKoPointsMode] = useState<'total'|'round'>('round')
+  const [koStageRoundPts, setKoStageRoundPts] = useState<Record<string,number>>({})
   const [koActualByPos, setKoActualByPos] = useState<Map<string,string>>(new Map())
   const [koUserPredsByPos, setKoUserPredsByPos] = useState<Map<string,Map<string,string>>>(new Map())
 
@@ -250,6 +251,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reset stage-specific round pts when switching stages
+  useEffect(() => { setKoStageRoundPts({}) }, [koMode])
+
   // Fetch R32 actual teams + user predictions when R32 scorecard is opened
   useEffect(() => {
     if (koMode !== 'r32') return
@@ -295,13 +299,14 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stage: koMode }),
-    }).then(r => r.json()).then((data: { actual: Record<string,string>; preds: Record<string,Record<string,string>> }) => {
+    }).then(r => r.json()).then((data: { actual: Record<string,string>; preds: Record<string,Record<string,string>>; roundPts: Record<string,number> }) => {
       setKoActualByPos(new Map(Object.entries(data.actual ?? {})))
       const userPreds = new Map<string, Map<string,string>>()
       for (const [userId, posObj] of Object.entries(data.preds ?? {})) {
         userPreds.set(userId, new Map(Object.entries(posObj)))
       }
       setKoUserPredsByPos(userPreds)
+      setKoStageRoundPts(data.roundPts ?? {})
     }).catch(() => {})
   }, [koMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -660,9 +665,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         }
         const teamById = new Map<string, any>()
         for (const arr of groupStandings.values()) for (const t of arr) teamById.set(t.id, t)
+        const getStageRoundPts = (userId: string) => {
+          if (koMode === 'r32') return calcR32Pts(userId)
+          return koStageRoundPts[userId] ?? 0
+        }
         const sortedEntries = [...entries].sort((a, b) => {
-          if (koMode === 'r32' && koPointsMode === 'round') {
-            return calcR32Pts(b.userId) - calcR32Pts(a.userId) || b.totalPts - a.totalPts
+          if (koPointsMode === 'round') {
+            return getStageRoundPts(b.userId) - getStageRoundPts(a.userId) || b.totalPts - a.totalPts
           }
           return b.totalPts - a.totalPts
         })
@@ -725,21 +734,19 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                       )
                     })}
                     <th className="py-2 px-3 text-center font-bold text-yellow-300 min-w-[80px] border-l-2 border-yellow-400/50 sticky right-0 bg-[#0B1F3A]">
-                      {koMode === 'r32' ? (
-                        <div className="flex flex-col items-center gap-1">
-                          <span>{koPointsMode === 'round' ? 'R32 Pts' : 'Total'}</span>
-                          <div className="flex rounded overflow-hidden border border-yellow-400/40 text-[9px] font-semibold">
-                            <button onClick={() => setKoPointsMode('round')}
-                              className={`px-1.5 py-0.5 transition-colors ${koPointsMode === 'round' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
-                              Round
-                            </button>
-                            <button onClick={() => setKoPointsMode('total')}
-                              className={`px-1.5 py-0.5 transition-colors ${koPointsMode === 'total' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
-                              Total
-                            </button>
-                          </div>
+                      <div className="flex flex-col items-center gap-1">
+                        <span>{koPointsMode === 'round' ? ({ r32:'R32',r16:'R16',qf:'QF',sf:'SF',third:'3rd',final:'Final' } as Record<string,string>)[koMode!] + ' Pts' : 'Total'}</span>
+                        <div className="flex rounded overflow-hidden border border-yellow-400/40 text-[9px] font-semibold">
+                          <button onClick={() => setKoPointsMode('round')}
+                            className={`px-1.5 py-0.5 transition-colors ${koPointsMode === 'round' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
+                            Round
+                          </button>
+                          <button onClick={() => setKoPointsMode('total')}
+                            className={`px-1.5 py-0.5 transition-colors ${koPointsMode === 'total' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
+                            Total
+                          </button>
                         </div>
-                      ) : 'Total'}
+                      </div>
                     </th>
                   </tr>
                 </thead>
@@ -795,9 +802,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                           }
                         })}
                         <td className={`py-2 px-3 text-center font-bold text-[#0B1F3A] sticky right-0 ${rowBg} border-l-2 border-gray-100`}>
-                          {koMode === 'r32' && koPointsMode === 'round'
-                            ? calcR32Pts(e.userId)
-                            : e.totalPts}
+                          {koPointsMode === 'round' ? getStageRoundPts(e.userId) : e.totalPts}
                         </td>
                       </tr>
                     )
