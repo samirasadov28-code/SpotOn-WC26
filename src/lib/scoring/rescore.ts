@@ -49,6 +49,12 @@ export async function syncKOBracket() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // Clear all bracket-derived team IDs (slots 17–32) before re-populating
+  await supabase.from('matches')
+    .update({ home_team_id: null, away_team_id: null })
+    .eq('stage', 'knockout')
+    .gte('bracket_slot', 17)
+
   const { data: played } = await supabase
     .from('matches')
     .select('bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score, actual_winner_id')
