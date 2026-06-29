@@ -2,7 +2,9 @@ import { createClient } from '@supabase/supabase-js'
 import { scoreGroupMatch } from './group'
 import { STAGE_POINTS } from './advancement'
 import { loadGroupData, computeUserR32Positions, R32_DEFS } from './group-qualifiers'
-import { BRACKET_ADVANCE, buildUserBracket } from './bracket-cascade'
+import { BRACKET_ADVANCE } from './bracket-cascade'
+import { simulateAllMatchups } from '@/lib/bracket-sim'
+import type { MatchInfo, TeamInfo } from '@/lib/bracket-sim'
 
 /**
  * Populates R32 match slots (bracket_slot 1–16) with actual group-stage qualified teams.
@@ -182,19 +184,31 @@ export async function rescoreKOPts() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // All KO matches with teams assigned
-  const { data: koMatchesWithTeams } = await supabase
-    .from('matches')
-    .select('bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score')
-    .eq('stage', 'knockout')
-    .not('home_team_id', 'is', null) as any
+  // All matches and teams (needed for simulateAllMatchups)
+  const [koMatchesRes, allMatchesRes, allTeamsRes] = await Promise.all([
+    supabase.from('matches')
+      .select('bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score')
+      .eq('stage', 'knockout')
+      .not('home_team_id', 'is', null),
+    supabase.from('matches')
+      .select('id, stage, group_letter, home_team_id, away_team_id'),
+    supabase.from('teams')
+      .select('id, name, fifa_code, group_letter, flag_emoji'),
+  ])
 
-  // All KO predictions (score preds + R16+ team preds)
+  // All KO predictions (score preds)
   const { data: preds } = await supabase
     .from('predictions_knockout')
     .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score') as any
 
-  const matchBySlot = new Map(((koMatchesWithTeams ?? []) as any[]).map((m: any) => [m.bracket_slot as number, m]))
+  const matchBySlot = new Map(((koMatchesRes.data ?? []) as any[]).map((m: any) => [m.bracket_slot as number, m]))
+
+  const allMatchesFull: MatchInfo[] = ((allMatchesRes.data ?? []) as any[]).map((m: any) => ({
+    id: m.id, group_letter: m.group_letter, home_team_id: m.home_team_id, away_team_id: m.away_team_id,
+  }))
+  const allTeamsFull: TeamInfo[] = ((allTeamsRes.data ?? []) as any[]).map((t: any) => ({
+    id: t.id, name: t.name, fifa_code: t.fifa_code, group_letter: t.group_letter, flag_emoji: t.flag_emoji,
+  }))
 
   // Compute R32 predictions from group predictions for all users
   const { groupMatchesByGroup, teamsByGroup, predsByUser } = await loadGroupData()
@@ -248,45 +262,61 @@ export async function rescoreKOPts() {
     userKoPts.set(p.user_id, (userKoPts.get(p.user_id) ?? 0) + koPts)
   }
 
-  // Build actual R32 slot teams map (for cascade fallback)
-  const actualSlotTeams = new Map<number, { home: string; away: string }>()
-  for (const def of R32_DEFS) {
-    const m = matchBySlot.get(def.slot)
-    if (m?.home_team_id && m?.away_team_id) actualSlotTeams.set(def.slot, { home: m.home_team_id, away: m.away_team_id })
+  // Build per-user KO score preds map (slot → {h, a})
+  const userKoScorePreds = new Map<string, Map<number, { h: number; a: number }>>()
+  for (const p of (preds ?? []) as any[]) {
+    if (p.pred_home_score === null) continue
+    if (!userKoScorePreds.has(p.user_id)) userKoScorePreds.set(p.user_id, new Map())
+    userKoScorePreds.get(p.user_id)!.set(p.bracket_slot as number, { h: p.pred_home_score, a: p.pred_away_score })
   }
 
-  // Group preds by user for cascade
-  const predsByUserSlot = new Map<string, Map<number, any>>()
-  for (const p of (preds ?? []) as any[]) {
-    if (!predsByUserSlot.has(p.user_id)) predsByUserSlot.set(p.user_id, new Map())
-    predsByUserSlot.get(p.user_id)!.set(p.bracket_slot as number, p)
+  // Simulate each user's full predicted bracket using their group + KO score predictions.
+  // This correctly handles users who predicted a team (e.g. Canada) in a different R32 slot
+  // than the one it actually played in — the simulation seeds from group predictions, not
+  // from actual slot assignments, so the path is user-specific.
+  const userSimSlot = new Map<string, Map<number, { home: string | null; away: string | null }>>()
+  const allUsersWithPreds = new Set([...predsByUser.keys(), ...userKoScorePreds.keys()])
+  for (const userId of allUsersWithPreds) {
+    const gp = predsByUser.get(userId) ?? new Map()
+    const kp = userKoScorePreds.get(userId) ?? new Map()
+    if (gp.size === 0 && kp.size === 0) continue
+    const matchups = simulateAllMatchups(gp, kp, allMatchesFull, allTeamsFull)
+    userSimSlot.set(userId, new Map(matchups.map(m => [m.slot, { home: m.home?.id ?? null, away: m.away?.id ?? null }])))
   }
+
+  // teamMap for fallback lookup
+  const teamMapFull = new Map<string, TeamInfo>()
+  for (const t of allTeamsFull) teamMapFull.set(t.id, t)
 
   // R16+ advancement and score pts
+  // Process per user+slot so we use the simulated bracket for team derivation
+  const processedSlots = new Set<string>() // userId|slot
   for (const p of (preds ?? []) as any[]) {
-    if ((p.bracket_slot as number) <= 16) continue
-    const match = matchBySlot.get(p.bracket_slot as number)
+    const slot = p.bracket_slot as number
+    if (slot <= 16) continue
+    const match = matchBySlot.get(slot)
     if (!match) continue
 
-    const stage = slotStage(p.bracket_slot)
+    const stage = slotStage(slot)
     const stagePts = STAGE_POINTS[stage] ?? 0
+    const slotKey = `${p.user_id}|${slot}`
+    if (processedSlots.has(slotKey)) continue
+    processedSlots.add(slotKey)
 
-    // Cascade fallback: derive team IDs when stored pred_home_team_id is null
-    const userSlotPreds = predsByUserSlot.get(p.user_id) ?? new Map()
-    const cascade = buildUserBracket(actualSlotTeams, userSlotPreds)
-    const fallback = cascade.get(p.bracket_slot as number)
+    // Derive predicted home/away from simulation; fall back to stored team IDs
+    const simmed = userSimSlot.get(p.user_id)?.get(slot)
+    const actualSlot = matchBySlot.get(slot)
+    const homeTeam: string | null = simmed?.home ?? p.pred_home_team_id ?? null
+    const awayTeam: string | null = simmed?.away ?? p.pred_away_team_id ?? null
 
-    const homeTeam: string | null = p.pred_home_team_id ?? fallback?.home ?? null
-    const awayTeam: string | null = p.pred_away_team_id ?? fallback?.away ?? null
-
-    // Set-based: user earns advancement pts if their predicted team appears anywhere in the match
-    const matchTeams = new Set([match.home_team_id, match.away_team_id].filter(Boolean))
+    // Award advancement pts if predicted team appears in the actual match
+    const matchTeams = new Set([match.home_team_id, match.away_team_id].filter(Boolean) as string[])
     let advAdd = 0
     if (homeTeam && matchTeams.has(homeTeam)) advAdd += stagePts
     if (awayTeam && matchTeams.has(awayTeam) && awayTeam !== homeTeam) advAdd += stagePts
 
     // Final winner bonus
-    if (p.bracket_slot === 32 && match.actual_home_score !== null) {
+    if (slot === 32 && match.actual_home_score !== null) {
       const ah = match.actual_home_score as number, aa = match.actual_away_score as number
       const actualWinner = ah > aa ? match.home_team_id : match.away_team_id
       const ph = p.pred_home_score ?? 0, pa = p.pred_away_score ?? 0

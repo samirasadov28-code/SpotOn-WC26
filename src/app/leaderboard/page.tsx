@@ -11,6 +11,9 @@ import { getTeamName } from '@/lib/team-name'
 
 const PREDICTIONS_TOTAL = 104
 
+const AI_BOT_NAMES = new Set(['copilot', 'chatgpt', 'grok', 'gemini', 'claude'])
+function isAIBot(name: string) { return AI_BOT_NAMES.has(name.toLowerCase().trim()) }
+
 const LANG_TO_LOCALE: Record<string, string> = {
   en: 'en-GB', uk: 'uk', az: 'az', fr: 'fr-FR', es: 'es-ES', de: 'de-DE',
   pt: 'pt-BR', it: 'it-IT', nl: 'nl-NL', tr: 'tr-TR', zh: 'zh-CN',
@@ -1656,7 +1659,7 @@ export default function LeaderboardPage() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (selectedLeagueId === 'global') { setLeagueMembers(new Set()); return }
+    if (selectedLeagueId === 'global' || selectedLeagueId === 'ai') { setLeagueMembers(new Set()); return }
     ;(supabase as any).from('league_members').select('user_id').eq('league_id', selectedLeagueId)
       .then(({ data }: any) => setLeagueMembers(new Set((data ?? []).map((r: any) => r.user_id))))
   }, [selectedLeagueId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1793,9 +1796,14 @@ export default function LeaderboardPage() {
   }
 
   const visibleEntries = (() => {
-    const filtered = selectedLeagueId === 'global'
-      ? entries
-      : entries.filter(e => leagueMembers.has(e.userId))
+    let filtered: LeaderboardEntry[]
+    if (selectedLeagueId === 'global') {
+      filtered = entries.filter(e => !isAIBot(e.displayName))
+    } else if (selectedLeagueId === 'ai') {
+      filtered = entries // show everyone including AI bots
+    } else {
+      filtered = entries.filter(e => leagueMembers.has(e.userId))
+    }
     let rank = 1
     return filtered.map((e, i) => {
       if (i > 0 && e.totalPts < filtered[i - 1].totalPts) rank = i + 1
@@ -1803,7 +1811,7 @@ export default function LeaderboardPage() {
     })
   })()
 
-  const leagueName = selectedLeagueId === 'global' ? 'Global' : (userLeagues.find(l => l.id === selectedLeagueId)?.name ?? 'League')
+  const leagueName = selectedLeagueId === 'global' ? 'Global' : selectedLeagueId === 'ai' ? '🤖 AI League' : (userLeagues.find(l => l.id === selectedLeagueId)?.name ?? 'League')
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-[60vh] text-gray-500">{t('lb_loading')}</div>
@@ -1822,6 +1830,7 @@ export default function LeaderboardPage() {
         <select value={selectedLeagueId} onChange={e => handleLeagueChange(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B1F3A] bg-white min-w-0 flex-1 max-w-[200px]">
           <option value="global">{t('lb_global')}</option>
+          <option value="ai">🤖 AI League</option>
           {userLeagues.map(l => <option key={l.id} value={l.id}>🏅 {l.name}</option>)}
         </select>
         <span className="text-sm font-bold text-[#0B1F3A] tabular-nums shrink-0">
@@ -1944,6 +1953,7 @@ export default function LeaderboardPage() {
               <tbody>
                 {visibleEntries.map((entry, idx) => {
                   const isMe = entry.userId === currentUserId
+                  const isBot = isAIBot(entry.displayName)
                   const isComplete = entry.predictionCount >= PREDICTIONS_TOTAL
                   const pctDone = Math.min(100, Math.round((entry.predictionCount / PREDICTIONS_TOTAL) * 100))
                   const isExpanded = expandedId === entry.userId
@@ -1956,12 +1966,13 @@ export default function LeaderboardPage() {
                   return (
                     <>
                       <tr key={entry.userId} onClick={() => handleRowClick(entry)}
-                        className={`border-t border-gray-100 cursor-pointer transition-colors hover:bg-blue-50/50 active:bg-blue-100 select-none ${cannotWin ? 'opacity-50' : ''} ${isMe ? 'bg-blue-50 font-semibold' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'} ${isExpanded ? 'border-b-0' : ''}`}>
+                        className={`border-t border-gray-100 cursor-pointer transition-colors hover:bg-blue-50/50 active:bg-blue-100 select-none ${cannotWin ? 'opacity-50' : ''} ${isMe ? 'bg-blue-50 font-semibold' : isBot ? 'bg-purple-50/40' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'} ${isExpanded ? 'border-b-0' : ''}`}>
                         <td className="py-3 px-3 font-bold text-gray-500 text-base">
                           {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : entry.rank}
                         </td>
                         <td className="py-3 px-3 text-[#0B1F3A] max-w-[120px] sm:max-w-none">
                           <div className="truncate flex items-center gap-1.5">
+                            {isBot && <span className="text-xs shrink-0">🤖</span>}
                             {entry.displayName}
                             <span className="text-gray-300 text-xs">▾</span>
                             <Link href={`/predictions/view/${entry.userId}`} onClick={e => e.stopPropagation()} className="ml-auto shrink-0 text-gray-300 hover:text-[#0B1F3A] transition-colors text-xs" title="View all predictions">👁</Link>
