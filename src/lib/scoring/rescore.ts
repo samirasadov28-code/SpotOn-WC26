@@ -284,58 +284,93 @@ export async function rescoreKOPts() {
     userSimSlot.set(userId, new Map(matchups.map(m => [m.slot, { home: m.home?.id ?? null, away: m.away?.id ?? null }])))
   }
 
-  // teamMap for fallback lookup
-  const teamMapFull = new Map<string, TeamInfo>()
-  for (const t of allTeamsFull) teamMapFull.set(t.id, t)
+  // Build actual teams present in each KO stage (stage-based, not slot-based).
+  // Teams *in* a stage = teams that appear as home/away in that stage's matches.
+  // We use all matches (whether played or not) for team set — actual pts only count for played ones.
+  const STAGE_SLOTS: Record<string, number[]> = {
+    r16:         [17,18,19,20,21,22,23,24],
+    qf:          [25,26,27,28],
+    sf:          [29,30],
+    third_match: [31],
+    final:       [32],
+  }
+  const actualStageTeams = new Map<string, Set<string>>()
+  for (const [stage, slots] of Object.entries(STAGE_SLOTS)) {
+    const teams = new Set<string>()
+    for (const slot of slots) {
+      const m = matchBySlot.get(slot) as any
+      if (m?.home_team_id) teams.add(m.home_team_id)
+      if (m?.away_team_id) teams.add(m.away_team_id)
+    }
+    if (teams.size > 0) actualStageTeams.set(stage, teams)
+  }
 
-  // R16+ advancement and score pts
-  // Process per user+slot so we use the simulated bracket for team derivation
-  const processedSlots = new Set<string>() // userId|slot
+  // Actual champion for winner bonus
+  const finalMatchActual = matchBySlot.get(32) as any
+  let actualChampionId: string | null = null
+  if (finalMatchActual?.actual_home_score !== null && finalMatchActual?.actual_home_score !== undefined) {
+    actualChampionId = finalMatchActual.actual_winner_id ?? null
+    if (!actualChampionId) {
+      const ah = finalMatchActual.actual_home_score as number, aa = finalMatchActual.actual_away_score as number
+      actualChampionId = ah >= aa ? finalMatchActual.home_team_id : finalMatchActual.away_team_id
+    }
+  }
+
+  // R16+ advancement pts — stage-based:
+  // For each KO stage, award stagePts for each unique team the user predicted to be
+  // in that stage that actually IS in that stage (regardless of which specific slot).
+  for (const [userId, simSlots] of userSimSlot) {
+    let advAdd = 0
+
+    for (const [stage, slots] of Object.entries(STAGE_SLOTS)) {
+      const stagePts = STAGE_POINTS[stage] ?? 0
+      if (stagePts === 0) continue
+      const actualTeams = actualStageTeams.get(stage)
+      if (!actualTeams || actualTeams.size === 0) continue
+
+      // Collect unique teams the user predicted to appear in this stage
+      const predictedTeams = new Set<string>()
+      for (const slot of slots) {
+        const s = simSlots.get(slot)
+        if (s?.home) predictedTeams.add(s.home)
+        if (s?.away) predictedTeams.add(s.away)
+      }
+
+      for (const teamId of predictedTeams) {
+        if (actualTeams.has(teamId)) advAdd += stagePts
+      }
+    }
+
+    // Final winner bonus (16pts): user's predicted winner of the final = actual champion
+    if (actualChampionId) {
+      const kp = userKoScorePreds.get(userId) ?? new Map()
+      const finalPred = kp.get(32)
+      const finalSim = simSlots.get(32)
+      if (finalPred && finalPred.h !== finalPred.a && finalSim) {
+        const predWinnerId = finalPred.h > finalPred.a ? finalSim.home : finalSim.away
+        if (predWinnerId && predWinnerId === actualChampionId) {
+          advAdd += STAGE_POINTS['winner'] ?? 16
+        }
+      }
+    }
+
+    if (advAdd > 0) userAdvPts.set(userId, (userAdvPts.get(userId) ?? 0) + advAdd)
+  }
+
+  // KO score pts (R16+): 3/2/1 for exact/GD/outcome — no pair check required
   for (const p of (preds ?? []) as any[]) {
     const slot = p.bracket_slot as number
     if (slot <= 16) continue
-    const match = matchBySlot.get(slot)
-    if (!match) continue
-
-    const stage = slotStage(slot)
-    const stagePts = STAGE_POINTS[stage] ?? 0
-    const slotKey = `${p.user_id}|${slot}`
-    if (processedSlots.has(slotKey)) continue
-    processedSlots.add(slotKey)
-
-    // Derive predicted home/away from simulation; fall back to stored team IDs
-    const simmed = userSimSlot.get(p.user_id)?.get(slot)
-    const actualSlot = matchBySlot.get(slot)
-    const homeTeam: string | null = simmed?.home ?? p.pred_home_team_id ?? null
-    const awayTeam: string | null = simmed?.away ?? p.pred_away_team_id ?? null
-
-    // Award advancement pts if predicted team appears in the actual match
-    const matchTeams = new Set([match.home_team_id, match.away_team_id].filter(Boolean) as string[])
-    let advAdd = 0
-    if (homeTeam && matchTeams.has(homeTeam)) advAdd += stagePts
-    if (awayTeam && matchTeams.has(awayTeam) && awayTeam !== homeTeam) advAdd += stagePts
-
-    // Final winner bonus
-    if (slot === 32 && match.actual_home_score !== null) {
-      const ah = match.actual_home_score as number, aa = match.actual_away_score as number
-      const actualWinner = ah > aa ? match.home_team_id : match.away_team_id
-      const ph = p.pred_home_score ?? 0, pa = p.pred_away_score ?? 0
-      const predWinner = ph > pa ? homeTeam : awayTeam
-      if (predWinner && predWinner === actualWinner) advAdd += STAGE_POINTS['winner'] ?? 16
-    }
-
-    if (advAdd > 0) userAdvPts.set(p.user_id, (userAdvPts.get(p.user_id) ?? 0) + advAdd)
-
-    // KO score pts
-    if (match.actual_home_score !== null && p.pred_home_score !== null && p.pred_away_score !== null) {
-      const ph = p.pred_home_score as number, pa = p.pred_away_score as number
-      const ah = match.actual_home_score as number, aa = match.actual_away_score as number
-      let koPts = 0
-      if (ph === ah && pa === aa) koPts = 3
-      else if (ph - pa === ah - aa) koPts = 2
-      else if (Math.sign(ph - pa) === Math.sign(ah - aa)) koPts = 1
-      userKoPts.set(p.user_id, (userKoPts.get(p.user_id) ?? 0) + koPts)
-    }
+    const match = matchBySlot.get(slot) as any
+    if (!match || match.actual_home_score === null) continue
+    if (p.pred_home_score === null || p.pred_away_score === null) continue
+    const ph = p.pred_home_score as number, pa = p.pred_away_score as number
+    const ah = match.actual_home_score as number, aa = match.actual_away_score as number
+    let koPts = 0
+    if (ph === ah && pa === aa) koPts = 3
+    else if (ph - pa === ah - aa) koPts = 2
+    else if (Math.sign(ph - pa) === Math.sign(ah - aa)) koPts = 1
+    if (koPts > 0) userKoPts.set(p.user_id, (userKoPts.get(p.user_id) ?? 0) + koPts)
   }
 
   // Preserve group_pts; overwrite advancement_pts and knockout_match_pts

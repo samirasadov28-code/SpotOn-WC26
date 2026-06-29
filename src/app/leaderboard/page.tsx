@@ -11,7 +11,7 @@ import { getTeamName } from '@/lib/team-name'
 
 const PREDICTIONS_TOTAL = 104
 
-const AI_BOT_NAMES = new Set(['copilot', 'chatgpt', 'grok', 'gemini', 'claude'])
+const AI_BOT_NAMES = new Set(['copilot', 'chatgpt', 'chat gpt', 'grok', 'gemini', 'claude'])
 function isAIBot(name: string) { return AI_BOT_NAMES.has(name.toLowerCase().trim()) }
 
 const LANG_TO_LOCALE: Record<string, string> = {
@@ -1800,7 +1800,7 @@ export default function LeaderboardPage() {
     if (selectedLeagueId === 'global') {
       filtered = entries.filter(e => !isAIBot(e.displayName))
     } else if (selectedLeagueId === 'ai') {
-      filtered = entries // show everyone including AI bots
+      filtered = entries.filter(e => isAIBot(e.displayName))
     } else {
       filtered = entries.filter(e => leagueMembers.has(e.userId))
     }

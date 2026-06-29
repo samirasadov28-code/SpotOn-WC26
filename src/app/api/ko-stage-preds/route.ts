@@ -153,7 +153,6 @@ export async function POST(req: Request) {
     const simSlot = new Map(matchups.map(m => [m.slot, { home: m.home, away: m.away }]))
 
     const userCols: Record<string, string> = {}
-    let pts = 0
 
     for (let slot = prevRange[0]; slot <= prevRange[1]; slot++) {
       const colPos = `${prefix} M${slot + 72}`
@@ -174,24 +173,28 @@ export async function POST(req: Request) {
         }
       }
 
-      // Still no teams → skip
       if (!home && !away) continue
 
       // Determine which team the user predicted would win (or lose for 3rd-place match)
       let predictedTeam: TeamInfo | null
       if (isThird) {
-        predictedTeam = pred.h > pred.a ? away : home // loser advances to 3rd place
+        predictedTeam = pred.h > pred.a ? away : home
       } else {
-        predictedTeam = pred.h > pred.a ? home : away // winner advances
+        predictedTeam = pred.h > pred.a ? home : away
       }
       if (!predictedTeam) continue
 
       userCols[colPos] = predictedTeam.id
+    }
 
-      // Award round pts if the prediction matches the actual result
-      if (actual[colPos] && actual[colPos] === predictedTeam.id) {
-        pts += stagePts
-      }
+    // Round pts — stage-based: award stagePts for each unique predicted team
+    // that appears ANYWHERE in the actual advancing set, regardless of which slot.
+    // This ensures Canada predicted in any R32 slot still scores if Canada advanced.
+    const actualTeamSet = new Set(Object.values(actual))
+    const predictedTeamSet = new Set(Object.values(userCols))
+    let pts = 0
+    for (const teamId of predictedTeamSet) {
+      if (actualTeamSet.has(teamId)) pts += stagePts
     }
 
     if (Object.keys(userCols).length > 0) preds[userId] = userCols
