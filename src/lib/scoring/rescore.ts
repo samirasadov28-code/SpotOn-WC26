@@ -292,9 +292,12 @@ export async function rescoreKOPts() {
     const stage = slotStage(p.bracket_slot)
     const stagePts = STAGE_POINTS[stage] ?? 0
 
+    // Set-based: user earns advancement pts if their predicted team appears anywhere in the match
+    // (home/away position doesn't matter — users predicted before bracket was set)
+    const matchTeams = new Set([match.home_team_id, match.away_team_id].filter(Boolean))
     let advAdd = 0
-    if (p.pred_home_team_id && p.pred_home_team_id === match.home_team_id) advAdd += stagePts
-    if (p.pred_away_team_id && p.pred_away_team_id === match.away_team_id) advAdd += stagePts
+    if (p.pred_home_team_id && matchTeams.has(p.pred_home_team_id)) advAdd += stagePts
+    if (p.pred_away_team_id && matchTeams.has(p.pred_away_team_id) && p.pred_away_team_id !== p.pred_home_team_id) advAdd += stagePts
 
     // Final winner bonus
     if (p.bracket_slot === 32 && match.actual_home_score !== null) {
