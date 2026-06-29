@@ -3,21 +3,38 @@ import { scoreGroupMatch } from './group'
 import { STAGE_POINTS } from './advancement'
 import { loadGroupData, computeUserR32Positions, R32_DEFS } from './group-qualifiers'
 
+// Derived from KO_SLOT_LABELS: slot N (=MN+72) feeds into which R16/QF/SF slot
+// R16 slot 17=W M74+W M77, 18=W M73+W M75, 19=W M76+W M78, 20=W M79+W M80
+//          21=W M83+W M84, 22=W M81+W M82, 23=W M86+W M88, 24=W M85+W M87
+// QF  slot 25=W M89+W M90, 26=W M93+W M94, 27=W M91+W M92, 28=W M95+W M96
+// SF  slot 29=W M97+W M98, 30=W M99+W M100
 const BRACKET_ADVANCE: Record<number, { nextSlot: number; side: 'home' | 'away' }> = {
-  1:  { nextSlot: 17, side: 'home' }, 2:  { nextSlot: 17, side: 'away' },
-  3:  { nextSlot: 18, side: 'home' }, 4:  { nextSlot: 18, side: 'away' },
-  5:  { nextSlot: 19, side: 'home' }, 6:  { nextSlot: 19, side: 'away' },
-  7:  { nextSlot: 20, side: 'home' }, 8:  { nextSlot: 20, side: 'away' },
-  9:  { nextSlot: 21, side: 'home' }, 10: { nextSlot: 21, side: 'away' },
-  11: { nextSlot: 22, side: 'home' }, 12: { nextSlot: 22, side: 'away' },
-  13: { nextSlot: 23, side: 'home' }, 14: { nextSlot: 23, side: 'away' },
-  15: { nextSlot: 24, side: 'home' }, 16: { nextSlot: 24, side: 'away' },
+  // R32 → R16  (slot numbers map to match M(slot+72))
+  1:  { nextSlot: 18, side: 'home' }, // M73 → M90 home
+  2:  { nextSlot: 17, side: 'home' }, // M74 → M89 home
+  3:  { nextSlot: 18, side: 'away' }, // M75 → M90 away
+  4:  { nextSlot: 19, side: 'home' }, // M76 → M91 home
+  5:  { nextSlot: 17, side: 'away' }, // M77 → M89 away
+  6:  { nextSlot: 19, side: 'away' }, // M78 → M91 away
+  7:  { nextSlot: 20, side: 'home' }, // M79 → M92 home
+  8:  { nextSlot: 20, side: 'away' }, // M80 → M92 away
+  9:  { nextSlot: 22, side: 'home' }, // M81 → M94 home
+  10: { nextSlot: 22, side: 'away' }, // M82 → M94 away
+  11: { nextSlot: 21, side: 'home' }, // M83 → M93 home
+  12: { nextSlot: 21, side: 'away' }, // M84 → M93 away
+  13: { nextSlot: 24, side: 'home' }, // M85 → M96 home
+  14: { nextSlot: 23, side: 'home' }, // M86 → M95 home
+  15: { nextSlot: 24, side: 'away' }, // M87 → M96 away
+  16: { nextSlot: 23, side: 'away' }, // M88 → M95 away
+  // R16 → QF
   17: { nextSlot: 25, side: 'home' }, 18: { nextSlot: 25, side: 'away' },
-  19: { nextSlot: 26, side: 'home' }, 20: { nextSlot: 26, side: 'away' },
-  21: { nextSlot: 27, side: 'home' }, 22: { nextSlot: 27, side: 'away' },
+  19: { nextSlot: 27, side: 'home' }, 20: { nextSlot: 27, side: 'away' },
+  21: { nextSlot: 26, side: 'home' }, 22: { nextSlot: 26, side: 'away' },
   23: { nextSlot: 28, side: 'home' }, 24: { nextSlot: 28, side: 'away' },
+  // QF → SF
   25: { nextSlot: 29, side: 'home' }, 26: { nextSlot: 29, side: 'away' },
   27: { nextSlot: 30, side: 'home' }, 28: { nextSlot: 30, side: 'away' },
+  // SF → Final
   29: { nextSlot: 32, side: 'home' },
   30: { nextSlot: 32, side: 'away' },
 }
