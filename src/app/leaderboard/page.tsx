@@ -166,7 +166,7 @@ const KO_SLOT_LABELS: Record<number, { home: string; away: string }> = {
   31: { home: 'L M101', away: 'L M102' }, 32: { home: 'W M101', away: 'W M102' },
 }
 
-function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser, finishMode, setFinishMode, onGoToRounds }: {
+function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser, finishMode, setFinishMode, maxPts, onGoToRounds }: {
   entries: LeaderboardEntry[]
   currentUserId: string | null
   leagueId: string
@@ -174,6 +174,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   positionsByUser: Record<string, PositionRow>
   finishMode: 'champ' | 'top4'
   setFinishMode: (m: 'champ' | 'top4') => void
+  maxPts: Record<string, number>
   onGoToRounds?: () => void
 }) {
   const supabase = createClient()
@@ -912,6 +913,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                       <FinishToggle mode={finishMode} onChange={setFinishMode} />
                     </div>
                   </th>
+                  <th className="py-2 px-2 text-center text-white/70 text-[10px] min-w-[52px] whitespace-nowrap">Max</th>
                   <th className="py-2 px-3 text-center font-bold whitespace-nowrap min-w-[52px]">{sortMode === 'day' ? t('pts') : '∑ ' + t('pts')}</th>
                 </tr>
               </thead>
@@ -952,6 +954,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                       })}
                       <td className="py-2 px-2">
                         <PredictedFinishCell positions={positions} lang={lang} mode={finishMode} />
+                      </td>
+                      <td className="py-2 px-2 text-center text-[11px] text-gray-400 tabular-nums">
+                        {maxPts[entry.userId] ?? '—'}
                       </td>
                       <td className="py-2 px-3 text-center">
                         {sortMode === 'total'
@@ -1887,7 +1892,7 @@ export default function LeaderboardPage() {
 
       {/* Day View tab */}
       {lbTab === 'dayview' && (
-        <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} finishMode={finishMode} setFinishMode={setFinishMode} onGoToRounds={undefined} />
+        <DayView entries={visibleEntries} currentUserId={currentUserId} leagueId={selectedLeagueId} leagueName={leagueName} positionsByUser={positionsByUser} finishMode={finishMode} setFinishMode={setFinishMode} maxPts={maxPts} onGoToRounds={undefined} />
       )}
 
       {/* Stats tab */}
@@ -1938,11 +1943,13 @@ export default function LeaderboardPage() {
                   const isExpanded = expandedId === entry.userId
                   const bd = breakdowns[entry.userId]
                   const positions = positionsByUser[entry.userId] as PositionRow | undefined
+                  const top1Pts = visibleEntries[0]?.totalPts ?? 0
+                  const cannotWin = !isMe && maxPts[entry.userId] !== undefined && maxPts[entry.userId] < top1Pts
 
                   return (
                     <>
                       <tr key={entry.userId} onClick={() => handleRowClick(entry)}
-                        className={`border-t border-gray-100 cursor-pointer transition-colors hover:bg-blue-50/50 active:bg-blue-100 select-none ${isMe ? 'bg-blue-50 font-semibold' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'} ${isExpanded ? 'border-b-0' : ''}`}>
+                        className={`border-t border-gray-100 cursor-pointer transition-colors hover:bg-blue-50/50 active:bg-blue-100 select-none ${cannotWin ? 'opacity-50' : ''} ${isMe ? 'bg-blue-50 font-semibold' : entry.rank === 1 ? 'bg-yellow-50' : idx % 2 === 0 ? '' : 'bg-gray-50/50'} ${isExpanded ? 'border-b-0' : ''}`}>
                         <td className="py-3 px-3 font-bold text-gray-500 text-base">
                           {entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : entry.rank}
                         </td>

@@ -77,6 +77,16 @@ export async function POST(req: Request) {
     actual[colPos] = isThird ? loserId : winnerId
   }
 
+  // Build teamMap and actual slot teams for fallback when simulation has no group preds
+  const teamMap = new Map<string, TeamInfo>()
+  for (const t of allTeams) teamMap.set(t.id, t)
+
+  const actualSlotTeams = new Map<number, { home: string | null; away: string | null }>()
+  for (const m of allMatchRows) {
+    if (m.stage !== 'knockout') continue
+    actualSlotTeams.set(m.bracket_slot as number, { home: m.home_team_id ?? null, away: m.away_team_id ?? null })
+  }
+
   // Group predictions per user
   const groupMatchIds = allMatchRows.filter(m => m.stage === 'group').map((m: any) => m.id as string)
   const userGroupPreds = new Map<string, Map<string, { h: number; a: number }>>()
@@ -143,12 +153,23 @@ export async function POST(req: Request) {
       const pred = kp.get(slot)
       if (!pred || pred.h === pred.a) continue
 
+      // Use simulated teams; fall back to actual DB teams if simulation returned null
+      let home = matchup?.home ?? null
+      let away = matchup?.away ?? null
+      if (!home || !away) {
+        const actual = actualSlotTeams.get(slot)
+        if (actual) {
+          if (!home && actual.home) home = teamMap.get(actual.home) ?? null
+          if (!away && actual.away) away = teamMap.get(actual.away) ?? null
+        }
+      }
+
       // Determine user's predicted winner (or loser for third-place)
       let predictedTeam: TeamInfo | null
       if (isThird) {
-        predictedTeam = pred.h > pred.a ? matchup.away : matchup.home // loser
+        predictedTeam = pred.h > pred.a ? away : home // loser
       } else {
-        predictedTeam = pred.h > pred.a ? matchup.home : matchup.away // winner
+        predictedTeam = pred.h > pred.a ? home : away // winner
       }
       if (!predictedTeam) continue
 
