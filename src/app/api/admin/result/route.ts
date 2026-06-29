@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/types'
-import { rescoreAllGroupPts, rescoreKOPts, syncKOBracket } from '@/lib/scoring/rescore'
+import { rescoreAllGroupPts, rescoreKOPts, syncKOBracket, syncR32Teams } from '@/lib/scoring/rescore'
 
 function getServiceClient() {
   return createClient<Database>(
@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
 
   // Propagate winners + rescore KO pts
   if (match.stage === 'knockout') {
+    await syncR32Teams()
     await syncKOBracket()
     await rescoreKOPts()
   }

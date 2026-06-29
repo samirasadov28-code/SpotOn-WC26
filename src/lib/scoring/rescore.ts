@@ -40,6 +40,38 @@ const BRACKET_ADVANCE: Record<number, { nextSlot: number; side: 'home' | 'away' 
 }
 
 /**
+ * Populates R32 match slots (bracket_slot 1–16) with actual group-stage qualified teams.
+ * Must run before syncKOBracket() so winner propagation has team IDs to work with.
+ */
+export async function syncR32Teams() {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { groupMatchesByGroup, teamsByGroup } = await loadGroupData()
+
+  // Empty user preds + strictUserPreds=false → uses actual scores to compute standings
+  const actualR32Pos = computeUserR32Positions(
+    new Map(),
+    groupMatchesByGroup,
+    teamsByGroup,
+    false
+  )
+
+  for (const def of R32_DEFS) {
+    const homeTeamId = actualR32Pos.get(def.homePos) ?? null
+    const awayTeamId = actualR32Pos.get(def.awayPos) ?? null
+    if (homeTeamId && awayTeamId) {
+      await supabase.from('matches')
+        .update({ home_team_id: homeTeamId, away_team_id: awayTeamId })
+        .eq('stage', 'knockout')
+        .eq('bracket_slot', def.slot)
+    }
+  }
+}
+
+/**
  * Reads all played KO matches and propagates each winner to the next bracket slot.
  * Safe to run repeatedly — always overwrites from actual results.
  */
