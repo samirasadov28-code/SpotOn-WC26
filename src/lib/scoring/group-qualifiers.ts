@@ -100,17 +100,30 @@ export async function loadGroupData() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const [matchRes, teamRes, predRes] = await Promise.all([
+  const [matchRes, teamRes] = await Promise.all([
     supabase.from('matches')
       .select('id, home_team_id, away_team_id, actual_home_score, actual_away_score, group_letter')
       .eq('stage', 'group'),
     supabase.from('teams').select('id, group_letter'),
-    supabase.from('predictions_group').select('user_id, match_id, pred_home_score, pred_away_score'),
   ])
 
   const matches: any[] = matchRes.data ?? []
   const teams: any[] = teamRes.data ?? []
-  const preds: any[] = predRes.data ?? []
+
+  // Paginate predictions_group to avoid 1000-row default limit
+  const preds: any[] = []
+  const PAGE = 1000
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('predictions_group')
+      .select('user_id, match_id, pred_home_score, pred_away_score')
+      .range(from, from + PAGE - 1)
+    if (error || !data?.length) break
+    preds.push(...data)
+    if (data.length < PAGE) break
+    from += PAGE
+  }
 
   const groupMatchesByGroup = new Map<string, any[]>()
   for (const m of matches) {
