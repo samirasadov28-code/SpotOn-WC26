@@ -744,39 +744,12 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                           </div>
                         </td>
                         {columns.map((pos, i) => {
-                          if (koMode === 'r32' && i < 24) {
-                            const actualId = koActualByPos.get(pos)
+                          if (koMode === 'r32') {
+                            const actualR32Teams = new Set(koActualByPos.values())
                             const predId = koUserPredsByPos.get(e.userId)?.get(pos)
                             if (!predId) return <td key={pos} className={`py-2 px-2 text-center text-gray-200 ${sectionBody(i)}`}>—</td>
-                            const correct = actualId != null ? predId === actualId : null
-                            const cellBg = correct === true ? 'bg-green-50' : correct === false ? 'bg-red-50' : ''
-                            const predTeam = teamById.get(predId)
-                            return (
-                              <td key={pos} className={`py-1.5 px-1 text-center ${sectionBody(i)} ${cellBg}`}>
-                                {predTeam ? (
-                                  <div className="flex flex-col items-center gap-0.5">
-                                    <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm">
-                                      <img src={flagUrl(predTeam.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
-                                    </span>
-                                    {correct !== null && (
-                                      <span className={`text-[8px] font-bold leading-none ${correct ? 'text-green-600' : 'text-red-500'}`}>
-                                        {correct ? '✓' : '✗'}
-                                      </span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className={`text-[10px] font-bold ${correct === true ? 'text-green-600' : correct === false ? 'text-red-500' : 'text-gray-400'}`}>
-                                    {correct === true ? '✓' : correct === false ? '✗' : '?'}
-                                  </span>
-                                )}
-                              </td>
-                            )
-                          }
-                          if (koMode === 'r32' && i >= 24) {
-                            const actualId = koActualByPos.get(pos)
-                            const predId = koUserPredsByPos.get(e.userId)?.get(pos)
-                            if (!predId) return <td key={pos} className={`py-2 px-2 text-center text-gray-200 ${sectionBody(i)}`}>—</td>
-                            const correct = actualId != null ? predId === actualId : null
+                            // ✓ if the team is anywhere in R32 (any position), ✗ if R32 is known and team isn't there
+                            const correct = actualR32Teams.size > 0 ? actualR32Teams.has(predId) : null
                             const cellBg = correct === true ? 'bg-green-50' : correct === false ? 'bg-red-50' : ''
                             const predTeam = teamById.get(predId)
                             return (
