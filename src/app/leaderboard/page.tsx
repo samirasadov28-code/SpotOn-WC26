@@ -779,9 +779,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                           {
                             const predId = koUserPredsByPos.get(e.userId)?.get(pos)
                             if (!predId) return <td key={pos} className={`py-2 px-2 text-center text-gray-200 ${sectionBody(i)}`}>—</td>
-                            const actualTeamId = koActualByPos.get(pos) ?? null
-                            // All stages: ✓ if predicted team appears anywhere in the actual advancing set
-                            const actualTeamSet = koActualByPos.size > 0 ? new Set(koActualByPos.values()) : null
+                            // Only show ✓/✗ if this specific column's match has been played
+                            const columnHasResult = koActualByPos.has(pos)
+                            const actualTeamSet = columnHasResult ? new Set(koActualByPos.values()) : null
                             const correct = actualTeamSet != null ? actualTeamSet.has(predId) : null
                             const cellBg = correct === true ? 'bg-green-50' : correct === false ? 'bg-red-50' : ''
                             const predTeam = teamById.get(predId)
