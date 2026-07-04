@@ -422,14 +422,26 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           }
           // Fetch ALL round slot predictions (for pair check + today's scores)
           const slotToId = new Map(finalMatches.map(m => [m.bracket_slot, m.id]))
-          const [roundPredsRes, r32PredsData] = await Promise.all([
+          // For R16+, fetch ko-stage-preds to get simulation-based predicted winners of each parent slot
+          const prevStage = stage === 'r16' ? 'r16' : stage === 'qf' ? 'qf' : stage === 'sf' ? 'sf' : stage === 'final' ? 'final' : stage === 'third' ? 'third' : null
+          const [roundPredsRes, r32PredsData, koStagePredsData] = await Promise.all([
             supabase.from('predictions_knockout')
               .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
               .gte('bracket_slot', slotMin).lte('bracket_slot', slotMax),
             stage === 'r32'
               ? fetch('/api/r32-preds', { method: 'POST' }).then(r => r.json()).catch(() => ({}))
               : Promise.resolve(null),
+            prevStage && stage !== 'r32'
+              ? fetch('/api/ko-stage-preds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: prevStage }) }).then(r => r.json()).catch(() => ({}))
+              : Promise.resolve(null),
           ])
+          // Bracket parent map: R16/QF/SF/final/third slot → homeParent R32/R16/QF/SF slot
+          const SLOT_PARENTS: Record<number, { hp: number; ap: number }> = {
+            17:{hp:2,ap:5},  18:{hp:1,ap:3},  19:{hp:4,ap:6},  20:{hp:7,ap:8},
+            21:{hp:11,ap:12},22:{hp:9,ap:10}, 23:{hp:14,ap:16},24:{hp:13,ap:15},
+            25:{hp:17,ap:18},26:{hp:21,ap:22},27:{hp:19,ap:20},28:{hp:23,ap:24},
+            29:{hp:25,ap:26},30:{hp:27,ap:28},31:{hp:29,ap:30},32:{hp:29,ap:30},
+          }
           // R32 position defs (slot → homePos, awayPos)
           const R32_POS: Record<number, { hp: string; ap: string }> = {
             1:{hp:'2A',ap:'2B'}, 2:{hp:'1E',ap:'3rd1'}, 3:{hp:'1F',ap:'2C'}, 4:{hp:'1C',ap:'2F'},
@@ -453,15 +465,16 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               const userPos = r32PredsData[p.user_id] as Record<string,string> | undefined
               if (def && userPos) { homeId = userPos[def.hp] ?? null; awayId = userPos[def.ap] ?? null }
             } else {
-              homeId = p.pred_home_team_id || null
-              awayId = p.pred_away_team_id || null
-              // Fallback for predictions saved before team IDs were stored:
-              // if the user has a score prediction for this slot, use actual match teams
-              if ((!homeId || !awayId) && p.pred_home_score !== null) {
-                const actualMatch = finalMatches.find(m => m.bracket_slot === p.bracket_slot)
-                if (!homeId && actualMatch?.home_team_id) homeId = actualMatch.home_team_id
-                if (!awayId && actualMatch?.away_team_id) awayId = actualMatch.away_team_id
+              // Use simulation-based predicted teams from ko-stage-preds
+              const parents = SLOT_PARENTS[p.bracket_slot as number]
+              const userStagePreds = koStagePredsData?.preds?.[p.user_id] as Record<string,string> | undefined
+              if (parents && userStagePreds) {
+                homeId = userStagePreds[`W M${parents.hp + 72}`] ?? null
+                awayId = userStagePreds[`W M${parents.ap + 72}`] ?? null
               }
+              // Fallback to stored team IDs if simulation has no data for this user
+              if (!homeId) homeId = p.pred_home_team_id || null
+              if (!awayId) awayId = p.pred_away_team_id || null
             }
             if (homeId && awayId) {
               if (!roundPairs.has(p.user_id)) roundPairs.set(p.user_id, new Set())
