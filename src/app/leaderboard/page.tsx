@@ -455,6 +455,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             } else {
               homeId = p.pred_home_team_id || null
               awayId = p.pred_away_team_id || null
+              // Fallback for predictions saved before team IDs were stored:
+              // if the user has a score prediction for this slot, use actual match teams
+              if ((!homeId || !awayId) && p.pred_home_score !== null) {
+                const actualMatch = finalMatches.find(m => m.bracket_slot === p.bracket_slot)
+                if (!homeId && actualMatch?.home_team_id) homeId = actualMatch.home_team_id
+                if (!awayId && actualMatch?.away_team_id) awayId = actualMatch.away_team_id
+              }
             }
             if (homeId && awayId) {
               if (!roundPairs.has(p.user_id)) roundPairs.set(p.user_id, new Set())
