@@ -437,7 +437,6 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             9:{hp:'1D',ap:'3rd5'}, 10:{hp:'1G',ap:'3rd6'}, 11:{hp:'2K',ap:'2L'}, 12:{hp:'1H',ap:'2J'},
             13:{hp:'1B',ap:'3rd7'}, 14:{hp:'1J',ap:'2H'}, 15:{hp:'1K',ap:'3rd8'}, 16:{hp:'2D',ap:'2G'},
           }
-          const matchBySlot = new Map(finalMatches.map(m => [m.bracket_slot, m]))
           const koMap = new Map<string, Map<string, { h: number; a: number }>>()
           const roundPairs = new Map<string, Set<string>>()
           for (const p of ((roundPredsRes.data ?? []) as any[])) {
@@ -454,12 +453,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               const userPos = r32PredsData[p.user_id] as Record<string,string> | undefined
               if (def && userPos) { homeId = userPos[def.hp] ?? null; awayId = userPos[def.ap] ?? null }
             } else {
-              const actualMatch = matchBySlot.get(p.bracket_slot)
               homeId = p.pred_home_team_id || null
               awayId = p.pred_away_team_id || null
-              // For R16+ without stored IDs, fall back to actual (teams are confirmed before play)
-              if (!homeId && actualMatch?.home_team_id) homeId = actualMatch.home_team_id
-              if (!awayId && actualMatch?.away_team_id) awayId = actualMatch.away_team_id
             }
             if (homeId && awayId) {
               if (!roundPairs.has(p.user_id)) roundPairs.set(p.user_id, new Set())
