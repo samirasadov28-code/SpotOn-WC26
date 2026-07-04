@@ -184,6 +184,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
   const { lang, t } = useTranslation()
   const [allDays, setAllDays] = useState<string[]>([])
   const [koDateToStage, setKoDateToStage] = useState<Map<string, string>>(new Map())
+  // Only dates with real DB matches — used to hide empty KO days from picker
+  const [koDateToStageDB, setKoDateToStageDB] = useState<Map<string, string>>(new Map())
   const [selectedDay, setSelectedDay] = useState('')
   const [dayMatches, setDayMatches] = useState<DayMatch[]>([])
   const [predsMap, setPredsMap] = useState<Map<string, Map<string, { h: number; a: number }>>>(new Map())
@@ -361,7 +363,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         const stage = slot <= 16 ? 'r32' : slot <= 24 ? 'r16' : slot <= 28 ? 'qf' : slot <= 30 ? 'sf' : slot === 32 ? 'final' : 'third'
         if (!koMap.has(day)) koMap.set(day, stage)
       }
-      // Fallback: show all expected WC26 KO days even before teams are assigned
+      // DB-only map used for picker — only show dates that have real scheduled matches
+      setKoDateToStageDB(new Map(koMap))
+      // Fallback: ensure all expected WC26 KO days are known for fetch routing even before teams assigned
       const WC26_KO_FALLBACK: [string, string][] = [
         ['2026-06-28','r32'],['2026-06-29','r32'],['2026-06-30','r32'],
         ['2026-07-01','r32'],['2026-07-02','r32'],['2026-07-03','r32'],
@@ -598,8 +602,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           { key: 'third', label: '3rd',  color: 'text-orange-600 bg-orange-50 border border-orange-200' },
           { key: 'final', label: '🏆',   color: 'text-yellow-700 bg-yellow-50 border border-yellow-300' },
         ]
+        // Use DB-only map so empty fallback dates don't appear as picker buttons
         const koDaysByStage = new Map<string, string[]>()
-        for (const [day, stage] of koDateToStage) {
+        for (const [day, stage] of koDateToStageDB) {
           if (!koDaysByStage.has(stage)) koDaysByStage.set(stage, [])
           koDaysByStage.get(stage)!.push(day)
         }
