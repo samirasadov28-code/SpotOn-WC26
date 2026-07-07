@@ -152,34 +152,45 @@ export async function POST(req: Request) {
         }
         // R32 advancement pts are already in basePts
       } else {
-        // R16+: advancement pts for each predicted alive team that can be in actual match
         const homeId = userMatchup.home?.id ?? null
         const awayId = userMatchup.away?.id ?? null
-        const homeAlive = homeId != null && !eliminatedTeams.has(homeId)
-        const awayAlive = awayId != null && awayId !== homeId && !eliminatedTeams.has(awayId)
+        // teamsConfirmed = both sides already set in DB → advancement pts already in basePts
+        const teamsConfirmed = actual?.home != null && actual?.away != null
 
-        // Team "can be in this match" = alive AND (actual match not set OR team is in actual match)
-        const homeValid = homeAlive && (actualTeams == null || actualTeams.has(homeId!))
-        const awayValid = awayAlive && (actualTeams == null || actualTeams.has(awayId!))
+        if (teamsConfirmed) {
+          // Only score pts are still earnable; advancement already scored.
+          // Both predicted teams must exactly match actual pair and be alive.
+          const pred = kp.get(slot)
+          if (pred && pred.h !== pred.a && homeId && awayId &&
+              !eliminatedTeams.has(homeId) && !eliminatedTeams.has(awayId) &&
+              ((homeId === actual!.home && awayId === actual!.away) ||
+               (homeId === actual!.away && awayId === actual!.home))) {
+            maxAdditional += 3
+          }
+        } else {
+          // Teams not confirmed → advancement pts not yet in basePts → add them
+          const homeAlive = homeId != null && !eliminatedTeams.has(homeId)
+          const awayAlive = awayId != null && awayId !== homeId && !eliminatedTeams.has(awayId)
 
-        if (homeValid) maxAdditional += stagePts
-        if (awayValid) maxAdditional += stagePts
+          if (homeAlive) maxAdditional += stagePts
+          if (awayAlive) maxAdditional += stagePts
 
-        // Final winner bonus
-        if (slot === 32) {
-          const pred32 = kp.get(32)
-          if (pred32 && pred32.h !== pred32.a) {
-            const predWinnerId = pred32.h > pred32.a ? homeId : awayId
-            if (predWinnerId && !eliminatedTeams.has(predWinnerId) && (actualTeams == null || actualTeams.has(predWinnerId))) {
-              maxAdditional += STAGE_POINTS['winner'] ?? 16
+          // Final winner bonus
+          if (slot === 32) {
+            const pred32 = kp.get(32)
+            if (pred32 && pred32.h !== pred32.a) {
+              const predWinnerId = pred32.h > pred32.a ? homeId : awayId
+              if (predWinnerId && !eliminatedTeams.has(predWinnerId)) {
+                maxAdditional += STAGE_POINTS['winner'] ?? 16
+              }
             }
           }
-        }
 
-        // Score pts: both predicted teams must be alive+valid + score prediction exists (non-draw)
-        const pred = kp.get(slot)
-        if (homeValid && awayValid && pred && pred.h !== pred.a) {
-          maxAdditional += 3
+          // Score pts: both teams alive + non-draw prediction
+          const pred = kp.get(slot)
+          if (homeAlive && awayAlive && pred && pred.h !== pred.a) {
+            maxAdditional += 3
+          }
         }
       }
     }
