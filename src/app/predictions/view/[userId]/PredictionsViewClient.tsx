@@ -454,7 +454,7 @@ export default function PredictionsViewClient({
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200 mb-5">
+      <div className="flex gap-1 border-b border-gray-200 mb-5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {[
           { key: 'groups', label: t('pv_tab_groups') },
           { key: 'standings', label: t('pv_tab_standings') },
