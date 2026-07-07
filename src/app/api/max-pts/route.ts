@@ -53,6 +53,8 @@ export async function POST(req: Request) {
   const eliminatedTeams = new Set<string>()
   const playedSlots = new Set<number>()
   const actualSlot = new Map<number, { home: string | null; away: string | null }>()
+  // For played slots: synthetic score that encodes the actual winner (home win = 1-0, away win = 0-1)
+  const actualKOScores = new Map<number, { h: number; a: number }>()
 
   // Whether a team can possibly reach a given slot via the actual bracket structure.
   // R32 slots (1-16): team must be in that slot's actual matchup.
@@ -88,12 +90,16 @@ export async function POST(req: Request) {
     if (m.actual_home_score !== null && m.home_team_id && m.away_team_id) {
       playedSlots.add(slot)
       let loserId: string
+      let homeWon: boolean
       if (m.actual_winner_id) {
-        loserId = m.actual_winner_id === m.home_team_id ? m.away_team_id : m.home_team_id
+        homeWon = m.actual_winner_id === m.home_team_id
+        loserId = homeWon ? m.away_team_id : m.home_team_id
       } else {
-        loserId = (m.actual_home_score as number) > (m.actual_away_score as number) ? m.away_team_id : m.home_team_id
+        homeWon = (m.actual_home_score as number) > (m.actual_away_score as number)
+        loserId = homeWon ? m.away_team_id : m.home_team_id
       }
       eliminatedTeams.add(loserId)
+      actualKOScores.set(slot, homeWon ? { h: 1, a: 0 } : { h: 0, a: 1 })
     }
   }
 
@@ -164,8 +170,11 @@ export async function POST(req: Request) {
     }
 
     // Full bracket simulation from user's group + KO score predictions.
-    // simulateAllMatchups handles: missing group preds, bracket collisions, third-place routing.
-    const matchups = simulateAllMatchups(gp, kp, allMatches, allTeams)
+    // For played KO slots, override with actual results so the bracket propagates correctly
+    // regardless of whether the user predicted draws or wrong winners in those slots.
+    const effectiveKP = new Map(kp)
+    for (const [slot, score] of actualKOScores) effectiveKP.set(slot, score)
+    const matchups = simulateAllMatchups(gp, effectiveKP, allMatches, allTeams)
     // Map slot → { home, away } for quick lookup
     const userSlot = new Map(matchups.map(m => [m.slot, { home: m.home, away: m.away }]))
 
