@@ -41,10 +41,45 @@ export async function POST(req: Request) {
     away_team_id: m.away_team_id,
   }))
 
+  // Bracket parent map: slot → which two prev-round slots feed it
+  const SLOT_PARENTS: Record<number, { hp: number; ap: number }> = {
+    17:{hp:2,ap:5},  18:{hp:1,ap:3},  19:{hp:4,ap:6},  20:{hp:7,ap:8},
+    21:{hp:11,ap:12},22:{hp:9,ap:10}, 23:{hp:14,ap:16},24:{hp:13,ap:15},
+    25:{hp:17,ap:18},26:{hp:21,ap:22},27:{hp:19,ap:20},28:{hp:23,ap:24},
+    29:{hp:25,ap:26},30:{hp:27,ap:28},31:{hp:29,ap:30},32:{hp:29,ap:30},
+  }
+
   // Actual KO match state
   const eliminatedTeams = new Set<string>()
   const playedSlots = new Set<number>()
   const actualSlot = new Map<number, { home: string | null; away: string | null }>()
+
+  // Whether a team can possibly reach a given slot via the actual bracket structure.
+  // R32 slots (1-16): team must be in that slot's actual matchup.
+  // R16+ slots: team must be able to win one of the two parent slots.
+  function teamCanReach(teamId: string, slot: number): boolean {
+    if (eliminatedTeams.has(teamId)) return false
+    if (slot <= 16) {
+      const a = actualSlot.get(slot)
+      if (!a) return false
+      return a.home === teamId || a.away === teamId
+    }
+    const p = SLOT_PARENTS[slot]
+    if (!p) return false
+    return teamCanReachAndWin(teamId, p.hp) || teamCanReachAndWin(teamId, p.ap)
+  }
+
+  // Whether a team can reach AND win a given slot.
+  // If the slot is confirmed (both teams set), the team must be one of them.
+  // If unconfirmed, the team just needs to be able to reach it.
+  function teamCanReachAndWin(teamId: string, slot: number): boolean {
+    if (eliminatedTeams.has(teamId)) return false
+    const a = actualSlot.get(slot)
+    if (a?.home != null && a?.away != null) {
+      return a.home === teamId || a.away === teamId
+    }
+    return teamCanReach(teamId, slot)
+  }
 
   for (const m of allMatchRows) {
     if (m.stage !== 'knockout') continue
@@ -169,8 +204,8 @@ export async function POST(req: Request) {
           }
         } else {
           // Teams not confirmed → advancement pts not yet in basePts → add them
-          const homeAlive = homeId != null && !eliminatedTeams.has(homeId)
-          const awayAlive = awayId != null && awayId !== homeId && !eliminatedTeams.has(awayId)
+          const homeAlive = homeId != null && teamCanReach(homeId, slot)
+          const awayAlive = awayId != null && awayId !== homeId && teamCanReach(awayId, slot)
 
           if (homeAlive) maxAdditional += stagePts
           if (awayAlive) maxAdditional += stagePts
@@ -180,7 +215,7 @@ export async function POST(req: Request) {
             const pred32 = kp.get(32)
             if (pred32 && pred32.h !== pred32.a) {
               const predWinnerId = pred32.h > pred32.a ? homeId : awayId
-              if (predWinnerId && !eliminatedTeams.has(predWinnerId)) {
+              if (predWinnerId && teamCanReach(predWinnerId, slot)) {
                 maxAdditional += STAGE_POINTS['winner'] ?? 16
               }
             }
