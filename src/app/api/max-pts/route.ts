@@ -119,20 +119,28 @@ export async function POST(req: Request) {
     }
   }
 
-  // KO score predictions per user (slot → {h, a})
+  // KO score predictions per user (slot → {h, a}) + stored team IDs
   const userKOPreds = new Map<string, Map<number, { h: number; a: number }>>()
+  const userKOTeams = new Map<string, Map<number, { home: string | null; away: string | null }>>()
   {
     let offset = 0
     while (true) {
       const { data } = await supabase
         .from('predictions_knockout')
-        .select('user_id, bracket_slot, pred_home_score, pred_away_score')
+        .select('user_id, bracket_slot, pred_home_score, pred_away_score, pred_home_team_id, pred_away_team_id')
         .range(offset, offset + 999)
       if (!data?.length) break
       for (const p of data as any[]) {
         if (p.pred_home_score === null) continue
         if (!userKOPreds.has(p.user_id)) userKOPreds.set(p.user_id, new Map())
         userKOPreds.get(p.user_id)!.set(p.bracket_slot as number, { h: p.pred_home_score, a: p.pred_away_score })
+        if (p.pred_home_team_id || p.pred_away_team_id) {
+          if (!userKOTeams.has(p.user_id)) userKOTeams.set(p.user_id, new Map())
+          userKOTeams.get(p.user_id)!.set(p.bracket_slot as number, {
+            home: p.pred_home_team_id ?? null,
+            away: p.pred_away_team_id ?? null,
+          })
+        }
       }
       if (data.length < 1000) break
       offset += 1000
@@ -148,6 +156,7 @@ export async function POST(req: Request) {
 
     const gp = userGroupPreds.get(userId) ?? new Map()
     const kp = userKOPreds.get(userId) ?? new Map()
+    const kt = userKOTeams.get(userId) ?? new Map()
 
     if (gp.size === 0 && kp.size === 0) {
       result[userId] = basePts
@@ -194,12 +203,17 @@ export async function POST(req: Request) {
 
         if (teamsConfirmed) {
           // Only score pts are still earnable; advancement already scored.
-          // Both predicted teams must exactly match actual pair and be alive.
+          // Both predicted teams must match actual pair.
+          // Prefer stored pred team IDs (saved at prediction time) over simulation,
+          // since simulation can return null if the user predicted draws in parent slots.
           const pred = kp.get(slot)
-          if (pred && pred.h !== pred.a && homeId && awayId &&
-              !eliminatedTeams.has(homeId) && !eliminatedTeams.has(awayId) &&
-              ((homeId === actual!.home && awayId === actual!.away) ||
-               (homeId === actual!.away && awayId === actual!.home))) {
+          const storedTeams = kt.get(slot)
+          const checkHomeId = storedTeams?.home ?? homeId
+          const checkAwayId = storedTeams?.away ?? awayId
+          if (pred && pred.h !== pred.a && checkHomeId && checkAwayId &&
+              !eliminatedTeams.has(checkHomeId) && !eliminatedTeams.has(checkAwayId) &&
+              ((checkHomeId === actual!.home && checkAwayId === actual!.away) ||
+               (checkHomeId === actual!.away && checkAwayId === actual!.home))) {
             maxAdditional += 3
           }
         } else {
