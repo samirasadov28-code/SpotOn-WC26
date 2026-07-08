@@ -41,6 +41,15 @@ export async function POST(req: Request) {
     away_team_id: m.away_team_id,
   }))
 
+  // Stage → slots mapping (mirrors rescoreKOPts)
+  const STAGE_SLOTS: Record<string, number[]> = {
+    r16:         [17,18,19,20,21,22,23,24],
+    qf:          [25,26,27,28],
+    sf:          [29,30],
+    third_match: [31],
+    final:       [32],
+  }
+
   // Bracket parent map: slot → which two prev-round slots feed it
   const SLOT_PARENTS: Record<number, { hp: number; ap: number }> = {
     17:{hp:2,ap:5},  18:{hp:1,ap:3},  19:{hp:4,ap:6},  20:{hp:7,ap:8},
@@ -218,16 +227,18 @@ export async function POST(req: Request) {
             maxAdditional += 3
           }
         } else {
-          // Teams not confirmed → advancement pts not yet in basePts → add them.
-          // Prefer stored pred team IDs over simulation: simulation home/away ordering
-          // may differ from actual (wrong group predictions), causing effectiveKP to
-          // propagate wrong teams and break teamCanReach for teams that are actually alive.
-          const storedTeams = kt.get(slot)
-          const checkHomeId = storedTeams?.home ?? homeId
-          const checkAwayId = storedTeams?.away ?? awayId
+          // Teams not confirmed → add advancement pts not yet in basePts.
+          // Use simulation teams (consistent with rescoreKOPts which also uses simulation).
+          // Guard: if a team is already set in any actual slot for this stage, rescoreKOPts
+          // already counted their advancement in basePts — don't add again.
+          const stageSlots = STAGE_SLOTS[stage] ?? []
+          const alreadyInStage = (teamId: string) => stageSlots.some(s => {
+            const a = actualSlot.get(s)
+            return a?.home === teamId || a?.away === teamId
+          })
 
-          const homeAlive = checkHomeId != null && teamCanReach(checkHomeId, slot)
-          const awayAlive = checkAwayId != null && checkAwayId !== checkHomeId && teamCanReach(checkAwayId, slot)
+          const homeAlive = homeId != null && !alreadyInStage(homeId) && teamCanReach(homeId, slot)
+          const awayAlive = awayId != null && awayId !== homeId && !alreadyInStage(awayId) && teamCanReach(awayId, slot)
 
           if (homeAlive) maxAdditional += stagePts
           if (awayAlive) maxAdditional += stagePts
@@ -236,14 +247,14 @@ export async function POST(req: Request) {
           if (slot === 32) {
             const pred32 = kp.get(32)
             if (pred32 && pred32.h !== pred32.a) {
-              const predWinnerId = pred32.h > pred32.a ? checkHomeId : checkAwayId
-              if (predWinnerId && teamCanReach(predWinnerId, slot)) {
+              const predWinnerId = pred32.h > pred32.a ? homeId : awayId
+              if (predWinnerId && !alreadyInStage(predWinnerId) && teamCanReach(predWinnerId, slot)) {
                 maxAdditional += STAGE_POINTS['winner'] ?? 16
               }
             }
           }
 
-          // Score pts: both teams alive + non-draw prediction
+          // Score pts: both teams alive (not yet in stage) + non-draw prediction
           const pred = kp.get(slot)
           if (homeAlive && awayAlive && pred && pred.h !== pred.a) {
             maxAdditional += 3
