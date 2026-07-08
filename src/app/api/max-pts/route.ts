@@ -53,8 +53,6 @@ export async function POST(req: Request) {
   const eliminatedTeams = new Set<string>()
   const playedSlots = new Set<number>()
   const actualSlot = new Map<number, { home: string | null; away: string | null }>()
-  // For played slots: synthetic score that encodes the actual winner (home win = 1-0, away win = 0-1)
-  const actualKOScores = new Map<number, { h: number; a: number }>()
 
   // Whether a team can possibly reach a given slot via the actual bracket structure.
   // R32 slots (1-16): team must be in that slot's actual matchup.
@@ -90,16 +88,12 @@ export async function POST(req: Request) {
     if (m.actual_home_score !== null && m.home_team_id && m.away_team_id) {
       playedSlots.add(slot)
       let loserId: string
-      let homeWon: boolean
       if (m.actual_winner_id) {
-        homeWon = m.actual_winner_id === m.home_team_id
-        loserId = homeWon ? m.away_team_id : m.home_team_id
+        loserId = m.actual_winner_id === m.home_team_id ? m.away_team_id : m.home_team_id
       } else {
-        homeWon = (m.actual_home_score as number) > (m.actual_away_score as number)
-        loserId = homeWon ? m.away_team_id : m.home_team_id
+        loserId = (m.actual_home_score as number) > (m.actual_away_score as number) ? m.away_team_id : m.home_team_id
       }
       eliminatedTeams.add(loserId)
-      actualKOScores.set(slot, homeWon ? { h: 1, a: 0 } : { h: 0, a: 1 })
     }
   }
 
@@ -170,11 +164,9 @@ export async function POST(req: Request) {
     }
 
     // Full bracket simulation from user's group + KO score predictions.
-    // For played KO slots, override with actual results so the bracket propagates correctly
-    // regardless of whether the user predicted draws or wrong winners in those slots.
-    const effectiveKP = new Map(kp)
-    for (const [slot, score] of actualKOScores) effectiveKP.set(slot, score)
-    const matchups = simulateAllMatchups(gp, effectiveKP, allMatches, allTeams)
+    // Used only for the confirmed-slot pair check (teamsConfirmed branch) when
+    // stored pred team IDs are absent. Advancement pts use stored pred IDs + teamCanReach.
+    const matchups = simulateAllMatchups(gp, kp, allMatches, allTeams)
     // Map slot → { home, away } for quick lookup
     const userSlot = new Map(matchups.map(m => [m.slot, { home: m.home, away: m.away }]))
 
@@ -226,9 +218,16 @@ export async function POST(req: Request) {
             maxAdditional += 3
           }
         } else {
-          // Teams not confirmed → advancement pts not yet in basePts → add them
-          const homeAlive = homeId != null && teamCanReach(homeId, slot)
-          const awayAlive = awayId != null && awayId !== homeId && teamCanReach(awayId, slot)
+          // Teams not confirmed → advancement pts not yet in basePts → add them.
+          // Prefer stored pred team IDs over simulation: simulation home/away ordering
+          // may differ from actual (wrong group predictions), causing effectiveKP to
+          // propagate wrong teams and break teamCanReach for teams that are actually alive.
+          const storedTeams = kt.get(slot)
+          const checkHomeId = storedTeams?.home ?? homeId
+          const checkAwayId = storedTeams?.away ?? awayId
+
+          const homeAlive = checkHomeId != null && teamCanReach(checkHomeId, slot)
+          const awayAlive = checkAwayId != null && checkAwayId !== checkHomeId && teamCanReach(checkAwayId, slot)
 
           if (homeAlive) maxAdditional += stagePts
           if (awayAlive) maxAdditional += stagePts
@@ -237,7 +236,7 @@ export async function POST(req: Request) {
           if (slot === 32) {
             const pred32 = kp.get(32)
             if (pred32 && pred32.h !== pred32.a) {
-              const predWinnerId = pred32.h > pred32.a ? homeId : awayId
+              const predWinnerId = pred32.h > pred32.a ? checkHomeId : checkAwayId
               if (predWinnerId && teamCanReach(predWinnerId, slot)) {
                 maxAdditional += STAGE_POINTS['winner'] ?? 16
               }
