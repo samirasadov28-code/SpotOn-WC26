@@ -357,13 +357,21 @@ export async function rescoreKOPts() {
     if (advAdd > 0) userAdvPts.set(userId, (userAdvPts.get(userId) ?? 0) + advAdd)
   }
 
-  // KO score pts (R16+): 3/2/1 for exact/GD/outcome — no pair check required
+  // KO score pts (R16+): 3/2/1 for exact/GD/outcome — pair check required
   for (const p of (preds ?? []) as any[]) {
     const slot = p.bracket_slot as number
     if (slot <= 16) continue
     const match = matchBySlot.get(slot) as any
     if (!match || match.actual_home_score === null) continue
     if (p.pred_home_score === null || p.pred_away_score === null) continue
+    // Pair check: user must have predicted both correct teams for this slot
+    const simSlot = userSimSlot.get(p.user_id)?.get(slot)
+    const actualHome = match.home_team_id as string | null
+    const actualAway = match.away_team_id as string | null
+    if (!actualHome || !actualAway || !simSlot?.home || !simSlot?.away) continue
+    const pairMatch = (simSlot.home === actualHome && simSlot.away === actualAway) ||
+                      (simSlot.home === actualAway && simSlot.away === actualHome)
+    if (!pairMatch) continue
     const ph = p.pred_home_score as number, pa = p.pred_away_score as number
     const ah = match.actual_home_score as number, aa = match.actual_away_score as number
     let koPts = 0

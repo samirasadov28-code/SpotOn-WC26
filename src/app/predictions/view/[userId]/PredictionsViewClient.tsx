@@ -207,16 +207,21 @@ function GroupStandingsTable({ groupLetter, matches, preds, teamById, lang, grou
   )
 }
 
-function SimKOMatchCard({ slot, home, away, pred, actualResult, lang, noPick }: {
+function SimKOMatchCard({ slot, home, away, pred, actualResult, actualTeamIds, lang, noPick }: {
   slot: number; home: TeamInfo | null; away: TeamInfo | null
   pred: KOPred | undefined; actualResult: { h: number; a: number } | null
+  actualTeamIds?: { home: string | null; away: string | null } | null
   lang: string; noPick: string
 }) {
   const hasPred = pred && pred.pred_home_score !== null
   const hasResult = actualResult !== null
   const ph = hasPred ? pred.pred_home_score! : null
   const pa = hasPred ? pred.pred_away_score! : null
-  const pts = (hasPred && hasResult) ? matchPts(ph!, pa!, actualResult.h, actualResult.a) : null
+  const pairMatch = slot <= 16 || !hasResult || !actualTeamIds?.home || !actualTeamIds?.away || !home?.id || !away?.id
+    ? true
+    : (home.id === actualTeamIds.home && away.id === actualTeamIds.away) ||
+      (home.id === actualTeamIds.away && away.id === actualTeamIds.home)
+  const pts = (hasPred && hasResult && pairMatch) ? matchPts(ph!, pa!, actualResult.h, actualResult.a) : (hasPred && hasResult && !pairMatch) ? 0 : null
   const ptsBg = pts === 3 ? 'border-green-200 bg-green-50/50' : pts === 2 ? 'border-blue-200 bg-blue-50/50' : pts === 1 ? 'border-yellow-200 bg-yellow-50/50' : pts === 0 ? 'border-red-200 bg-red-50/30' : 'border-gray-100 bg-white'
   const bothUnknown = !home && !away
 
@@ -571,9 +576,12 @@ export default function PredictionsViewClient({
             <p className="text-sm text-gray-400 text-center py-10">{t('pv_ko_none')}</p>
           ) : (() => {
             const koResultMap = new Map<number, { h: number; a: number }>()
+            const actualTeamsBySlot = new Map<number, { home: string | null; away: string | null }>()
             for (const m of koMatches) {
               if (m.bracket_slot && m.actual_home_score !== null && m.actual_away_score !== null)
                 koResultMap.set(m.bracket_slot, { h: m.actual_home_score, a: m.actual_away_score })
+              if (m.bracket_slot)
+                actualTeamsBySlot.set(m.bracket_slot, { home: m.home_team_id, away: m.away_team_id })
             }
             const stageGroups = new Map<string, SlotMatchup[]>()
             for (const mu of simMatchups) {
@@ -596,6 +604,7 @@ export default function PredictionsViewClient({
                       away={mu.away}
                       pred={koPredsMap.get(mu.slot)}
                       actualResult={koResultMap.get(mu.slot) ?? null}
+                      actualTeamIds={actualTeamsBySlot.get(mu.slot) ?? null}
                       lang={lang}
                       noPick={t('pv_no_pick')}
                     />
