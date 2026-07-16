@@ -220,11 +220,17 @@ export async function POST(req: Request) {
           const storedTeams = kt.get(slot)
           const checkHomeId = storedTeams?.home ?? homeId
           const checkAwayId = storedTeams?.away ?? awayId
+          // Slot 31: SF losers are in eliminatedTeams but still play 3rd place match — skip that check
+          const notEliminated = slot === 31 || (!eliminatedTeams.has(checkHomeId!) && !eliminatedTeams.has(checkAwayId!))
           if (pred && pred.h !== pred.a && checkHomeId && checkAwayId &&
-              !eliminatedTeams.has(checkHomeId) && !eliminatedTeams.has(checkAwayId) &&
+              notEliminated &&
               ((checkHomeId === actual!.home && checkAwayId === actual!.away) ||
                (checkHomeId === actual!.away && checkAwayId === actual!.home))) {
             maxAdditional += 3
+            // Third place winner bonus (match not yet played, so optimistically add it)
+            if (slot === 31) {
+              maxAdditional += STAGE_POINTS['third_winner'] ?? 8
+            }
           }
         } else {
           // Teams not confirmed → add advancement pts not yet in basePts.
@@ -237,8 +243,19 @@ export async function POST(req: Request) {
             return a?.home === teamId || a?.away === teamId
           })
 
-          const homeAlive = homeId != null && !alreadyInStage(homeId) && teamCanReach(homeId, slot)
-          const awayAlive = awayId != null && awayId !== homeId && !alreadyInStage(awayId) && teamCanReach(awayId, slot)
+          // Slot 31 (3rd place): teams reach it by LOSING a SF, not winning one.
+          // teamCanReach(id, 31) checks if they can WIN a SF parent — incorrect for slot 31.
+          // Instead check if they can reach (and potentially lose) a SF.
+          const canReachSlot31 = (teamId: string) =>
+            !alreadyInStage(teamId) &&
+            (teamCanReach(teamId, 29) || teamCanReach(teamId, 30))
+
+          const homeAlive = homeId != null && (slot === 31
+            ? canReachSlot31(homeId)
+            : !alreadyInStage(homeId) && teamCanReach(homeId, slot))
+          const awayAlive = awayId != null && awayId !== homeId && (slot === 31
+            ? canReachSlot31(awayId)
+            : !alreadyInStage(awayId) && teamCanReach(awayId, slot))
 
           if (homeAlive) maxAdditional += stagePts
           if (awayAlive) maxAdditional += stagePts
@@ -250,6 +267,17 @@ export async function POST(req: Request) {
               const predWinnerId = pred32.h > pred32.a ? homeId : awayId
               if (predWinnerId && !alreadyInStage(predWinnerId) && teamCanReach(predWinnerId, slot)) {
                 maxAdditional += STAGE_POINTS['winner'] ?? 16
+              }
+            }
+          }
+
+          // Third place winner bonus
+          if (slot === 31) {
+            const pred31 = kp.get(31)
+            if (pred31 && pred31.h !== pred31.a) {
+              const predWinnerId = pred31.h > pred31.a ? homeId : awayId
+              if (predWinnerId && canReachSlot31(predWinnerId)) {
+                maxAdditional += STAGE_POINTS['third_winner'] ?? 8
               }
             }
           }

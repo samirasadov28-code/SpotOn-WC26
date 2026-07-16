@@ -316,6 +316,17 @@ export async function rescoreKOPts() {
     }
   }
 
+  // Actual 3rd place winner for third_winner bonus
+  const thirdMatchActual = matchBySlot.get(31) as any
+  let actualThirdWinnerId: string | null = null
+  if (thirdMatchActual?.actual_home_score !== null && thirdMatchActual?.actual_home_score !== undefined) {
+    actualThirdWinnerId = thirdMatchActual.actual_winner_id ?? null
+    if (!actualThirdWinnerId) {
+      const ah = thirdMatchActual.actual_home_score as number, aa = thirdMatchActual.actual_away_score as number
+      actualThirdWinnerId = ah >= aa ? thirdMatchActual.home_team_id : thirdMatchActual.away_team_id
+    }
+  }
+
   // R16+ advancement pts — stage-based:
   // For each KO stage, award stagePts for each unique team the user predicted to be
   // in that stage that actually IS in that stage (regardless of which specific slot).
@@ -350,6 +361,19 @@ export async function rescoreKOPts() {
         const predWinnerId = finalPred.h > finalPred.a ? finalSim.home : finalSim.away
         if (predWinnerId && predWinnerId === actualChampionId) {
           advAdd += STAGE_POINTS['winner'] ?? 16
+        }
+      }
+    }
+
+    // Third place winner bonus (8pts): user's predicted winner of slot 31 = actual 3rd place winner
+    if (actualThirdWinnerId) {
+      const kp = userKoScorePreds.get(userId) ?? new Map()
+      const thirdPred = kp.get(31)
+      const thirdSim = simSlots.get(31)
+      if (thirdPred && thirdPred.h !== thirdPred.a && thirdSim) {
+        const predWinnerId = thirdPred.h > thirdPred.a ? thirdSim.home : thirdSim.away
+        if (predWinnerId && predWinnerId === actualThirdWinnerId) {
+          advAdd += STAGE_POINTS['third_winner'] ?? 8
         }
       }
     }
