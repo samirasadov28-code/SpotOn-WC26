@@ -48,17 +48,18 @@ export async function syncKOBracket() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Clear all bracket-derived team IDs (slots 17–32) before re-populating
-  await supabase.from('matches')
-    .update({ home_team_id: null, away_team_id: null })
-    .eq('stage', 'knockout')
-    .gte('bracket_slot', 17)
-
+  // Fetch played matches WITH team IDs before clearing, so SF loser lookup still works
   const { data: played } = await supabase
     .from('matches')
     .select('bracket_slot, home_team_id, away_team_id, actual_home_score, actual_away_score, actual_winner_id')
     .eq('stage', 'knockout')
     .not('actual_home_score', 'is', null) as any
+
+  // Clear all bracket-derived team IDs (slots 17–32) before re-populating
+  await supabase.from('matches')
+    .update({ home_team_id: null, away_team_id: null })
+    .eq('stage', 'knockout')
+    .gte('bracket_slot', 17)
 
   for (const m of (played ?? []) as any[]) {
     const slot = m.bracket_slot as number
