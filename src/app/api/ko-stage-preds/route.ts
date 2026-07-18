@@ -143,6 +143,68 @@ export async function POST(req: Request) {
   const preds: Record<string, Record<string, string>> = {}
   const roundPts: Record<string, number> = {}
 
+  // Winners mode: who won the tournament and 3rd place (16 + 8 bonus pts)
+  if (stage === 'winners') {
+    const finalMatchRow = allMatchRows.find((m: any) => m.stage === 'knockout' && m.bracket_slot === 32) as any
+    const thirdMatchRow = allMatchRows.find((m: any) => m.stage === 'knockout' && m.bracket_slot === 31) as any
+
+    const actual: Record<string, string> = {}
+    let actualChampionId: string | null = null
+    if (finalMatchRow?.actual_home_score !== null && finalMatchRow?.home_team_id && finalMatchRow?.away_team_id) {
+      actualChampionId = finalMatchRow.actual_winner_id ?? null
+      if (!actualChampionId) {
+        actualChampionId = (finalMatchRow.actual_home_score as number) >= (finalMatchRow.actual_away_score as number)
+          ? finalMatchRow.home_team_id : finalMatchRow.away_team_id
+      }
+      if (actualChampionId) actual['champion'] = actualChampionId
+    }
+    let actualThirdWinnerId: string | null = null
+    if (thirdMatchRow?.actual_home_score !== null && thirdMatchRow?.home_team_id && thirdMatchRow?.away_team_id) {
+      actualThirdWinnerId = thirdMatchRow.actual_winner_id ?? null
+      if (!actualThirdWinnerId) {
+        actualThirdWinnerId = (thirdMatchRow.actual_home_score as number) >= (thirdMatchRow.actual_away_score as number)
+          ? thirdMatchRow.home_team_id : thirdMatchRow.away_team_id
+      }
+      if (actualThirdWinnerId) actual['3rd_winner'] = actualThirdWinnerId
+    }
+
+    for (const userId of allUserIds) {
+      const gp = userGroupPreds.get(userId) ?? new Map()
+      const kp = userKOPreds.get(userId) ?? new Map()
+      if (gp.size === 0 && kp.size === 0) continue
+
+      const matchups = simulateAllMatchups(gp, kp, allMatches, allTeams)
+      const simSlot = new Map(matchups.map(m => [m.slot, { home: m.home, away: m.away }]))
+
+      const userCols: Record<string, string> = {}
+
+      // Predicted champion (slot 32 winner)
+      const finalPred = kp.get(32)
+      const finalSim = simSlot.get(32)
+      if (finalPred && finalPred.h !== finalPred.a && finalSim) {
+        const predChampion = finalPred.h > finalPred.a ? finalSim.home : finalSim.away
+        if (predChampion) userCols['champion'] = predChampion.id
+      }
+
+      // Predicted 3rd place winner (slot 31 winner)
+      const thirdPred = kp.get(31)
+      const thirdSim = simSlot.get(31)
+      if (thirdPred && thirdPred.h !== thirdPred.a && thirdSim) {
+        const predThirdWinner = thirdPred.h > thirdPred.a ? thirdSim.home : thirdSim.away
+        if (predThirdWinner) userCols['3rd_winner'] = predThirdWinner.id
+      }
+
+      let pts = 0
+      if (actualChampionId && userCols['champion'] === actualChampionId) pts += STAGE_POINTS['winner'] ?? 16
+      if (actualThirdWinnerId && userCols['3rd_winner'] === actualThirdWinnerId) pts += STAGE_POINTS['third_winner'] ?? 8
+
+      if (Object.keys(userCols).length > 0) preds[userId] = userCols
+      if (pts > 0) roundPts[userId] = pts
+    }
+
+    return NextResponse.json({ actual, preds, roundPts })
+  }
+
   // Trophy mode (stage === 'final'): combined finals + 3rd place view with all bonuses
   if (stage === 'final') {
     // Build actual for all 4 columns: W M101, W M102, L M101, L M102
