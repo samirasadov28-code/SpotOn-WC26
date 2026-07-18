@@ -599,7 +599,6 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           { key: 'r16',   label: 'R16',  color: 'text-indigo-600 bg-indigo-50 border border-indigo-200' },
           { key: 'qf',    label: 'QF',   color: 'text-purple-600 bg-purple-50 border border-purple-200' },
           { key: 'sf',    label: 'SF',   color: 'text-pink-600 bg-pink-50 border border-pink-200' },
-          { key: 'third', label: '3rd',  color: 'text-orange-600 bg-orange-50 border border-orange-200' },
           { key: 'final', label: '🏆',   color: 'text-yellow-700 bg-yellow-50 border border-yellow-300' },
         ]
         // Use DB-only map so empty fallback dates don't appear as picker buttons
@@ -668,12 +667,12 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           qf:  Array.from({ length: 8 },  (_, i) => `W M${89+i}`),
           sf:  Array.from({ length: 4 },  (_, i) => `W M${97+i}`),
           third: ['L M101', 'L M102'],
-          final: ['W M101', 'W M102'],
+          final: ['W M101', 'W M102', 'L M101', 'L M102'],
         }
         const STAGE_TITLES: Record<string, string> = {
           r32: '🏅 Round of 32 — Advancement', r16: '🏅 Round of 16 — Advancement',
           qf: '🏅 Quarter-Finals — Advancement', sf: '🏅 Semi-Finals — Advancement',
-          third: '🥉 Third Place — Advancement', final: '🏆 Final — Advancement',
+          third: '🥉 Third Place — Advancement', final: '🏆 Finals & Third Place — Advancement',
         }
 
         const columns = STAGE_COLS[koMode] ?? []
@@ -702,8 +701,16 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
         const koScrollRef = { current: null as HTMLDivElement | null }
         const koMirrorRef = { current: null as HTMLDivElement | null }
 
-        const sectionHead = (i: number) => koMode === 'r32' && (i === 12 || i === 24) ? 'border-l-2 border-blue-400/50' : ''
-        const sectionBody = (i: number) => koMode === 'r32' && (i === 12 || i === 24) ? 'border-l-2 border-blue-100' : ''
+        const sectionHead = (i: number) => {
+          if (koMode === 'r32' && (i === 12 || i === 24)) return 'border-l-2 border-blue-400/50'
+          if (koMode === 'final' && i === 2) return 'border-l-2 border-orange-300/60'
+          return ''
+        }
+        const sectionBody = (i: number) => {
+          if (koMode === 'r32' && (i === 12 || i === 24)) return 'border-l-2 border-blue-100'
+          if (koMode === 'final' && i === 2) return 'border-l-2 border-orange-100'
+          return ''
+        }
 
         return (
           <div>
@@ -759,7 +766,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                     })}
                     <th className="py-2 px-3 text-center font-bold text-yellow-300 min-w-[80px] border-l-2 border-yellow-400/50 sticky right-0 bg-[#0B1F3A]">
                       <div className="flex flex-col items-center gap-1">
-                        <span>{koPointsMode === 'round' ? ({ r32:'R32',r16:'R16',qf:'QF',sf:'SF',third:'3rd',final:'Final' } as Record<string,string>)[koMode!] + ' Pts' : 'Total'}</span>
+                        <span>{koPointsMode === 'round' ? (koMode === 'final' ? '🏆 Pts' : ({ r32:'R32',r16:'R16',qf:'QF',sf:'SF',third:'3rd' } as Record<string,string>)[koMode!] + ' Pts') : 'Total'}</span>
                         <div className="flex rounded overflow-hidden border border-yellow-400/40 text-[9px] font-semibold">
                           <button onClick={() => setKoPointsMode('round')}
                             className={`px-1.5 py-0.5 transition-colors ${koPointsMode === 'round' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
@@ -801,8 +808,12 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                             if (!predId) return <td key={pos} className={`py-2 px-2 text-center text-gray-200 ${sectionBody(i)}`}>—</td>
                             // Only show ✓/✗ if this specific column's match has been played
                             const columnHasResult = koActualByPos.has(pos)
-                            const actualTeamSet = columnHasResult ? new Set(koActualByPos.values()) : null
-                            const correct = actualTeamSet != null ? actualTeamSet.has(predId) : null
+                            // Trophy view: use exact position match (W and L teams are separate sets)
+                            const correct = columnHasResult
+                              ? (koMode === 'final'
+                                  ? koActualByPos.get(pos) === predId
+                                  : new Set(koActualByPos.values()).has(predId))
+                              : null
                             const cellBg = correct === true ? 'bg-green-50' : correct === false ? 'bg-red-50' : ''
                             const predTeam = teamById.get(predId)
                             return (

@@ -143,6 +143,113 @@ export async function POST(req: Request) {
   const preds: Record<string, Record<string, string>> = {}
   const roundPts: Record<string, number> = {}
 
+  // Trophy mode (stage === 'final'): combined finals + 3rd place view with all bonuses
+  if (stage === 'final') {
+    // Build actual for all 4 columns: W M101, W M102, L M101, L M102
+    const actual: Record<string, string> = {}
+    for (const m of allMatchRows) {
+      if (m.stage !== 'knockout') continue
+      const slot = m.bracket_slot as number
+      if (slot !== 29 && slot !== 30) continue
+      if (m.actual_home_score === null || !m.home_team_id || !m.away_team_id) continue
+      let winnerId: string = m.actual_winner_id
+      if (!winnerId) {
+        winnerId = (m.actual_home_score as number) > (m.actual_away_score as number)
+          ? m.home_team_id : m.away_team_id
+      }
+      const loserId = winnerId === m.home_team_id ? m.away_team_id : m.home_team_id
+      actual[`W M${slot + 72}`] = winnerId
+      actual[`L M${slot + 72}`] = loserId
+    }
+
+    // Actual champion and 3rd place winner for bonus pts
+    const finalMatchRow = allMatchRows.find((m: any) => m.stage === 'knockout' && m.bracket_slot === 32) as any
+    const thirdMatchRow = allMatchRows.find((m: any) => m.stage === 'knockout' && m.bracket_slot === 31) as any
+    let actualChampionId: string | null = null
+    if (finalMatchRow?.actual_home_score !== null && finalMatchRow?.home_team_id && finalMatchRow?.away_team_id) {
+      actualChampionId = finalMatchRow.actual_winner_id ?? null
+      if (!actualChampionId) {
+        actualChampionId = (finalMatchRow.actual_home_score as number) >= (finalMatchRow.actual_away_score as number)
+          ? finalMatchRow.home_team_id : finalMatchRow.away_team_id
+      }
+    }
+    let actualThirdWinnerId: string | null = null
+    if (thirdMatchRow?.actual_home_score !== null && thirdMatchRow?.home_team_id && thirdMatchRow?.away_team_id) {
+      actualThirdWinnerId = thirdMatchRow.actual_winner_id ?? null
+      if (!actualThirdWinnerId) {
+        actualThirdWinnerId = (thirdMatchRow.actual_home_score as number) >= (thirdMatchRow.actual_away_score as number)
+          ? thirdMatchRow.home_team_id : thirdMatchRow.away_team_id
+      }
+    }
+
+    const actualWinnerTeams = new Set([actual['W M101'], actual['W M102']].filter(Boolean))
+    const actualLoserTeams = new Set([actual['L M101'], actual['L M102']].filter(Boolean))
+
+    for (const userId of allUserIds) {
+      const gp = userGroupPreds.get(userId) ?? new Map()
+      const kp = userKOPreds.get(userId) ?? new Map()
+      if (gp.size === 0 && kp.size === 0) continue
+
+      const matchups = simulateAllMatchups(gp, kp, allMatches, allTeams)
+      const simSlot = new Map(matchups.map(m => [m.slot, { home: m.home, away: m.away }]))
+
+      const userCols: Record<string, string> = {}
+
+      for (const slot of [29, 30]) {
+        const pred = kp.get(slot)
+        if (!pred || pred.h === pred.a) continue
+
+        const simmed = simSlot.get(slot)
+        let home: TeamInfo | null = simmed?.home ?? null
+        let away: TeamInfo | null = simmed?.away ?? null
+        if (!home || !away) {
+          const dbTeams = actualSlotTeams.get(slot)
+          if (dbTeams) {
+            if (!home && dbTeams.home) home = teamMap.get(dbTeams.home) ?? null
+            if (!away && dbTeams.away) away = teamMap.get(dbTeams.away) ?? null
+          }
+        }
+        if (!home && !away) continue
+
+        const winner = pred.h > pred.a ? home : away
+        const loser = pred.h > pred.a ? away : home
+        if (winner) userCols[`W M${slot + 72}`] = winner.id
+        if (loser) userCols[`L M${slot + 72}`] = loser.id
+      }
+
+      let pts = 0
+      for (const [col, teamId] of Object.entries(userCols)) {
+        if (col.startsWith('W') && actualWinnerTeams.has(teamId)) pts += STAGE_POINTS['final'] ?? 12
+        if (col.startsWith('L') && actualLoserTeams.has(teamId)) pts += STAGE_POINTS['third_match'] ?? 4
+      }
+
+      // Winner bonus (16 pts)
+      if (actualChampionId) {
+        const finalPred = kp.get(32)
+        const finalSim = simSlot.get(32)
+        if (finalPred && finalPred.h !== finalPred.a && finalSim) {
+          const predWinnerId = finalPred.h > finalPred.a ? finalSim.home?.id : finalSim.away?.id
+          if (predWinnerId && predWinnerId === actualChampionId) pts += STAGE_POINTS['winner'] ?? 16
+        }
+      }
+
+      // Third winner bonus (8 pts)
+      if (actualThirdWinnerId) {
+        const thirdPred = kp.get(31)
+        const thirdSim = simSlot.get(31)
+        if (thirdPred && thirdPred.h !== thirdPred.a && thirdSim) {
+          const predWinnerId = thirdPred.h > thirdPred.a ? thirdSim.home?.id : thirdSim.away?.id
+          if (predWinnerId && predWinnerId === actualThirdWinnerId) pts += STAGE_POINTS['third_winner'] ?? 8
+        }
+      }
+
+      if (Object.keys(userCols).length > 0) preds[userId] = userCols
+      if (pts > 0) roundPts[userId] = pts
+    }
+
+    return NextResponse.json({ actual, preds, roundPts })
+  }
+
   for (const userId of allUserIds) {
     const gp = userGroupPreds.get(userId) ?? new Map()
     const kp = userKOPreds.get(userId) ?? new Map()
@@ -189,7 +296,6 @@ export async function POST(req: Request) {
 
     // Round pts — stage-based: award stagePts for each unique predicted team
     // that appears ANYWHERE in the actual advancing set, regardless of which slot.
-    // This ensures Canada predicted in any R32 slot still scores if Canada advanced.
     const actualTeamSet = new Set(Object.values(actual))
     const predictedTeamSet = new Set(Object.values(userCols))
     let pts = 0
