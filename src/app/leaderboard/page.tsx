@@ -595,17 +595,20 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       {/* Day picker — single scrollable row with arrows */}
       {(() => {
         const KO_STAGE_META = [
-          { key: 'r32',   label: 'R32',  color: 'text-blue-600 bg-blue-50 border border-blue-200' },
-          { key: 'r16',   label: 'R16',  color: 'text-indigo-600 bg-indigo-50 border border-indigo-200' },
-          { key: 'qf',    label: 'QF',   color: 'text-purple-600 bg-purple-50 border border-purple-200' },
-          { key: 'sf',    label: 'SF',   color: 'text-pink-600 bg-pink-50 border border-pink-200' },
-          { key: 'final', label: '🏆',   color: 'text-yellow-700 bg-yellow-50 border border-yellow-300' },
+          { key: 'r32',     label: 'R32', color: 'text-blue-600 bg-blue-50 border border-blue-200' },
+          { key: 'r16',     label: 'R16', color: 'text-indigo-600 bg-indigo-50 border border-indigo-200' },
+          { key: 'qf',      label: 'QF',  color: 'text-purple-600 bg-purple-50 border border-purple-200' },
+          { key: 'sf',      label: 'SF',  color: 'text-pink-600 bg-pink-50 border border-pink-200' },
+          { key: 'final',   label: '🏆',  color: 'text-yellow-700 bg-yellow-50 border border-yellow-300' },
+          { key: 'winners', label: '🥇',  color: 'text-amber-700 bg-amber-50 border border-amber-400' },
         ]
         // Use DB-only map so empty fallback dates don't appear as picker buttons
+        // '3rd' dates merge into 'final' group so 18 Jul shows alongside the 🏆 badge
         const koDaysByStage = new Map<string, string[]>()
         for (const [day, stage] of koDateToStageDB) {
-          if (!koDaysByStage.has(stage)) koDaysByStage.set(stage, [])
-          koDaysByStage.get(stage)!.push(day)
+          const groupKey = stage === 'third' ? 'final' : stage
+          if (!koDaysByStage.has(groupKey)) koDaysByStage.set(groupKey, [])
+          koDaysByStage.get(groupKey)!.push(day)
         }
         for (const [, days] of koDaysByStage) days.sort()
 
@@ -622,7 +625,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
               ))}
               {KO_STAGE_META.map(s => {
                 const days = koDaysByStage.get(s.key) ?? []
-                if (days.length === 0) return null
+                // 'winners' badge always shows (no own dates); others only if they have dates
+                if (days.length === 0 && s.key !== 'winners') return null
                 const badgeEl = (
                   <button
                     data-ko={s.key}
@@ -638,7 +642,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                 ))
                 return (
                   <div key={s.key} className="flex items-center gap-1 shrink-0">
-                    {s.key === 'final' ? [...dateBtns, badgeEl] : [badgeEl, ...dateBtns]}
+                    {s.key === 'final' ? [...dateBtns, badgeEl]
+                     : s.key === 'winners' ? [badgeEl]
+                     : [badgeEl, ...dateBtns]}
                   </div>
                 )
               })}
@@ -668,11 +674,13 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
           sf:  Array.from({ length: 4 },  (_, i) => `W M${97+i}`),
           third: ['L M101', 'L M102'],
           final: ['W M101', 'W M102', 'L M101', 'L M102'],
+          winners: ['champion', '3rd_winner'],
         }
         const STAGE_TITLES: Record<string, string> = {
           r32: '🏅 Round of 32 — Advancement', r16: '🏅 Round of 16 — Advancement',
           qf: '🏅 Quarter-Finals — Advancement', sf: '🏅 Semi-Finals — Advancement',
           third: '🥉 Third Place — Advancement', final: '🏆 Finals & Third Place — Advancement',
+          winners: '🥇 Champions & Third Place Winners',
         }
 
         const columns = STAGE_COLS[koMode] ?? []
@@ -748,15 +756,18 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                         team = teamById.get(koActualByPos.get(pos)!) ?? null
                       }
                       const isThird = koMode === 'r32' && i >= 24
+                      const winnerLabel = pos === 'champion' ? '🏆 Champ' : pos === '3rd_winner' ? '🥉 3rd' : null
                       return (
                         <th key={pos} className={`py-1.5 px-1 text-center font-normal min-w-[64px] ${sectionHead(i)}`}>
-                          {team ? (
+                          {winnerLabel && !team ? (
+                            <span className="text-[10px] font-bold text-white/60">{winnerLabel}</span>
+                          ) : team ? (
                             <div className="flex flex-col items-center gap-0.5">
                               <span className="inline-block w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0">
                                 <img src={flagUrl(team.fifa_code, 40)} alt="" className="w-full h-full object-cover" />
                               </span>
                               <span className="text-[9px] font-semibold leading-none">{team.fifa_code}</span>
-                              <span className="text-[8px] text-white/50 leading-none">{pos}</span>
+                              <span className="text-[8px] text-white/50 leading-none">{winnerLabel ?? pos}</span>
                             </div>
                           ) : (
                             <span className={`text-[10px] font-bold ${isThird ? 'text-orange-300' : 'text-white/60'}`}>{pos}</span>
@@ -766,7 +777,7 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                     })}
                     <th className="py-2 px-3 text-center font-bold text-yellow-300 min-w-[80px] border-l-2 border-yellow-400/50 sticky right-0 bg-[#0B1F3A]">
                       <div className="flex flex-col items-center gap-1">
-                        <span>{koPointsMode === 'round' ? (koMode === 'final' ? '🏆 Pts' : ({ r32:'R32',r16:'R16',qf:'QF',sf:'SF',third:'3rd' } as Record<string,string>)[koMode!] + ' Pts') : 'Total'}</span>
+                        <span>{koPointsMode === 'round' ? (koMode === 'final' ? '🏆 Pts' : koMode === 'winners' ? '🥇 Pts' : ({ r32:'R32',r16:'R16',qf:'QF',sf:'SF',third:'3rd' } as Record<string,string>)[koMode!] + ' Pts') : 'Total'}</span>
                         <div className="flex rounded overflow-hidden border border-yellow-400/40 text-[9px] font-semibold">
                           <button onClick={() => setKoPointsMode('round')}
                             className={`px-1.5 py-0.5 transition-colors ${koPointsMode === 'round' ? 'bg-yellow-400 text-[#0B1F3A]' : 'text-yellow-300 hover:bg-white/10'}`}>
@@ -808,9 +819,9 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
                             if (!predId) return <td key={pos} className={`py-2 px-2 text-center text-gray-200 ${sectionBody(i)}`}>—</td>
                             // Only show ✓/✗ if this specific column's match has been played
                             const columnHasResult = koActualByPos.has(pos)
-                            // Trophy view: use exact position match (W and L teams are separate sets)
+                            // Trophy/winners view: use exact position match (W and L teams are separate sets)
                             const correct = columnHasResult
-                              ? (koMode === 'final'
+                              ? (koMode === 'final' || koMode === 'winners'
                                   ? koActualByPos.get(pos) === predId
                                   : new Set(koActualByPos.values()).has(predId))
                               : null
