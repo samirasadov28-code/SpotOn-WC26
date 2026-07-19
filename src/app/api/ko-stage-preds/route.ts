@@ -144,6 +144,7 @@ export async function POST(req: Request) {
   const roundPts: Record<string, number> = {}
 
   // Winners mode: who won the tournament and 3rd place (16 + 8 bonus pts)
+  // Uses actual DB slot teams (confirmed by syncKOBracket) + user score preds — no simulation needed.
   if (stage === 'winners') {
     const finalMatchRow = allMatchRows.find((m: any) => m.stage === 'knockout' && m.bracket_slot === 32) as any
     const thirdMatchRow = allMatchRows.find((m: any) => m.stage === 'knockout' && m.bracket_slot === 31) as any
@@ -168,30 +169,26 @@ export async function POST(req: Request) {
       if (actualThirdWinnerId) actual['3rd_winner'] = actualThirdWinnerId
     }
 
+    // Known teams in slots 31 and 32 from DB (set by syncKOBracket after SFs played)
+    const finalSlotTeams = actualSlotTeams.get(32)
+    const thirdSlotTeams = actualSlotTeams.get(31)
+
     for (const userId of allUserIds) {
-      const gp = userGroupPreds.get(userId) ?? new Map()
       const kp = userKOPreds.get(userId) ?? new Map()
-      if (gp.size === 0 && kp.size === 0) continue
-
-      const matchups = simulateAllMatchups(gp, kp, allMatches, allTeams)
-      const simSlot = new Map(matchups.map(m => [m.slot, { home: m.home, away: m.away }]))
-
       const userCols: Record<string, string> = {}
 
-      // Predicted champion (slot 32 winner)
+      // Predicted champion: user's slot 32 score pred + actual slot 32 home/away teams
       const finalPred = kp.get(32)
-      const finalSim = simSlot.get(32)
-      if (finalPred && finalPred.h !== finalPred.a && finalSim) {
-        const predChampion = finalPred.h > finalPred.a ? finalSim.home : finalSim.away
-        if (predChampion) userCols['champion'] = predChampion.id
+      if (finalPred && finalPred.h !== finalPred.a && finalSlotTeams?.home && finalSlotTeams?.away) {
+        const predChampionId = finalPred.h > finalPred.a ? finalSlotTeams.home : finalSlotTeams.away
+        userCols['champion'] = predChampionId
       }
 
-      // Predicted 3rd place winner (slot 31 winner)
+      // Predicted 3rd place winner: user's slot 31 score pred + actual slot 31 home/away teams
       const thirdPred = kp.get(31)
-      const thirdSim = simSlot.get(31)
-      if (thirdPred && thirdPred.h !== thirdPred.a && thirdSim) {
-        const predThirdWinner = thirdPred.h > thirdPred.a ? thirdSim.home : thirdSim.away
-        if (predThirdWinner) userCols['3rd_winner'] = predThirdWinner.id
+      if (thirdPred && thirdPred.h !== thirdPred.a && thirdSlotTeams?.home && thirdSlotTeams?.away) {
+        const predThirdWinnerId = thirdPred.h > thirdPred.a ? thirdSlotTeams.home : thirdSlotTeams.away
+        userCols['3rd_winner'] = predThirdWinnerId
       }
 
       let pts = 0
