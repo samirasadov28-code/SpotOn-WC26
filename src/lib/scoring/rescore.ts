@@ -271,10 +271,22 @@ export async function rescoreKOPts() {
     userKoScorePreds.get(p.user_id)!.set(p.bracket_slot as number, { h: p.pred_home_score, a: p.pred_away_score })
   }
 
+  // Build per-user stored team IDs from predictions_knockout (saved at prediction time).
+  // These are reliable for R16+ advancement even when group predictions differ from actual results.
+  const userStoredTeamsBySlot = new Map<string, Map<number, { home: string | null; away: string | null }>>()
+  for (const p of (preds ?? []) as any[]) {
+    const slot = p.bracket_slot as number
+    if (slot <= 16) continue
+    if (!p.pred_home_team_id && !p.pred_away_team_id) continue
+    if (!userStoredTeamsBySlot.has(p.user_id)) userStoredTeamsBySlot.set(p.user_id, new Map())
+    userStoredTeamsBySlot.get(p.user_id)!.set(slot, {
+      home: p.pred_home_team_id ?? null,
+      away: p.pred_away_team_id ?? null,
+    })
+  }
+
   // Simulate each user's full predicted bracket using their group + KO score predictions.
-  // This correctly handles users who predicted a team (e.g. Canada) in a different R32 slot
-  // than the one it actually played in — the simulation seeds from group predictions, not
-  // from actual slot assignments, so the path is user-specific.
+  // Used as fallback when stored pred team IDs are absent, and for the R16+ score pts pair check.
   const userSimSlot = new Map<string, Map<number, { home: string | null; away: string | null }>>()
   const allUsersWithPreds = new Set([...predsByUser.keys(), ...userKoScorePreds.keys()])
   for (const userId of allUsersWithPreds) {
@@ -331,7 +343,12 @@ export async function rescoreKOPts() {
   // R16+ advancement pts — stage-based:
   // For each KO stage, award stagePts for each unique team the user predicted to be
   // in that stage that actually IS in that stage (regardless of which specific slot).
-  for (const [userId, simSlots] of userSimSlot) {
+  // Use stored pred team IDs as primary source; fall back to simulation.
+  const allUsersForAdv = new Set([...allUsersWithPreds, ...userStoredTeamsBySlot.keys()])
+  for (const userId of allUsersForAdv) {
+    const simSlots = userSimSlot.get(userId) ?? new Map()
+    const storedSlots = userStoredTeamsBySlot.get(userId) ?? new Map()
+    if (simSlots.size === 0 && storedSlots.size === 0) continue
     let advAdd = 0
 
     for (const [stage, slots] of Object.entries(STAGE_SLOTS)) {
@@ -340,12 +357,16 @@ export async function rescoreKOPts() {
       const actualTeams = actualStageTeams.get(stage)
       if (!actualTeams || actualTeams.size === 0) continue
 
-      // Collect unique teams the user predicted to appear in this stage
+      // Collect unique teams the user predicted to appear in this stage.
+      // Prefer stored pred team IDs (saved at prediction time) over simulation.
       const predictedTeams = new Set<string>()
       for (const slot of slots) {
-        const s = simSlots.get(slot)
-        if (s?.home) predictedTeams.add(s.home)
-        if (s?.away) predictedTeams.add(s.away)
+        const stored = storedSlots.get(slot)
+        const sim = simSlots.get(slot)
+        const home = stored?.home ?? sim?.home ?? null
+        const away = stored?.away ?? sim?.away ?? null
+        if (home) predictedTeams.add(home)
+        if (away) predictedTeams.add(away)
       }
 
       for (const teamId of predictedTeams) {
@@ -357,9 +378,12 @@ export async function rescoreKOPts() {
     if (actualChampionId) {
       const kp = userKoScorePreds.get(userId) ?? new Map()
       const finalPred = kp.get(32)
-      const finalSim = simSlots.get(32)
-      if (finalPred && finalPred.h !== finalPred.a && finalSim) {
-        const predWinnerId = finalPred.h > finalPred.a ? finalSim.home : finalSim.away
+      const stored32 = storedSlots.get(32)
+      const sim32 = simSlots.get(32)
+      const home32 = stored32?.home ?? sim32?.home ?? null
+      const away32 = stored32?.away ?? sim32?.away ?? null
+      if (finalPred && finalPred.h !== finalPred.a && (home32 || away32)) {
+        const predWinnerId = finalPred.h > finalPred.a ? home32 : away32
         if (predWinnerId && predWinnerId === actualChampionId) {
           advAdd += STAGE_POINTS['winner'] ?? 16
         }
@@ -370,9 +394,12 @@ export async function rescoreKOPts() {
     if (actualThirdWinnerId) {
       const kp = userKoScorePreds.get(userId) ?? new Map()
       const thirdPred = kp.get(31)
-      const thirdSim = simSlots.get(31)
-      if (thirdPred && thirdPred.h !== thirdPred.a && thirdSim) {
-        const predWinnerId = thirdPred.h > thirdPred.a ? thirdSim.home : thirdSim.away
+      const stored31 = storedSlots.get(31)
+      const sim31 = simSlots.get(31)
+      const home31 = stored31?.home ?? sim31?.home ?? null
+      const away31 = stored31?.away ?? sim31?.away ?? null
+      if (thirdPred && thirdPred.h !== thirdPred.a && (home31 || away31)) {
+        const predWinnerId = thirdPred.h > thirdPred.a ? home31 : away31
         if (predWinnerId && predWinnerId === actualThirdWinnerId) {
           advAdd += STAGE_POINTS['third_winner'] ?? 8
         }
@@ -389,13 +416,17 @@ export async function rescoreKOPts() {
     const match = matchBySlot.get(slot) as any
     if (!match || match.actual_home_score === null) continue
     if (p.pred_home_score === null || p.pred_away_score === null) continue
-    // Pair check: user must have predicted both correct teams for this slot
+    // Pair check: user must have predicted both correct teams for this slot.
+    // Prefer stored pred team IDs; fall back to simulation.
+    const storedSlot = userStoredTeamsBySlot.get(p.user_id)?.get(slot)
     const simSlot = userSimSlot.get(p.user_id)?.get(slot)
+    const predHome = storedSlot?.home ?? simSlot?.home ?? null
+    const predAway = storedSlot?.away ?? simSlot?.away ?? null
     const actualHome = match.home_team_id as string | null
     const actualAway = match.away_team_id as string | null
-    if (!actualHome || !actualAway || !simSlot?.home || !simSlot?.away) continue
-    const pairMatch = (simSlot.home === actualHome && simSlot.away === actualAway) ||
-                      (simSlot.home === actualAway && simSlot.away === actualHome)
+    if (!actualHome || !actualAway || !predHome || !predAway) continue
+    const pairMatch = (predHome === actualHome && predAway === actualAway) ||
+                      (predHome === actualAway && predAway === actualHome)
     if (!pairMatch) continue
     const ph = p.pred_home_score as number, pa = p.pred_away_score as number
     const ah = match.actual_home_score as number, aa = match.actual_away_score as number
