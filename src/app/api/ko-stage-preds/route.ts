@@ -119,20 +119,29 @@ export async function POST(req: Request) {
     }
   }
 
-  // Fetch KO score predictions per user (paginated)
+  // Fetch KO score predictions + stored team IDs per user (paginated)
   const userKOPreds = new Map<string, Map<number, { h: number; a: number }>>()
+  const userStoredSlotTeams = new Map<string, Map<number, { home: string | null; away: string | null }>>()
   {
     let offset = 0
     while (true) {
       const { data } = await supabase
         .from('predictions_knockout')
-        .select('user_id, bracket_slot, pred_home_score, pred_away_score')
+        .select('user_id, bracket_slot, pred_home_team_id, pred_away_team_id, pred_home_score, pred_away_score')
         .range(offset, offset + 999)
       if (!data?.length) break
       for (const p of data as any[]) {
-        if (p.pred_home_score === null) continue
-        if (!userKOPreds.has(p.user_id)) userKOPreds.set(p.user_id, new Map())
-        userKOPreds.get(p.user_id)!.set(p.bracket_slot as number, { h: p.pred_home_score, a: p.pred_away_score })
+        if (p.pred_home_score !== null) {
+          if (!userKOPreds.has(p.user_id)) userKOPreds.set(p.user_id, new Map())
+          userKOPreds.get(p.user_id)!.set(p.bracket_slot as number, { h: p.pred_home_score, a: p.pred_away_score })
+        }
+        if (p.pred_home_team_id || p.pred_away_team_id) {
+          if (!userStoredSlotTeams.has(p.user_id)) userStoredSlotTeams.set(p.user_id, new Map())
+          userStoredSlotTeams.get(p.user_id)!.set(p.bracket_slot as number, {
+            home: p.pred_home_team_id ?? null,
+            away: p.pred_away_team_id ?? null,
+          })
+        }
       }
       if (data.length < 1000) break
       offset += 1000
@@ -244,16 +253,19 @@ export async function POST(req: Request) {
     const actualWinnerTeams = new Set([actual['W M101'], actual['W M102']].filter(Boolean))
     const actualLoserTeams = new Set([actual['L M101'], actual['L M102']].filter(Boolean))
 
-    for (const userId of allUserIds) {
+    const allUsersForFinal = new Set([...userGroupPreds.keys(), ...userKOPreds.keys(), ...userStoredSlotTeams.keys()])
+    for (const userId of allUsersForFinal) {
       const gp = userGroupPreds.get(userId) ?? new Map()
       const kp = userKOPreds.get(userId) ?? new Map()
-      if (gp.size === 0 && kp.size === 0) continue
+      const storedSlots = userStoredSlotTeams.get(userId) ?? new Map()
+      if (gp.size === 0 && kp.size === 0 && storedSlots.size === 0) continue
 
       const matchups = simulateAllMatchups(gp, kp, allMatches, allTeams)
       const simSlot = new Map(matchups.map(m => [m.slot, { home: m.home, away: m.away }]))
 
       const userCols: Record<string, string> = {}
 
+      // Display columns — use simulation with DB fallback (for the visual grid)
       for (const slot of [29, 30]) {
         const pred = kp.get(slot)
         if (!pred || pred.h === pred.a) continue
@@ -276,28 +288,43 @@ export async function POST(req: Request) {
         if (loser) userCols[`L M${slot + 72}`] = loser.id
       }
 
+      // roundPts — use stored team IDs for SF (29,30), final (32), 3rd place (31) slots.
       let pts = 0
-      for (const [col, teamId] of Object.entries(userCols)) {
-        if (col.startsWith('W') && actualWinnerTeams.has(teamId)) pts += STAGE_POINTS['final'] ?? 12
-        if (col.startsWith('L') && actualLoserTeams.has(teamId)) pts += STAGE_POINTS['third_match'] ?? 4
+      for (const slot of [29, 30]) {
+        const stored = storedSlots.get(slot)
+        const sim = simSlot.get(slot)
+        const homeId = stored?.home ?? sim?.home?.id ?? null
+        const awayId = stored?.away ?? sim?.away?.id ?? null
+        const pred = kp.get(slot)
+        if (!pred || pred.h === pred.a) continue
+        const winnerId = pred.h > pred.a ? homeId : awayId
+        const loserId = pred.h > pred.a ? awayId : homeId
+        if (winnerId && actualWinnerTeams.has(winnerId)) pts += STAGE_POINTS['final'] ?? 12
+        if (loserId && actualLoserTeams.has(loserId)) pts += STAGE_POINTS['third_match'] ?? 4
       }
 
-      // Winner bonus (16 pts)
+      // Winner bonus (16 pts) — use stored slot 32 teams
       if (actualChampionId) {
         const finalPred = kp.get(32)
-        const finalSim = simSlot.get(32)
-        if (finalPred && finalPred.h !== finalPred.a && finalSim) {
-          const predWinnerId = finalPred.h > finalPred.a ? finalSim.home?.id : finalSim.away?.id
+        const stored32 = storedSlots.get(32)
+        const sim32 = simSlot.get(32)
+        const home32 = stored32?.home ?? sim32?.home?.id ?? null
+        const away32 = stored32?.away ?? sim32?.away?.id ?? null
+        if (finalPred && finalPred.h !== finalPred.a && (home32 || away32)) {
+          const predWinnerId = finalPred.h > finalPred.a ? home32 : away32
           if (predWinnerId && predWinnerId === actualChampionId) pts += STAGE_POINTS['winner'] ?? 16
         }
       }
 
-      // Third winner bonus (8 pts)
+      // Third winner bonus (8 pts) — use stored slot 31 teams
       if (actualThirdWinnerId) {
         const thirdPred = kp.get(31)
-        const thirdSim = simSlot.get(31)
-        if (thirdPred && thirdPred.h !== thirdPred.a && thirdSim) {
-          const predWinnerId = thirdPred.h > thirdPred.a ? thirdSim.home?.id : thirdSim.away?.id
+        const stored31 = storedSlots.get(31)
+        const sim31 = simSlot.get(31)
+        const home31 = stored31?.home ?? sim31?.home?.id ?? null
+        const away31 = stored31?.away ?? sim31?.away?.id ?? null
+        if (thirdPred && thirdPred.h !== thirdPred.a && (home31 || away31)) {
+          const predWinnerId = thirdPred.h > thirdPred.a ? home31 : away31
           if (predWinnerId && predWinnerId === actualThirdWinnerId) pts += STAGE_POINTS['third_winner'] ?? 8
         }
       }
@@ -309,12 +336,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ actual, preds, roundPts })
   }
 
-  for (const userId of allUserIds) {
+  // Current-stage slots: teams a user stored for the stage we're computing advancement for.
+  // r16 view = advancement to R16 = teams in slots 17-24
+  // qf view  = advancement to QF  = teams in slots 25-28
+  // sf view  = advancement to SF  = teams in slots 29-30
+  // third    = teams in 3rd place match = slot 31
+  const CURRENT_STAGE_SLOTS: Record<string, number[]> = {
+    r16: [17,18,19,20,21,22,23,24],
+    qf:  [25,26,27,28],
+    sf:  [29,30],
+    third: [31],
+  }
+  const currentStageSlots = CURRENT_STAGE_SLOTS[stage] ?? []
+
+  const allUsersForStage = new Set([...userGroupPreds.keys(), ...userKOPreds.keys(), ...userStoredSlotTeams.keys()])
+  const actualTeamSet = new Set(Object.values(actual))
+
+  for (const userId of allUsersForStage) {
     const gp = userGroupPreds.get(userId) ?? new Map()
     const kp = userKOPreds.get(userId) ?? new Map()
-    if (gp.size === 0 && kp.size === 0) continue
+    const storedSlots = userStoredSlotTeams.get(userId) ?? new Map()
+    if (gp.size === 0 && kp.size === 0 && storedSlots.size === 0) continue
 
-    // Simulate full bracket from user's group + KO score predictions
+    // Simulate full bracket for display columns (preds map)
     const matchups = simulateAllMatchups(gp, kp, allMatches, allTeams)
     const simSlot = new Map(matchups.map(m => [m.slot, { home: m.home, away: m.away }]))
 
@@ -353,12 +397,20 @@ export async function POST(req: Request) {
       userCols[colPos] = predictedTeam.id
     }
 
-    // Round pts — stage-based: award stagePts for each unique predicted team
-    // that appears ANYWHERE in the actual advancing set, regardless of which slot.
-    const actualTeamSet = new Set(Object.values(actual))
-    const predictedTeamSet = new Set(Object.values(userCols))
+    // Round pts — use stored team IDs for current stage slots (primary), simulation as fallback.
+    // This mirrors the fixed rescoreKOPts logic so pts match what is/will be in the scores table.
+    const predictedTeams = new Set<string>()
+    for (const slot of currentStageSlots) {
+      const stored = storedSlots.get(slot)
+      const sim = simSlot.get(slot)
+      const home = stored?.home ?? sim?.home?.id ?? null
+      const away = stored?.away ?? sim?.away?.id ?? null
+      if (home) predictedTeams.add(home)
+      if (away) predictedTeams.add(away)
+    }
+
     let pts = 0
-    for (const teamId of predictedTeamSet) {
+    for (const teamId of predictedTeams) {
       if (actualTeamSet.has(teamId)) pts += stagePts
     }
 

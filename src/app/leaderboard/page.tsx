@@ -289,9 +289,10 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
       }
       setKoActualByPos(actualByPos)
 
-      // r32Preds: Record<userId, Record<position, teamId>> from /api/r32-preds
+      // r32Preds: { preds: Record<userId, Record<position, teamId>>, roundPts: Record<userId, number> }
+      const r32PredsMap = (r32Preds?.preds ?? r32Preds) as Record<string, Record<string,string>>
       const userPreds = new Map<string,Map<string,string>>()
-      for (const [userId, posObj] of Object.entries(r32Preds as Record<string, Record<string,string>>)) {
+      for (const [userId, posObj] of Object.entries(r32PredsMap)) {
         userPreds.set(userId, new Map(Object.entries(posObj)))
       }
       setKoUserPredsByPos(userPreds)
@@ -466,7 +467,8 @@ function DayView({ entries, currentUserId, leagueId, leagueName, positionsByUser
             let homeId: string | null = null, awayId: string | null = null
             if (stage === 'r32' && r32PredsData) {
               const def = R32_POS[p.bracket_slot as number]
-              const userPos = r32PredsData[p.user_id] as Record<string,string> | undefined
+              const r32PredsMap = (r32PredsData?.preds ?? r32PredsData) as Record<string, Record<string,string>>
+              const userPos = r32PredsMap[p.user_id] as Record<string,string> | undefined
               if (def && userPos) { homeId = userPos[def.hp] ?? null; awayId = userPos[def.ap] ?? null }
             } else {
               // Use simulation-based predicted teams from ko-stage-preds
@@ -1627,11 +1629,25 @@ export default function LeaderboardPage() {
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
-    const [userRes, scoreRes, authRes] = await Promise.all([
+    const koStages = ['r16','qf','sf','final']
+    const [userRes, scoreRes, authRes, r32LiveData, ...koLiveData] = await Promise.all([
       supabase.from('users').select('id, display_name'),
       supabase.from('scores').select('*'),
       supabase.auth.getUser(),
+      fetch('/api/r32-preds', { method: 'POST' }).then(r => r.json()).catch(() => ({})),
+      ...koStages.map(s =>
+        fetch('/api/ko-stage-preds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: s }) })
+          .then(r => r.json()).catch(() => ({}))
+      ),
     ])
+
+    // Build live advancement pts map: sum roundPts across all stages
+    const liveAdvMap = new Map<string, number>()
+    const addRoundPts = (pts: Record<string, number>) => {
+      for (const [uid, p] of Object.entries(pts ?? {})) liveAdvMap.set(uid, (liveAdvMap.get(uid) ?? 0) + (p as number))
+    }
+    addRoundPts(r32LiveData?.roundPts ?? {})
+    for (const d of koLiveData) addRoundPts(d?.roundPts ?? {})
     const uid = authRes.data.user?.id ?? null
     setCurrentUserId(uid)
 
@@ -1665,15 +1681,19 @@ export default function LeaderboardPage() {
       if (mpRes.ok) setMaxPts(await mpRes.json())
     } catch { }
 
+    const useLiveAdv = liveAdvMap.size > 0
     const built: Omit<LeaderboardEntry, 'rank'>[] = users.map(u => {
       const s = scores.get(u.id)
+      const groupPts = s?.group_pts ?? 0
+      const advancementPts = useLiveAdv ? (liveAdvMap.get(u.id) ?? 0) : (s?.advancement_pts ?? 0)
+      const knockoutPts = s?.knockout_match_pts ?? 0
       return {
         userId: u.id,
         displayName: transliterateName(u.display_name ?? 'Anonymous'),
-        groupPts: s?.group_pts ?? 0,
-        advancementPts: s?.advancement_pts ?? 0,
-        knockoutPts: s?.knockout_match_pts ?? 0,
-        totalPts: s?.total_pts ?? 0,
+        groupPts,
+        advancementPts,
+        knockoutPts,
+        totalPts: groupPts + advancementPts + knockoutPts,
         predictionCount: predCounts.get(u.id) ?? 0,
         updatedAt: s ? new Date(s.updated_at) : null,
       }
